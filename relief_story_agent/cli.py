@@ -81,6 +81,39 @@ def main(argv: list[str] | None = None) -> int:
     export_parser.add_argument("--include-zip", action="store_true", help="Create a zip export.")
     export_parser.add_argument("--timeout-seconds", type=float, default=60, help="HTTP timeout.")
     export_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    recovery_plan_parser = subparsers.add_parser(
+        "recovery-plan",
+        help="Fetch a batch recovery plan through a running local API server.",
+    )
+    _add_batch_id_api_args(recovery_plan_parser)
+    recover_parser = subparsers.add_parser(
+        "recover-batch",
+        help="Execute or dry-run safe batch recovery actions through the local API server.",
+    )
+    _add_batch_id_api_args(recover_parser)
+    recover_parser.add_argument("--dry-run", action="store_true", help="Preview recovery actions without executing.")
+    recover_parser.add_argument(
+        "--action-code",
+        action="append",
+        default=[],
+        help="Restrict recovery to one action code. Repeat for multiple codes.",
+    )
+    validate_export_parser = subparsers.add_parser(
+        "validate-export",
+        help="Validate a batch export directory through the local API server.",
+    )
+    _add_batch_id_api_args(validate_export_parser)
+    validate_export_parser.add_argument("--export-dir", required=True, help="Export directory to validate.")
+    validate_export_parser.add_argument("--save-report", action="store_true", help="Write validation_report.json.")
+    validate_zip_parser = subparsers.add_parser(
+        "validate-export-zip",
+        help="Validate a batch export zip through the local API server.",
+    )
+    _add_batch_id_api_args(validate_zip_parser)
+    validate_zip_parser.add_argument("--zip-path", required=True, help="Zip path to validate.")
+    validate_zip_parser.add_argument("--expected-sha256", default="", help="Optional expected sha256.")
+    validate_zip_parser.add_argument("--expected-size-bytes", type=int, default=0, help="Optional expected size.")
+    validate_zip_parser.add_argument("--save-report", action="store_true", help="Write a validation sidecar report.")
     setup_parser = subparsers.add_parser(
         "setup",
         help="Write a local configuration bundle for first-run deployment.",
@@ -132,6 +165,14 @@ def main(argv: list[str] | None = None) -> int:
         return _create_batch(args)
     if args.command == "export-batch":
         return _export_batch(args)
+    if args.command == "recovery-plan":
+        return _recovery_plan(args)
+    if args.command == "recover-batch":
+        return _recover_batch(args)
+    if args.command == "validate-export":
+        return _validate_export(args)
+    if args.command == "validate-export-zip":
+        return _validate_export_zip(args)
     if args.command == "setup":
         return _setup(args)
     if args.command == "acceptance":
@@ -156,6 +197,13 @@ def _add_preflight_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Ask the server to ping ComfyUI during preflight.",
     )
+
+
+def _add_batch_id_api_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--server", default="http://127.0.0.1:8891", help="Relief Story Agent API base URL.")
+    parser.add_argument("--batch-id", required=True, help="Batch id.")
+    parser.add_argument("--timeout-seconds", type=float, default=60, help="HTTP timeout.")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
 
 
 def _connect_comfyui(args: argparse.Namespace) -> int:
@@ -260,6 +308,53 @@ def _export_batch(args: argparse.Namespace) -> int:
     )
 
 
+def _recovery_plan(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/batches/{args.batch_id}/recovery-plan")
+
+
+def _recover_batch(args: argparse.Namespace) -> int:
+    payload = {"dry_run": args.dry_run}
+    if args.action_code:
+        payload["action_codes"] = args.action_code
+    return _post_json_command(
+        args,
+        f"/api/batches/{args.batch_id}/recover",
+        payload,
+    )
+
+
+def _validate_export(args: argparse.Namespace) -> int:
+    return _post_json_command(
+        args,
+        f"/api/batches/{args.batch_id}/export/validate",
+        {
+            "export_dir": args.export_dir,
+            "save_report": args.save_report,
+        },
+    )
+
+
+def _validate_export_zip(args: argparse.Namespace) -> int:
+    return _post_json_command(
+        args,
+        f"/api/batches/{args.batch_id}/export/validate-zip",
+        {
+            "zip_path": args.zip_path,
+            "expected_sha256": args.expected_sha256,
+            "expected_size_bytes": args.expected_size_bytes,
+            "save_report": args.save_report,
+        },
+    )
+
+
+def _get_json_command(args: argparse.Namespace, path: str) -> int:
+    url = _api_url(args.server, path, {})
+    with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
+        response = client.get(url)
+        result = response.json()
+    return _print_api_result(args, response.status_code, result)
+
+
 def _post_json_command(
     args: argparse.Namespace,
     path: str,
@@ -271,11 +366,12 @@ def _post_json_command(
     with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
         response = client.post(url, json=payload)
         result = response.json()
-    if response.status_code >= 400:
-        print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
-        return 1
+    return _print_api_result(args, response.status_code, result)
+
+
+def _print_api_result(args: argparse.Namespace, status_code: int, result: dict) -> int:
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
-    return 0
+    return 1 if status_code >= 400 else 0
 
 
 def _api_url(server: str, path: str, query: dict[str, bool]) -> str:

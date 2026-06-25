@@ -210,11 +210,30 @@ Stop the API while a batch is queued or running. Start it again with the same
 `--state-dir`, then inspect:
 
 ```powershell
+relief-story-agent recovery-plan `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --pretty
+```
+
+HTTP equivalent:
+
+```powershell
 Invoke-RestMethod "http://127.0.0.1:8891/api/batches/{batch_id}/recovery-plan"
 Invoke-RestMethod "http://127.0.0.1:8891/api/scheduler"
 ```
 
 Run safe recovery actions only after reviewing the plan:
+
+```powershell
+relief-story-agent recover-batch `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --dry-run `
+  --pretty
+```
+
+HTTP equivalent:
 
 ```powershell
 Invoke-RestMethod `
@@ -253,6 +272,24 @@ Invoke-RestMethod `
 
 The export validator checks publish indexes, copied video files, zip checksum,
 and the validation report.
+
+CLI validation:
+
+```powershell
+relief-story-agent validate-export `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --export-dir "D:/relief_story_exports/{batch_id}" `
+  --save-report `
+  --pretty
+
+relief-story-agent validate-export-zip `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --zip-path "D:/relief_story_exports/{batch_id}.zip" `
+  --save-report `
+  --pretty
+```
 
 The CLI uses direct local HTTP for these API calls and ignores environment proxy
 settings, which avoids accidental proxy failures for `127.0.0.1`.

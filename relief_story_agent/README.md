@@ -193,6 +193,28 @@ relief-story-agent export-batch `
   --export-root "D:/relief_story_exports" `
   --include-zip `
   --pretty
+
+relief-story-agent recovery-plan `
+  --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent recover-batch `
+  --batch-id "{batch_id}" `
+  --dry-run `
+  --action-code retry_from_stage `
+  --pretty
+
+relief-story-agent validate-export `
+  --batch-id "{batch_id}" `
+  --export-dir "D:/relief_story_exports/{batch_id}" `
+  --save-report `
+  --pretty
+
+relief-story-agent validate-export-zip `
+  --batch-id "{batch_id}" `
+  --zip-path "D:/relief_story_exports/{batch_id}.zip" `
+  --save-report `
+  --pretty
 ```
 
 These commands call the local API server and print the JSON response. They use
@@ -613,6 +635,13 @@ To execute only safe automatic recovery actions from that plan:
 POST /api/batches/{batch_id}/recover
 ```
 
+CLI equivalent:
+
+```powershell
+relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty
+relief-story-agent recover-batch --batch-id "{batch_id}" --dry-run --pretty
+```
+
 Use `dry_run` before a one-click launcher action:
 
 ```json
@@ -736,6 +765,16 @@ Validate an exported package before upload or sharing:
 POST /api/batches/{batch_id}/export/validate
 ```
 
+CLI equivalent:
+
+```powershell
+relief-story-agent validate-export `
+  --batch-id "{batch_id}" `
+  --export-dir "D:/relief_story_exports/{batch_id}" `
+  --save-report `
+  --pretty
+```
+
 ```json
 {"export_dir": "D:/relief_story_exports/batch_abc123", "save_report": true}
 ```
@@ -746,6 +785,16 @@ Validate the zip itself after transfer:
 
 ```http
 POST /api/batches/{batch_id}/export/validate-zip
+```
+
+CLI equivalent:
+
+```powershell
+relief-story-agent validate-export-zip `
+  --batch-id "{batch_id}" `
+  --zip-path "D:/relief_story_exports/{batch_id}.zip" `
+  --save-report `
+  --pretty
 ```
 
 ```json

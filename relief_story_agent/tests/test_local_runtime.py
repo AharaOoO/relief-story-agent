@@ -157,6 +157,40 @@ def test_build_local_doctor_reports_comfyui_connection_failure():
     assert "start_or_check_comfyui" in report["suggested_actions"]
 
 
+def test_build_local_doctor_fails_when_comfyui_runtime_is_connected_but_not_ready():
+    report = build_local_doctor(
+        bootstrap=build_local_bootstrap(),
+        model_status={"profiles": {}, "stages": {}, "missing_environment_variables": []},
+        resource_status={"image_generation_concurrency": 2, "comfyui_submission_concurrency": 1},
+        scheduler_enabled=True,
+        state_persistent=True,
+        comfyui_status={
+            "checked": True,
+            "connected": True,
+            "ready": False,
+            "endpoint": "http://127.0.0.1:8188",
+            "queue": {"running": 0, "pending": 0},
+            "message": "ComfyUI is missing node types required by the workflow.",
+            "checks": [
+                {
+                    "name": "comfyui_node_types",
+                    "status": "failed",
+                    "message": "ComfyUI is missing node types required by the workflow.",
+                    "details": {"missing_node_types": ["MissingSampler"]},
+                }
+            ],
+            "suggested_actions": ["install_or_enable_comfyui_nodes"],
+        },
+    )
+
+    checks = {check["id"]: check for check in report["checks"]}
+    assert report["ready"] is False
+    assert checks["comfyui_connection"]["status"] == "fail"
+    assert checks["comfyui_connection"]["details"]["ready"] is False
+    assert checks["comfyui_connection"]["details"]["checks"][0]["name"] == "comfyui_node_types"
+    assert "start_or_check_comfyui" in report["suggested_actions"]
+
+
 def test_api_local_doctor_reports_ready_when_runtime_is_configured(tmp_path):
     app = build_app(
         state_dir=str(tmp_path / "state"),
@@ -221,3 +255,58 @@ def test_api_local_doctor_can_ping_comfyui_when_requested(tmp_path, monkeypatch)
     assert calls[0].timeout_seconds == 3
     assert checks["comfyui_connection"]["status"] == "pass"
     assert checks["comfyui_connection"]["details"]["queue"] == {"running": 1, "pending": 2}
+
+
+def test_api_local_doctor_passes_workflow_path_to_comfyui_connection(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_connect(request):
+        calls.append(request)
+        return {
+            "connected": True,
+            "ready": False,
+            "endpoint": request.endpoint,
+            "queue": {"running": 0, "pending": 0},
+            "checks": [
+                {
+                    "name": "comfyui_endpoint",
+                    "status": "passed",
+                    "message": "ComfyUI /queue is reachable.",
+                    "details": {},
+                },
+                {
+                    "name": "comfyui_node_types",
+                    "status": "failed",
+                    "message": "ComfyUI is missing node types required by the workflow.",
+                    "details": {"missing_node_types": ["MissingSampler"]},
+                },
+            ],
+            "suggested_actions": ["install_or_enable_comfyui_nodes"],
+        }
+
+    monkeypatch.setattr("relief_story_agent.api.connect_comfyui", fake_connect)
+    app = build_app(
+        state_dir=str(tmp_path / "state"),
+        provider=FakeModelProvider.minimal_success(),
+        host="127.0.0.1",
+        port=8899,
+    )
+    client = TestClient(app)
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text("{}", encoding="utf-8")
+
+    response = client.get(
+        "/api/local/doctor",
+        params={
+            "check_comfyui_connection": "true",
+            "comfyui_endpoint": "127.0.0.1:8188/queue",
+            "comfyui_workflow_path": str(workflow_path),
+        },
+    )
+
+    body = response.json()
+    checks = {check["id"]: check for check in body["checks"]}
+    assert response.status_code == 200
+    assert calls[0].workflow_api_path == str(workflow_path)
+    assert body["ready"] is False
+    assert checks["comfyui_connection"]["status"] == "fail"

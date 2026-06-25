@@ -113,6 +113,7 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "POST /api/comfyui/discover-workflows",
         "--check-comfyui-connection",
         "--comfyui-endpoint",
+        "--comfyui-workflow-path",
         "smoke-comfyui --dry-run",
         "POST /api/batches",
         "export/validate",

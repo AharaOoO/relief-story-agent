@@ -672,6 +672,8 @@ def test_cli_local_doctor_can_request_comfyui_check():
                 "127.0.0.1:8188/queue",
                 "--comfyui-timeout-seconds",
                 "3",
+                "--comfyui-workflow-path",
+                "D:/ComfyUI/workflows/ltx23.json",
             ],
             capture_output=True,
             text=True,
@@ -685,6 +687,7 @@ def test_cli_local_doctor_can_request_comfyui_check():
         "check_comfyui_connection": ["true"],
         "comfyui_endpoint": ["127.0.0.1:8188/queue"],
         "comfyui_timeout_seconds": ["3.0"],
+        "comfyui_workflow_path": ["D:/ComfyUI/workflows/ltx23.json"],
     }
 
 

@@ -161,17 +161,22 @@ def build_local_doctor(
 
 def _comfyui_connection_check(comfyui_status: dict) -> dict:
     connected = bool(comfyui_status.get("connected"))
+    ready = bool(comfyui_status.get("ready", connected))
     return _doctor_check(
         "comfyui_connection",
-        "pass" if connected else "fail",
+        "pass" if connected and ready else "fail",
         (
-            "ComfyUI /queue is reachable."
-            if connected
+            "ComfyUI /queue is reachable and runtime checks passed."
+            if connected and ready
             else str(comfyui_status.get("message") or "Cannot reach ComfyUI /queue.")
         ),
         {
             "endpoint": str(comfyui_status.get("endpoint") or ""),
+            "ready": ready,
+            "connected": connected,
             "queue": comfyui_status.get("queue") or {},
+            "checks": comfyui_status.get("checks") or [],
+            "suggested_actions": comfyui_status.get("suggested_actions") or [],
         },
     )
 
@@ -243,6 +248,8 @@ def _doctor_actions(checks: list[dict]) -> list[str]:
         elif check["id"] == "scheduler":
             actions.append("start_server_entrypoint")
         elif check["id"] == "comfyui_connection":
+            details = check.get("details") or {}
+            actions.extend(str(item) for item in details.get("suggested_actions") or [])
             actions.append("start_or_check_comfyui")
         else:
             actions.append("inspect_local_runtime")

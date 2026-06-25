@@ -126,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         help="Ask the server to ping ComfyUI /queue.",
     )
     local_doctor_parser.add_argument("--comfyui-endpoint", default="", help="Optional ComfyUI endpoint override.")
+    local_doctor_parser.add_argument("--comfyui-workflow-path", default="", help="Optional workflow JSON path for ComfyUI runtime node validation.")
     local_doctor_parser.add_argument("--comfyui-timeout-seconds", type=float, default=5.0, help="ComfyUI ping timeout.")
     local_demo_parser = subparsers.add_parser(
         "local-demo",
@@ -619,6 +620,8 @@ def _local_doctor(args: argparse.Namespace) -> int:
         query["check_comfyui_connection"] = True
         if args.comfyui_endpoint:
             query["comfyui_endpoint"] = args.comfyui_endpoint
+        if args.comfyui_workflow_path:
+            query["comfyui_workflow_path"] = args.comfyui_workflow_path
         query["comfyui_timeout_seconds"] = args.comfyui_timeout_seconds
     return _get_json_command(args, "/api/local/doctor", query=query)
 

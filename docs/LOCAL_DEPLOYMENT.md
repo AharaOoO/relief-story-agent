@@ -210,8 +210,13 @@ relief-story-agent local-doctor `
   --server "http://127.0.0.1:8891" `
   --check-comfyui-connection `
   --comfyui-endpoint "127.0.0.1:8188/queue" `
+  --comfyui-workflow-path "D:/ComfyUI/workflows/ltx23_four_grid.json" `
   --pretty
 ```
+
+When `--comfyui-workflow-path` is provided, local doctor checks not only that
+`/queue` is reachable, but also that the selected workflow's node classes are
+available in the running ComfyUI package.
 
 Run local diagnostics before creating a real run:
 

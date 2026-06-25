@@ -129,8 +129,13 @@ relief-story-agent local-doctor `
   --server "http://127.0.0.1:8891" `
   --check-comfyui-connection `
   --comfyui-endpoint "127.0.0.1:8188/queue" `
+  --comfyui-workflow-path "D:/ComfyUI/workflows/ltx23_four_grid.json" `
   --pretty
 ```
+
+With `--comfyui-workflow-path`, the doctor also asks ComfyUI whether the
+selected workflow's node classes are installed, which is the backend contract a
+future UI workflow picker can use before enqueueing a batch.
 
 For a machine-readable local acceptance snapshot that another reviewer can
 inspect later, run:

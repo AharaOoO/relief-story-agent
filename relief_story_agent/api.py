@@ -110,6 +110,7 @@ def create_app(
     def get_local_doctor(
         check_comfyui_connection: bool = False,
         comfyui_endpoint: str = "",
+        comfyui_workflow_path: str = "",
         comfyui_timeout_seconds: float = 5.0,
     ):
         bootstrap = build_local_bootstrap(runtime)
@@ -119,6 +120,7 @@ def create_app(
             connection = connect_comfyui(
                 ComfyUIConnectionRequest(
                     endpoint=endpoint,
+                    workflow_api_path=comfyui_workflow_path or None,
                     timeout_seconds=comfyui_timeout_seconds,
                 )
             )
@@ -127,12 +129,20 @@ def create_app(
                 if check.get("name") == "comfyui_endpoint":
                     message = str(check.get("message") or "")
                     break
+            if connection.get("ready") is False:
+                for check in connection.get("checks") or []:
+                    if check.get("status") not in {"passed", "pass"}:
+                        message = str(check.get("message") or message)
+                        break
             comfyui_status = {
                 "checked": True,
                 "connected": bool(connection.get("connected")),
+                "ready": bool(connection.get("ready")),
                 "endpoint": connection.get("endpoint") or endpoint,
                 "queue": connection.get("queue") or {},
                 "message": message,
+                "checks": connection.get("checks") or [],
+                "suggested_actions": connection.get("suggested_actions") or [],
             }
         return build_local_doctor(
             bootstrap=bootstrap,

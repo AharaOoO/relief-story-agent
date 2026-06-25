@@ -229,6 +229,7 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "relief-story-agent validate-export" in text
     assert "execution_policy" in text
     assert "fix_execution_policy" in text
+    assert "fix_model_profiles" in text
     assert "127.0.0.1:8188/queue" in text
     assert "bypass environment proxy" in text
 

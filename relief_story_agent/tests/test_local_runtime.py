@@ -103,6 +103,34 @@ def test_build_local_doctor_reports_missing_model_environment():
     assert "configure_model_environment" in report["suggested_actions"]
 
 
+def test_build_local_doctor_flags_placeholder_model_profiles():
+    report = build_local_doctor(
+        bootstrap=build_local_bootstrap(),
+        model_status={
+            "profiles": {
+                "writer": {
+                    "base_url": "https://YOUR_PROVIDER_ENDPOINT/v1",
+                    "model": "YOUR_MODEL",
+                    "api_key_env": "WRITER_KEY",
+                    "secret_required": True,
+                    "secret_configured": True,
+                }
+            },
+            "stages": {"chief_screenwriter": "writer"},
+            "missing_environment_variables": [],
+        },
+        resource_status={"image_generation_concurrency": 2, "comfyui_submission_concurrency": 1},
+        scheduler_enabled=True,
+        state_persistent=True,
+    )
+
+    checks = {check["id"]: check for check in report["checks"]}
+    assert report["ready"] is False
+    assert checks["model_profiles"]["status"] == "fail"
+    assert checks["model_profiles"]["details"]["placeholder_profiles"] == ["writer"]
+    assert "fix_model_profiles" in report["suggested_actions"]
+
+
 def test_build_local_doctor_reports_comfyui_connection_failure():
     report = build_local_doctor(
         bootstrap=build_local_bootstrap(),

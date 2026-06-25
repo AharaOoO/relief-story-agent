@@ -93,7 +93,7 @@ python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 ```
 
-当前已验证：`329 passed`。
+当前已验证：`330 passed`。
 
 尚未完成或尚未真实证明：
 

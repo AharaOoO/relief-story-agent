@@ -80,7 +80,7 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-329 passed
+330 passed
 ```
 
 可交给另一个 AI 或操作者核查的本地证据包命令：

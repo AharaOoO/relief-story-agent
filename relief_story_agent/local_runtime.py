@@ -181,6 +181,23 @@ def _model_profiles_check(model_status: dict) -> dict:
             "No model profiles or stage bindings are configured.",
             {"profile_count": len(profiles), "stage_count": len(stages)},
         )
+    placeholder_profiles = [
+        name
+        for name, profile in sorted(profiles.items())
+        if _has_placeholder_value(str(profile.get("model") or ""))
+        or _has_placeholder_value(str(profile.get("base_url") or ""))
+    ]
+    if placeholder_profiles:
+        return _doctor_check(
+            "model_profiles",
+            "fail",
+            "Model profile placeholders must be replaced before running.",
+            {
+                "profile_count": len(profiles),
+                "stage_count": len(stages),
+                "placeholder_profiles": placeholder_profiles,
+            },
+        )
     return _doctor_check(
         "model_profiles",
         "pass",
@@ -212,7 +229,8 @@ def _doctor_actions(checks: list[dict]) -> list[str]:
         if check["status"] == "pass":
             continue
         if check["id"] == "model_profiles":
-            actions.append("run_setup")
+            details = check.get("details") or {}
+            actions.append("fix_model_profiles" if details.get("placeholder_profiles") else "run_setup")
         elif check["id"] == "model_environment":
             actions.append("configure_model_environment")
         elif check["id"] == "state_backend":
@@ -253,3 +271,8 @@ def _dedupe(values: list[str]) -> list[str]:
         seen.add(value)
         result.append(value)
     return result
+
+
+def _has_placeholder_value(value: str) -> bool:
+    normalized = value.strip().upper()
+    return "YOUR_" in normalized or "REPLACE_ME" in normalized or normalized in {"TODO", "TBD"}

@@ -329,7 +329,7 @@ git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-329 passed
+330 passed
 ```
 
 最近已推送的核心功能提交：

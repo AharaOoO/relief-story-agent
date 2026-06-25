@@ -154,6 +154,9 @@ This checks model API-key environment variables, prompt template paths/placehold
 
 Use `validate` when you need a strict pass/fail gate. Use `diagnose` when building a launcher or UI: it returns `ready`, check counts, the raw checks, and `suggested_actions` such as `configure_model_environment`, `fix_prompt_template`, `fix_comfyui_workflow`, `start_or_check_comfyui`, `fix_output_root`, and `fix_execution_policy`.
 
+`local-doctor` also returns `fix_model_profiles` when model profile values still
+look like setup placeholders such as `YOUR_MODEL` or `YOUR_PROVIDER_ENDPOINT`.
+
 `diagnose` also returns `provenance`, a sha256 trace for configured prompt templates, the ComfyUI workflow, and the placeholder map. This makes it possible to confirm which local template/workflow versions were checked before a run starts.
 
 To also ping the running ComfyUI server, add:
@@ -452,7 +455,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:329 passed" `
+  --check "full_tests=pass:330 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `

@@ -109,7 +109,7 @@ def write_local_config_bundle(
     workflow_path: str,
     comfyui_endpoint: str = "http://127.0.0.1:8188",
     output_root: str = "D:/relief_story_runs",
-) -> dict[str, str]:
+) -> dict[str, Any]:
     comfyui_endpoint = normalize_comfyui_endpoint(comfyui_endpoint)
     target_dir = Path(output_dir)
     templates_dir = target_dir / "templates"
@@ -121,6 +121,7 @@ def write_local_config_bundle(
     model_config = target_dir / "model_config.local.json"
     run_request = target_dir / "run_request.full-ltx.json"
     batch_request = target_dir / "batch_request.full-ltx.json"
+    smoke_request = target_dir / "smoke_request.json"
     comfyui_connect = target_dir / "comfyui_connect.json"
 
     prompt_writer_template.write_text(PROMPT_WRITER_TEMPLATE, encoding="utf-8")
@@ -154,11 +155,21 @@ def write_local_config_bundle(
             prompt_audit_template=prompt_audit_template,
         ),
     )
+    _write_json(
+        smoke_request,
+        _smoke_request_payload(
+            workflow_path=workflow_path,
+            comfyui_endpoint=comfyui_endpoint,
+            output_root=output_root,
+            manual_grid_image_path=target_dir / "four_grid_smoke.png",
+        ),
+    )
 
     paths = {
         "model_config": str(model_config),
         "run_request": str(run_request),
         "batch_request": str(batch_request),
+        "smoke_request": str(smoke_request),
         "comfyui_connect": str(comfyui_connect),
         "prompt_writer_template": str(prompt_writer_template),
         "prompt_audit_template": str(prompt_audit_template),
@@ -295,6 +306,47 @@ def _batch_request_payload(
     }
 
 
+def _smoke_request_payload(
+    *,
+    workflow_path: str,
+    comfyui_endpoint: str,
+    output_root: str,
+    manual_grid_image_path: Path,
+) -> dict[str, Any]:
+    return {
+        "workflow_path": workflow_path,
+        "comfyui_base_url": comfyui_endpoint,
+        "run_id": "smoke_relief_story",
+        "output_root": output_root,
+        "manual_grid_image_path": str(manual_grid_image_path),
+        "dry_run": False,
+        "seed": 123456,
+        "filename_prefix": "smoke_relief_story",
+        "final_storyboard": [
+            {
+                "shot_id": 1,
+                "time_range": "0-15s",
+                "description": "A tired worker pauses beside a quiet convenience-store window at night.",
+                "image_prompt": (
+                    "rainy convenience-store window at night, tired office worker, "
+                    "warm soup steam, soft neon reflection, gentle realistic low-stimulation mood"
+                ),
+                "negative_prompt": "shouting, horror, violence, panic, chaos, text, watermark, distorted hands",
+                "comfyui_inputs": {
+                    "positive": (
+                        "rainy convenience-store window, tired office worker, "
+                        "warm soup steam, soft neon reflection"
+                    ),
+                    "negative": "shouting, horror, violence, chaos, text, watermark",
+                    "seed": 123456,
+                    "strength": 0.72,
+                    "filename_prefix": "smoke_relief_story",
+                },
+            }
+        ],
+    }
+
+
 def _comfyui_payload(workflow_path: str, comfyui_endpoint: str) -> dict[str, Any]:
     return {
         "enabled": True,
@@ -400,6 +452,7 @@ def _next_commands(
     model_config = target_dir / "model_config.local.json"
     run_request = target_dir / "run_request.full-ltx.json"
     batch_request = target_dir / "batch_request.full-ltx.json"
+    smoke_request = target_dir / "smoke_request.json"
     return {
         "doctor": (
             "relief-story-agent local-doctor --check-comfyui-connection "
@@ -407,6 +460,8 @@ def _next_commands(
             f'--comfyui-workflow-path "{workflow_path}" --pretty'
         ),
         "model_check": f'relief-story-agent model-check --model-config "{model_config}" --pretty',
+        "smoke_dry_run": f'relief-story-agent smoke-comfyui --request "{smoke_request}" --dry-run',
+        "smoke_real_run": f'relief-story-agent smoke-comfyui --request "{smoke_request}"',
         "run_preflight": (
             f'relief-story-agent diagnose --request "{run_request}" '
             f'--model-config "{model_config}" --pretty'
@@ -426,6 +481,7 @@ def _next_endpoints() -> dict[str, str]:
         "model_check": "/api/config/model-check",
         "diagnose_run": "/api/config/diagnose",
         "diagnose_batch": "/api/config/diagnose-batch",
+        "smoke_comfyui": "/api/smoke/comfyui",
         "batch_plan": "/api/batches/plan",
         "create_run": "/api/runs",
         "create_batch": "/api/batches",

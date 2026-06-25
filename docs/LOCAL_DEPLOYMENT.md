@@ -48,6 +48,7 @@ The setup command writes:
 - `comfyui_connect.json`
 - `run_request.full-ltx.json`
 - `batch_request.full-ltx.json`
+- `smoke_request.json`
 - `templates/prompt_writer.default.md`
 - `templates/prompt_audit.default.md`
 
@@ -72,7 +73,9 @@ includes machine-readable `files`, `checks`, `next_commands`, and
 `next_endpoints` fields so a launcher can show exactly which files were written
 and which validation action should run next. `next_commands.doctor` uses the
 normalized ComfyUI endpoint from the user's address box and the selected
-workflow path.
+workflow path. The generated `smoke_request.json` is wired for the same
+workflow and endpoint; use `next_commands.smoke_dry_run` before
+`next_commands.smoke_real_run`.
 
 Generated run and batch request files include an `execution_policy` safety
 valve. It limits stage starts before they happen, which protects unattended
@@ -244,7 +247,8 @@ blocked. Fix all suggested actions before real generation.
 
 ## 6. Run Smoke
 
-Prepare a manual 2x2 four-grid image, then start with dry-run:
+Prepare a manual 2x2 four-grid image at the `manual_grid_image_path` recorded
+in `D:/relief_story_config/smoke_request.json`, then start with dry-run:
 
 ```powershell
 relief-story-agent smoke-comfyui `

@@ -13,6 +13,7 @@ from relief_story_agent.models import BatchRunRequest, ComfyUIConnectionRequest,
 from relief_story_agent.orchestrator import StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
 from relief_story_agent.setup_wizard import write_local_config_bundle
+from relief_story_agent.smoke_comfyui import ComfyUISmokeRequest
 
 
 def test_write_local_config_bundle_creates_deployable_files(tmp_path):
@@ -27,6 +28,7 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
         "model_config",
         "run_request",
         "batch_request",
+        "smoke_request",
         "comfyui_connect",
         "prompt_writer_template",
         "prompt_audit_template",
@@ -47,12 +49,14 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     ModelConfigRegistry.from_file(result["model_config"], environ={})
     run_payload = json.loads(Path(result["run_request"]).read_text(encoding="utf-8"))
     batch_payload = json.loads(Path(result["batch_request"]).read_text(encoding="utf-8"))
+    smoke_payload = json.loads(Path(result["smoke_request"]).read_text(encoding="utf-8"))
     connect_payload = json.loads(Path(result["comfyui_connect"]).read_text(encoding="utf-8"))
     writer = Path(result["prompt_writer_template"]).read_text(encoding="utf-8")
     audit = Path(result["prompt_audit_template"]).read_text(encoding="utf-8")
 
     RunRequest.model_validate(run_payload)
     BatchRunRequest.model_validate(batch_payload)
+    smoke_request = ComfyUISmokeRequest.model_validate(smoke_payload)
     ComfyUIConnectionRequest.model_validate(connect_payload)
     assert run_payload["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
     assert run_payload["comfyui"]["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
@@ -61,6 +65,14 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     assert run_payload["execution_policy"]["max_stage_executions"]["gpt_prompt_audit"] == 2
     assert batch_payload["defaults"]["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
     assert batch_payload["defaults"]["execution_policy"]["max_total_stage_executions"] >= 10
+    assert smoke_request.workflow_path == "C:/ComfyUI/workflows/ltx23_four_grid.json"
+    assert smoke_request.comfyui_base_url == "http://127.0.0.1:8188"
+    assert smoke_request.dry_run is False
+    assert smoke_request.manual_grid_image_path == str(tmp_path / "four_grid_smoke.png")
+    assert smoke_request.final_storyboard
+    assert result["files"]["smoke_request"]["exists"] is True
+    assert "smoke-comfyui" in result["next_commands"]["smoke_dry_run"]
+    assert result["next_endpoints"]["smoke_comfyui"] == "/api/smoke/comfyui"
     assert connect_payload["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert "{{script_json}}" in writer
     assert "{{duration_seconds}}" in writer
@@ -149,12 +161,17 @@ def test_api_local_setup_bundle_writes_config_files_for_ui(tmp_path):
     assert Path(body["model_config"]).exists()
     assert Path(body["run_request"]).exists()
     assert Path(body["batch_request"]).exists()
+    assert Path(body["smoke_request"]).exists()
     assert Path(body["comfyui_connect"]).exists()
     assert body["files"]["run_request"]["exists"] is True
+    assert body["files"]["smoke_request"]["exists"] is True
     assert body["checks"]["comfyui_endpoint"]["normalized"] == "http://127.0.0.1:8188"
     assert body["next_endpoints"]["create_batch"] == "/api/batches"
     run_payload = json.loads(Path(body["run_request"]).read_text(encoding="utf-8"))
+    smoke_payload = json.loads(Path(body["smoke_request"]).read_text(encoding="utf-8"))
     connect_payload = json.loads(Path(body["comfyui_connect"]).read_text(encoding="utf-8"))
     assert run_payload["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
     assert run_payload["comfyui"]["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
+    assert smoke_payload["comfyui_base_url"] == "http://127.0.0.1:8188"
+    assert smoke_payload["workflow_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert connect_payload["endpoint"] == "http://127.0.0.1:8188"

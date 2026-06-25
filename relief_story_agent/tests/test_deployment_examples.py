@@ -100,6 +100,10 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "POST /api/batches",
         "export/validate",
         "acceptance",
+        "relief-story-agent run",
+        "relief-story-agent batch-plan",
+        "relief-story-agent batch",
+        "relief-story-agent export-batch",
     ):
         assert required in local_deployment
 
@@ -169,3 +173,6 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "docs/LOCAL_DEPLOYMENT.md" in text
     assert "docs/COMFYUI_LTX23_GUIDE.md" in text
     assert "docs/TEMPLATE_GUIDE.md" in text
+    assert "relief-story-agent run" in text
+    assert "relief-story-agent batch-plan" in text
+    assert "relief-story-agent export-batch" in text

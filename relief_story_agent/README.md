@@ -165,6 +165,40 @@ relief-story-agent serve --host 127.0.0.1 --port 8891
 
 The package also keeps `relief-story-agent-server` as a direct server entrypoint for scripts that do not need the unified CLI.
 
+Local API operator commands:
+
+```powershell
+relief-story-agent run `
+  --request "D:/relief_story_config/run_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --preflight `
+  --check-comfyui-connection `
+  --pretty
+
+relief-story-agent batch-plan `
+  --request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --check-comfyui-connection `
+  --pretty
+
+relief-story-agent batch `
+  --request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --preflight `
+  --check-comfyui-connection `
+  --pretty
+
+relief-story-agent export-batch `
+  --batch-id "{batch_id}" `
+  --export-root "D:/relief_story_exports" `
+  --include-zip `
+  --pretty
+```
+
+These commands call the local API server and print the JSON response. They use
+direct local HTTP without environment proxy settings so `127.0.0.1` launchers do
+not accidentally route through a system proxy.
+
 Generate a local starter bundle for a non-developer machine:
 
 ```powershell

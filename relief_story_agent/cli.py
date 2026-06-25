@@ -3,6 +3,9 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from urllib.parse import urlencode
+
+import httpx
 
 from .acceptance import write_acceptance_report
 from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
@@ -46,6 +49,38 @@ def main(argv: list[str] | None = None) -> int:
         help="Also ping the configured ComfyUI /queue endpoint.",
     )
     diagnose_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    run_parser = subparsers.add_parser(
+        "run",
+        help="Create a run through a running local API server.",
+    )
+    _add_api_request_args(run_parser)
+    _add_preflight_args(run_parser)
+    batch_plan_parser = subparsers.add_parser(
+        "batch-plan",
+        help="Preview a batch plan through a running local API server without enqueueing.",
+    )
+    _add_api_request_args(batch_plan_parser)
+    batch_plan_parser.add_argument(
+        "--check-comfyui-connection",
+        action="store_true",
+        help="Ask the server to ping ComfyUI while planning.",
+    )
+    batch_parser = subparsers.add_parser(
+        "batch",
+        help="Create a batch through a running local API server.",
+    )
+    _add_api_request_args(batch_parser)
+    _add_preflight_args(batch_parser)
+    export_parser = subparsers.add_parser(
+        "export-batch",
+        help="Export a completed batch through a running local API server.",
+    )
+    export_parser.add_argument("--server", default="http://127.0.0.1:8891", help="Relief Story Agent API base URL.")
+    export_parser.add_argument("--batch-id", required=True, help="Batch id to export.")
+    export_parser.add_argument("--export-root", default="", help="Optional export root.")
+    export_parser.add_argument("--include-zip", action="store_true", help="Create a zip export.")
+    export_parser.add_argument("--timeout-seconds", type=float, default=60, help="HTTP timeout.")
+    export_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     setup_parser = subparsers.add_parser(
         "setup",
         help="Write a local configuration bundle for first-run deployment.",
@@ -89,6 +124,14 @@ def main(argv: list[str] | None = None) -> int:
         return _connect_comfyui(args)
     if args.command == "diagnose":
         return _diagnose(args)
+    if args.command == "run":
+        return _create_run(args)
+    if args.command == "batch-plan":
+        return _plan_batch(args)
+    if args.command == "batch":
+        return _create_batch(args)
+    if args.command == "export-batch":
+        return _export_batch(args)
     if args.command == "setup":
         return _setup(args)
     if args.command == "acceptance":
@@ -97,6 +140,22 @@ def main(argv: list[str] | None = None) -> int:
         return server_main(rest)
     parser.print_help()
     return 0
+
+
+def _add_api_request_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--server", default="http://127.0.0.1:8891", help="Relief Story Agent API base URL.")
+    parser.add_argument("--request", required=True, help="Request JSON file.")
+    parser.add_argument("--timeout-seconds", type=float, default=60, help="HTTP timeout.")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+
+
+def _add_preflight_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--preflight", action="store_true", help="Ask the server to validate before enqueueing.")
+    parser.add_argument(
+        "--check-comfyui-connection",
+        action="store_true",
+        help="Ask the server to ping ComfyUI during preflight.",
+    )
 
 
 def _connect_comfyui(args: argparse.Namespace) -> int:
@@ -152,6 +211,83 @@ def _diagnose_kind(payload: dict, requested_kind: str) -> str:
     if requested_kind in {"run", "batch"}:
         return requested_kind
     return "batch" if isinstance(payload.get("items"), list) else "run"
+
+
+def _create_run(args: argparse.Namespace) -> int:
+    query = {
+        "preflight": args.preflight,
+        "check_comfyui_connection": args.check_comfyui_connection,
+    }
+    return _post_json_command(
+        args,
+        "/api/runs",
+        _read_json_file(args.request),
+        query={key: value for key, value in query.items() if value},
+    )
+
+
+def _plan_batch(args: argparse.Namespace) -> int:
+    query = {"check_comfyui_connection": args.check_comfyui_connection}
+    return _post_json_command(
+        args,
+        "/api/batches/plan",
+        _read_json_file(args.request),
+        query={key: value for key, value in query.items() if value},
+    )
+
+
+def _create_batch(args: argparse.Namespace) -> int:
+    query = {
+        "preflight": args.preflight,
+        "check_comfyui_connection": args.check_comfyui_connection,
+    }
+    return _post_json_command(
+        args,
+        "/api/batches",
+        _read_json_file(args.request),
+        query={key: value for key, value in query.items() if value},
+    )
+
+
+def _export_batch(args: argparse.Namespace) -> int:
+    payload = {"include_zip": args.include_zip}
+    if args.export_root:
+        payload["export_root"] = args.export_root
+    return _post_json_command(
+        args,
+        f"/api/batches/{args.batch_id}/export",
+        payload,
+    )
+
+
+def _post_json_command(
+    args: argparse.Namespace,
+    path: str,
+    payload: dict,
+    *,
+    query: dict[str, bool] | None = None,
+) -> int:
+    url = _api_url(args.server, path, query or {})
+    with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
+        response = client.post(url, json=payload)
+        result = response.json()
+    if response.status_code >= 400:
+        print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+        return 1
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0
+
+
+def _api_url(server: str, path: str, query: dict[str, bool]) -> str:
+    base = server.rstrip("/")
+    url = f"{base}{path}"
+    if not query:
+        return url
+    return f"{url}?{urlencode({key: 'true' for key in query})}"
+
+
+def _read_json_file(path: str) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def _setup(args: argparse.Namespace) -> int:

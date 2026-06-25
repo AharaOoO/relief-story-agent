@@ -131,6 +131,19 @@ recovered.
 
 ## 8. Create One Run
 
+CLI:
+
+```powershell
+relief-story-agent run `
+  --request "D:/relief_story_config/run_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --preflight `
+  --check-comfyui-connection `
+  --pretty
+```
+
+HTTP equivalent:
+
 ```powershell
 Invoke-RestMethod `
   -Method Post `
@@ -151,6 +164,16 @@ Invoke-RestMethod "http://127.0.0.1:8891/api/runs/{run_id}/artifacts"
 Preview first:
 
 ```powershell
+relief-story-agent batch-plan `
+  --request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --check-comfyui-connection `
+  --pretty
+```
+
+HTTP equivalent:
+
+```powershell
 Invoke-RestMethod `
   -Method Post `
   -Uri "http://127.0.0.1:8891/api/batches/plan?check_comfyui_connection=true" `
@@ -159,6 +182,17 @@ Invoke-RestMethod `
 ```
 
 Then enqueue:
+
+```powershell
+relief-story-agent batch `
+  --request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --preflight `
+  --check-comfyui-connection `
+  --pretty
+```
+
+HTTP equivalent:
 
 ```powershell
 Invoke-RestMethod `
@@ -193,6 +227,17 @@ Invoke-RestMethod `
 ## 11. Export And Validate
 
 ```powershell
+relief-story-agent export-batch `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --export-root "D:/relief_story_exports" `
+  --include-zip `
+  --pretty
+```
+
+HTTP equivalent:
+
+```powershell
 Invoke-RestMethod `
   -Method Post `
   -Uri "http://127.0.0.1:8891/api/batches/{batch_id}/export" `
@@ -208,6 +253,9 @@ Invoke-RestMethod `
 
 The export validator checks publish indexes, copied video files, zip checksum,
 and the validation report.
+
+The CLI uses direct local HTTP for these API calls and ignores environment proxy
+settings, which avoids accidental proxy failures for `127.0.0.1`.
 
 ## 12. Record Acceptance
 

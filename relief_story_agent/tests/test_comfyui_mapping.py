@@ -10,7 +10,12 @@ from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
 from relief_story_agent.api import create_app
-from relief_story_agent.comfyui import preview_storyboard_submission, submit_storyboard, upload_grid_image
+from relief_story_agent.comfyui import (
+    connect_comfyui,
+    preview_storyboard_submission,
+    submit_storyboard,
+    upload_grid_image,
+)
 from relief_story_agent.grid_image import validate_grid_image
 from relief_story_agent.ltx_workflow import find_ltx_injection_points, patch_ltx_litegraph_workflow
 from relief_story_agent.models import (
@@ -231,6 +236,25 @@ def test_api_comfyui_connect_reaches_queue_and_analyzes_ltx_workflow(tmp_path, m
     assert body["suggested_config"]["endpoint"] == "http://comfy.local"
     assert body["suggested_config"]["workflow_api_path"] == str(workflow_path)
     assert requests == ["http://comfy.local/queue"]
+
+
+def test_connect_comfyui_uses_direct_http_client_by_default(monkeypatch):
+    created_clients: list[dict] = []
+
+    def handler(request: httpx.Request):
+        assert request.url.path == "/queue"
+        return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
+
+    def client_factory(*args, **kwargs):
+        created_clients.append(kwargs)
+        return HTTPX_CLIENT(transport=httpx.MockTransport(handler), trust_env=False)
+
+    monkeypatch.setattr("relief_story_agent.comfyui.httpx.Client", client_factory)
+
+    report = connect_comfyui(ComfyUIConnectionRequest(endpoint="127.0.0.1:8188/queue"))
+
+    assert report["connected"] is True
+    assert created_clients[0].get("trust_env") is False
 
 
 def test_comfyui_endpoint_models_accept_common_address_box_inputs():
@@ -488,6 +512,45 @@ def test_submit_storyboard_loads_placeholder_map_file_and_inline_overrides(tmp_p
     prompt = posted_payloads[0]["prompt"]
     assert prompt["1"]["inputs"]["text"] == "compact LTX keyframe prompt"
     assert prompt["2"]["inputs"]["seed"] == 777
+
+
+def test_submit_storyboard_uses_direct_http_client_by_default(tmp_path, monkeypatch):
+    config = ComfyUIRunConfig(
+        enabled=True,
+        endpoint="http://127.0.0.1:8188",
+        workflow_api_path=str(_workflow_file(tmp_path)),
+        placeholder_map={
+            "positive": {
+                "node": "1",
+                "input": "text",
+                "source": "comfyui_inputs.positive",
+            }
+        },
+    )
+    storyboard = [
+        {
+            "shot_id": 1,
+            "image_prompt": "fallback prompt",
+            "comfyui_inputs": {"positive": "compact LTX prompt"},
+        }
+    ]
+    created_clients: list[dict] = []
+
+    def handler(request: httpx.Request):
+        assert request.url.path == "/prompt"
+        payload = json.loads(request.content)
+        return httpx.Response(200, json={"prompt_id": payload["prompt_id"]})
+
+    def client_factory(*args, **kwargs):
+        created_clients.append(kwargs)
+        return HTTPX_CLIENT(transport=httpx.MockTransport(handler), trust_env=False)
+
+    monkeypatch.setattr("relief_story_agent.comfyui.httpx.Client", client_factory)
+
+    submissions = submit_storyboard(config, storyboard, "run_direct_local")
+
+    assert submissions[0].status == "accepted"
+    assert created_clients[0].get("trust_env") is False
 
 
 def test_submit_storyboard_reports_missing_placeholder_source(tmp_path):

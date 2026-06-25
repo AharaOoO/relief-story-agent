@@ -58,6 +58,10 @@ class ComfyUIWaitCancelled(RuntimeError):
     """Raised when a run cancellation is observed while waiting for outputs."""
 
 
+def _comfyui_http_client(*, timeout: float) -> httpx.Client:
+    return httpx.Client(timeout=timeout, trust_env=False)
+
+
 def load_workflow(path: str | Path) -> dict[str, Any]:
     return json.loads(Path(path).read_text(encoding="utf-8"))
 
@@ -172,7 +176,7 @@ def connect_comfyui(
     workflow_report: dict[str, Any] = {}
 
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=request.timeout_seconds)
+    active_client = client or _comfyui_http_client(timeout=request.timeout_seconds)
     try:
         try:
             response = active_client.get(f"{endpoint}/queue")
@@ -304,7 +308,7 @@ def upload_grid_image(
 ) -> str:
     path = Path(image_path)
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=120.0)
+    active_client = client or _comfyui_http_client(timeout=120.0)
     try:
         with path.open("rb") as handle:
             response = active_client.post(
@@ -604,7 +608,8 @@ def enqueue_workflow(
     if client_id:
         payload["client_id"] = client_id
     if client is None:
-        response = httpx.post(endpoint.rstrip("/") + "/prompt", json=payload, timeout=30.0)
+        with _comfyui_http_client(timeout=30.0) as active_client:
+            response = active_client.post(endpoint.rstrip("/") + "/prompt", json=payload)
     else:
         response = client.post(endpoint.rstrip("/") + "/prompt", json=payload)
     response.raise_for_status()
@@ -635,7 +640,7 @@ def submit_storyboard(
     existing = existing_submissions or []
     submissions: list[ComfyUISubmission] = []
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=30.0)
+    active_client = client or _comfyui_http_client(timeout=30.0)
     try:
         for planned in planned_workflows:
             fingerprint = _content_fingerprint(planned.workflow)
@@ -726,7 +731,7 @@ def collect_prompt_outputs(
 ) -> list[ComfyUIOutput]:
     base_url = config.endpoint.rstrip("/")
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=30.0)
+    active_client = client or _comfyui_http_client(timeout=30.0)
     outputs: list[ComfyUIOutput] = []
     seen: set[tuple[str, str, str, str, str]] = set()
     try:
@@ -761,7 +766,7 @@ def cancel_prompt_jobs(
 ) -> list[ComfyUICancellation]:
     base_url = config.endpoint.rstrip("/")
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=30.0)
+    active_client = client or _comfyui_http_client(timeout=30.0)
     results: list[ComfyUICancellation] = []
     try:
         for prompt_id in prompt_ids:
@@ -847,7 +852,7 @@ def download_prompt_outputs(
     output_dir = Path(artifact_dir) / "comfyui_outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=120.0)
+    active_client = client or _comfyui_http_client(timeout=120.0)
     downloaded: list[ComfyUIOutput] = []
     reserved: set[Path] = set()
     try:
@@ -883,7 +888,7 @@ def wait_for_prompt_outputs(
     interval = config.output_poll_interval_seconds if poll_interval_seconds is None else poll_interval_seconds
     deadline = time.monotonic() + max(timeout, 0)
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=30.0)
+    active_client = client or _comfyui_http_client(timeout=30.0)
     try:
         while True:
             _raise_if_wait_cancelled(should_cancel)
@@ -926,7 +931,7 @@ def collect_prompt_diagnostics(
 ) -> dict[str, Any]:
     base_url = config.endpoint.rstrip("/")
     owns_client = client is None
-    active_client = client or httpx.Client(timeout=30.0)
+    active_client = client or _comfyui_http_client(timeout=30.0)
     try:
         return {
             "prompt_ids": list(prompt_ids),

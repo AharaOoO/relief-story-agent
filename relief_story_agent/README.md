@@ -433,6 +433,9 @@ Example payload:
 Endpoint input is normalized before use, so `127.0.0.1:8188`,
 `http://127.0.0.1:8188/`, and `http://127.0.0.1:8188/queue` all target the
 same local ComfyUI root.
+ComfyUI HTTP calls bypass environment proxy settings, so localhost requests stay
+inside the user's local integrated package instead of being routed through a
+system proxy.
 
 The endpoint pings ComfyUI `/queue`, reports running and pending queue counts, and, when `workflow_api_path` is supplied, analyzes the local workflow with the same LTX/placeholder logic used by real runs. It returns `ready`, `connected`, `checks`, `suggested_actions`, `suggested_config`, and workflow details such as `adapter_mode`, `grid_shape`, and `ltx_injection_points`. It does not upload images, call models, enqueue `/prompt`, wait for rendering, or download outputs.
 

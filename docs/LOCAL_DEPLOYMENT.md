@@ -97,6 +97,8 @@ The ComfyUI endpoint accepts common address-box input. For example,
 `127.0.0.1:8188`, `http://127.0.0.1:8188/`, and
 `http://127.0.0.1:8188/queue` are normalized to
 `http://127.0.0.1:8188` before the agent pings `/queue`.
+Local ComfyUI HTTP calls bypass environment proxy settings, so a Windows proxy
+cannot accidentally turn `127.0.0.1` requests into proxy `502` errors.
 
 This pings `/queue` and analyzes the workflow. It does not upload images, call
 models, enqueue `/prompt`, wait for video, or download outputs.

@@ -107,6 +107,7 @@ grid shape: 2x2
 - ComfyUI 输出等待、取消、下载相关基础能力。
 - `execution_policy` 运行时护栏，以及 preflight/diagnose 对总阶段预算和未知阶段名的提前校验。
 - ComfyUI endpoint 地址框归一化：可接受 `127.0.0.1:8188`、尾斜杠和 `/queue` 粘贴输入，再统一连接本地 ComfyUI 根地址。
+- 本地 ComfyUI HTTP 调用绕过环境代理，避免 Windows 代理把 `127.0.0.1:8188` 的 `/queue`、上传、`/prompt`、history/view 请求错误转发成代理 `502`。
 - 机器可读 pipeline schema：`GET /api/pipeline/schema` 和 `relief-story-agent pipeline-schema --pretty` 可查询固定工序、阶段类型、可重试性、副作用和关键不变量。
 - 单条 run 审计：`GET /api/runs/{run_id}/audit` 和 `relief-story-agent run-audit` 可检查事件序列、阶段顺序、未知阶段名和失败记录一致性。
 - 本地 UI/bootstrap 契约：`GET /api/local/bootstrap` 和 `relief-story-agent local-bootstrap --pretty` 返回 API 端口、推荐 UI origin、CORS 白名单、默认 ComfyUI 地址和核心端点路径。
@@ -299,7 +300,7 @@ git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-298 passed
+300 passed
 ```
 
 最近已推送的核心功能提交：

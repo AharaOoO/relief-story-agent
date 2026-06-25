@@ -130,6 +130,7 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "execution_policy",
         "fix_execution_policy",
         "127.0.0.1:8188/queue",
+        "bypass environment proxy",
     ):
         assert required in local_deployment
 
@@ -218,6 +219,7 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "execution_policy" in text
     assert "fix_execution_policy" in text
     assert "127.0.0.1:8188/queue" in text
+    assert "bypass environment proxy" in text
 
 
 def test_handoff_docs_do_not_keep_obsolete_local_baseline():

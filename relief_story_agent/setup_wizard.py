@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -154,13 +155,24 @@ def write_local_config_bundle(
         ),
     )
 
-    return {
+    paths = {
         "model_config": str(model_config),
         "run_request": str(run_request),
         "batch_request": str(batch_request),
         "comfyui_connect": str(comfyui_connect),
         "prompt_writer_template": str(prompt_writer_template),
         "prompt_audit_template": str(prompt_audit_template),
+    }
+    return {
+        **paths,
+        "files": _bundle_file_index(paths),
+        "checks": _bundle_checks(
+            workflow_path=workflow_path,
+            comfyui_endpoint=comfyui_endpoint,
+            output_root=output_root,
+        ),
+        "next_commands": _next_commands(target_dir),
+        "next_endpoints": _next_endpoints(),
     }
 
 
@@ -320,3 +332,99 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def _bundle_file_index(paths: dict[str, str]) -> dict[str, dict[str, Any]]:
+    return {name: _file_record(Path(path)) for name, path in paths.items()}
+
+
+def _file_record(path: Path) -> dict[str, Any]:
+    exists = path.exists()
+    return {
+        "path": str(path),
+        "exists": exists,
+        "size_bytes": path.stat().st_size if exists else 0,
+        "sha256": _sha256_file(path) if exists and path.is_file() else "",
+    }
+
+
+def _bundle_checks(
+    *,
+    workflow_path: str,
+    comfyui_endpoint: str,
+    output_root: str,
+) -> dict[str, dict[str, Any]]:
+    workflow = Path(workflow_path)
+    output = Path(output_root)
+    workflow_exists = workflow.exists()
+    return {
+        "workflow_path": {
+            "status": "pass" if workflow_exists else "warn",
+            "path": workflow_path,
+            "exists": workflow_exists,
+            "message": (
+                "Workflow file exists."
+                if workflow_exists
+                else "Workflow path was written into config but does not exist on this machine yet."
+            ),
+        },
+        "comfyui_endpoint": {
+            "status": "ready",
+            "normalized": comfyui_endpoint,
+            "message": "Run local-doctor or connect-comfyui to test this endpoint.",
+        },
+        "output_root": {
+            "status": "ready",
+            "path": output_root,
+            "exists": output.exists(),
+            "message": "The run pipeline will create output directories when needed.",
+        },
+        "secrets": {
+            "status": "pending",
+            "api_key_env": ["GEMINI_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"],
+            "message": "API keys are referenced by environment variable name only.",
+        },
+    }
+
+
+def _next_commands(target_dir: Path) -> dict[str, str]:
+    model_config = target_dir / "model_config.local.json"
+    run_request = target_dir / "run_request.full-ltx.json"
+    batch_request = target_dir / "batch_request.full-ltx.json"
+    return {
+        "doctor": (
+            "relief-story-agent local-doctor --check-comfyui-connection "
+            f'--comfyui-endpoint "http://127.0.0.1:8188" --pretty'
+        ),
+        "model_check": f'relief-story-agent model-check --model-config "{model_config}" --pretty',
+        "run_preflight": (
+            f'relief-story-agent diagnose --request "{run_request}" '
+            f'--model-config "{model_config}" --pretty'
+        ),
+        "batch_plan": (
+            f'relief-story-agent batch-plan --request "{batch_request}" '
+            "--check-comfyui-connection --pretty"
+        ),
+    }
+
+
+def _next_endpoints() -> dict[str, str]:
+    return {
+        "local_bootstrap": "/api/local/bootstrap",
+        "local_doctor": "/api/local/doctor",
+        "comfyui_connect": "/api/comfyui/connect",
+        "model_check": "/api/config/model-check",
+        "diagnose_run": "/api/config/diagnose",
+        "diagnose_batch": "/api/config/diagnose-batch",
+        "batch_plan": "/api/batches/plan",
+        "create_run": "/api/runs",
+        "create_batch": "/api/batches",
+    }
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

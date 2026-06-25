@@ -33,7 +33,16 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     }
     assert expected_keys.issubset(result)
     for path in result.values():
+        if not isinstance(path, str):
+            continue
         assert Path(path).exists()
+    assert result["files"]["model_config"]["exists"] is True
+    assert result["files"]["model_config"]["path"] == result["model_config"]
+    assert result["checks"]["workflow_path"]["status"] == "warn"
+    assert result["checks"]["workflow_path"]["path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
+    assert result["checks"]["comfyui_endpoint"]["normalized"] == "http://127.0.0.1:8188"
+    assert "relief-story-agent local-doctor" in result["next_commands"]["doctor"]
+    assert result["next_endpoints"]["local_doctor"] == "/api/local/doctor"
 
     ModelConfigRegistry.from_file(result["model_config"], environ={})
     run_payload = json.loads(Path(result["run_request"]).read_text(encoding="utf-8"))
@@ -125,6 +134,9 @@ def test_api_local_setup_bundle_writes_config_files_for_ui(tmp_path):
     assert Path(body["run_request"]).exists()
     assert Path(body["batch_request"]).exists()
     assert Path(body["comfyui_connect"]).exists()
+    assert body["files"]["run_request"]["exists"] is True
+    assert body["checks"]["comfyui_endpoint"]["normalized"] == "http://127.0.0.1:8188"
+    assert body["next_endpoints"]["create_batch"] == "/api/batches"
     run_payload = json.loads(Path(body["run_request"]).read_text(encoding="utf-8"))
     connect_payload = json.loads(Path(body["comfyui_connect"]).read_text(encoding="utf-8"))
     assert run_payload["comfyui"]["endpoint"] == "http://127.0.0.1:8188"

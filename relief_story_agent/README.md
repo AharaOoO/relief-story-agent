@@ -397,6 +397,7 @@ such as `127.0.0.1:8188`, `http://127.0.0.1:8188/`, and
 inside generated config files.
 
 The setup command writes `model_config.local.json`, `comfyui_connect.json`, `run_request.full-ltx.json`, `batch_request.full-ltx.json`, and editable prompt templates under `templates/`. It never writes API keys; generated model config files reference `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, and `OPENAI_API_KEY` environment variables.
+Its JSON response keeps the legacy top-level file path keys and also includes `files`, `checks`, `next_commands`, and `next_endpoints` for local launchers and future UI shells.
 
 Copyable deployment examples live in `relief_story_agent/examples/`:
 

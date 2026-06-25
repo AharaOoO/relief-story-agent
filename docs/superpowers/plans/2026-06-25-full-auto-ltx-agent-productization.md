@@ -64,6 +64,7 @@ GitHub 仓库：`https://github.com/AharaOoO/relief-story-agent`
 - `gpt_prompt_writer -> gpt_prompt_audit -> gpt_prompt_reviser` 提示词链路。
 - `prompt_writer_template_path` 和 `prompt_audit_template_path` 本地 Markdown 模板覆盖。
 - `relief-story-agent template-check` 可独立校验 writer/audit 模板占位符和 sha256 指纹。
+- `relief-story-agent model-check` / `POST /api/config/model-check` 可 dry-run 检查模型 profile 和环境变量，或用 `--real-run` 对每个 OpenAI-compatible profile 发一个小 JSON 探针。
 - DeepSeek 后质量门禁、提示词 audit 后最多一次自动修正。
 - GPT Image 2 四宫格提示词长度压缩。
 - ComfyUI workflow 分析、预览、patch、`/upload/image`、`/prompt`。
@@ -92,7 +93,7 @@ python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 ```
 
-当前已验证：`324 passed`。
+当前已验证：`329 passed`。
 
 尚未完成或尚未真实证明：
 

@@ -20,6 +20,7 @@ from .config_validation import (
 )
 from .comfyui import analyze_workflow_config, connect_comfyui, discover_workflows, preview_storyboard_submission
 from .metrics import build_batch_health_report, build_system_metrics
+from .model_probe import run_model_probe
 from .models import (
     BatchExportRequest,
     BatchExportValidationRequest,
@@ -32,6 +33,7 @@ from .models import (
     ComfyUIPreviewRequest,
     ComfyUIWorkflowAnalysisRequest,
     ComfyUIWorkflowDiscoveryRequest,
+    ModelProbeRequest,
     RunRequest,
     RunRetryRequest,
     RunState,
@@ -136,6 +138,14 @@ def create_app(
     @app.get("/api/config/models")
     def get_model_config_status():
         return orchestrator.model_registry.status()
+
+    @app.post("/api/config/model-check")
+    def check_model_config(request: ModelProbeRequest):
+        return run_model_probe(
+            orchestrator.model_registry,
+            real_run=request.real_run,
+            profile_names=request.profiles or None,
+        )
 
     @app.get("/api/pipeline/schema")
     def get_pipeline_schema():

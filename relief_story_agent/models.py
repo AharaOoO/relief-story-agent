@@ -38,6 +38,11 @@ class ModelCallResult(BaseModel):
     usage: ModelUsage = Field(default_factory=ModelUsage)
 
 
+class ModelProbeRequest(BaseModel):
+    real_run: bool = False
+    profiles: list[str] = Field(default_factory=list)
+
+
 class ModelAttempt(BaseModel):
     attempt_id: str
     stage: str

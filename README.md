@@ -80,7 +80,7 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-324 passed
+329 passed
 ```
 
 可交给另一个 AI 或操作者核查的本地证据包命令：
@@ -102,6 +102,15 @@ relief-story-agent local-acceptance `
 relief-story-agent template-check `
   --writer-template "D:/relief_story_config/templates/prompt_writer.default.md" `
   --audit-template "D:/relief_story_config/templates/prompt_audit.default.md" `
+  --pretty
+```
+
+模型配置可先 dry-run 检查，确认环境变量和 profile 绑定；确认后再加
+`--real-run` 发一个极小 JSON 探针：
+
+```powershell
+relief-story-agent model-check `
+  --model-config "D:/relief_story_config/model_config.local.json" `
   --pretty
 ```
 

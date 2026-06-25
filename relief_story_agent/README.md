@@ -82,6 +82,28 @@ relief-story-agent template-check `
   --pretty
 ```
 
+Before a full generation run, verify the model registry and secrets. The default
+mode does not call any model:
+
+```powershell
+relief-story-agent model-check `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --pretty
+```
+
+After API keys and model names are correct, add `--real-run` to send a tiny
+JSON-only probe to each configured profile:
+
+```powershell
+relief-story-agent model-check `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --real-run `
+  --pretty
+```
+
+The server exposes the same contract for launchers and future UI shells:
+`POST /api/config/model-check`.
+
 For UI integration, `GET /api/local/bootstrap` returns the local API base URL,
 recommended UI origin, allowed CORS origins, default ComfyUI endpoint, and core
 endpoint paths. The default API port is `8891`; the recommended local UI dev
@@ -430,7 +452,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:324 passed" `
+  --check "full_tests=pass:329 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `

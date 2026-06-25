@@ -13,6 +13,7 @@ from .comfyui import connect_comfyui, discover_workflows
 from .local_acceptance import run_local_acceptance
 from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .model_config import ModelConfigRegistry
+from .model_probe import run_model_probe
 from .models import BatchRunRequest, ComfyUIConnectionRequest, ComfyUIWorkflowDiscoveryRequest, RunRequest
 from .pipeline import build_pipeline_schema
 from .prompt_templates import validate_prompt_template_file
@@ -75,6 +76,14 @@ def main(argv: list[str] | None = None) -> int:
     template_check_parser.add_argument("--writer-template", default="", help="Prompt writer Markdown template.")
     template_check_parser.add_argument("--audit-template", default="", help="Prompt audit Markdown template.")
     template_check_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    model_check_parser = subparsers.add_parser(
+        "model-check",
+        help="Validate model profile readiness and optionally run a tiny JSON probe.",
+    )
+    model_check_parser.add_argument("--model-config", required=True, help="Model registry JSON file.")
+    model_check_parser.add_argument("--profile", action="append", default=[], help="Profile name to check. Repeatable.")
+    model_check_parser.add_argument("--real-run", action="store_true", help="Send a tiny JSON request to each selected model profile.")
+    model_check_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     local_bootstrap_parser = subparsers.add_parser(
         "local-bootstrap",
         help="Print local API/UI/ComfyUI ports and endpoint paths for UI integration.",
@@ -286,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
         return _pipeline_schema(args)
     if args.command == "template-check":
         return _template_check(args)
+    if args.command == "model-check":
+        return _model_check(args)
     if args.command == "local-bootstrap":
         return _local_bootstrap(args)
     if args.command == "local-doctor":
@@ -465,6 +476,17 @@ def _template_check(args: argparse.Namespace) -> int:
         "ready": bool(checks) and all(check["status"] == "pass" for check in checks),
         "checks": checks,
     }
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result["ready"] else 1
+
+
+def _model_check(args: argparse.Namespace) -> int:
+    registry = ModelConfigRegistry.from_file(args.model_config)
+    result = run_model_probe(
+        registry,
+        real_run=args.real_run,
+        profile_names=args.profile or None,
+    )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0 if result["ready"] else 1
 

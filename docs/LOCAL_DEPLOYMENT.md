@@ -130,9 +130,17 @@ relief-story-agent template-check `
   --writer-template "D:/relief_story_config/templates/prompt_writer.default.md" `
   --audit-template "D:/relief_story_config/templates/prompt_audit.default.md" `
   --pretty
+relief-story-agent model-check `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --pretty
 relief-story-agent local-bootstrap --pretty
 relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
+
+`model-check` defaults to a no-quota dry-run that checks profile wiring, model
+names, and environment variables. Once the keys are set, run the same command
+with `--real-run` to send one tiny JSON probe per profile before spending quota
+on a full short-video run.
 
 When handing the install to another operator or another AI reviewer, collect a
 single evidence bundle:

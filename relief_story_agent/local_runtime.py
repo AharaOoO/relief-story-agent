@@ -64,6 +64,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
             "metrics": "/api/metrics",
             "pipeline_schema": "/api/pipeline/schema",
             "model_config": "/api/config/models",
+            "model_check": "/api/config/model-check",
             "diagnose_run": "/api/config/diagnose",
             "diagnose_batch": "/api/config/diagnose-batch",
             "runs": "/api/runs",

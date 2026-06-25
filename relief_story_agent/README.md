@@ -202,6 +202,12 @@ relief-story-agent diagnose `
   --pretty
 ```
 
+Operator guides:
+
+- `docs/LOCAL_DEPLOYMENT.md`
+- `docs/COMFYUI_LTX23_GUIDE.md`
+- `docs/TEMPLATE_GUIDE.md`
+
 For both single runs and batches, set `idempotency_key` when calling from a launcher or script. Re-sending the same key with the same payload returns the existing job; re-sending the same key with different payload returns `409 Conflict`.
 
 ## Local ComfyUI Smoke Test

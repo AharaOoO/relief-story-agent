@@ -84,6 +84,48 @@ def test_full_ltx_batch_example_has_multiple_items_and_failure_policy():
     assert request.defaults.comfyui.grid_image.model == "gpt-image-2"
 
 
+def test_local_deployment_guides_cover_required_operator_workflows():
+    local_deployment = (PROJECT_ROOT / "docs" / "LOCAL_DEPLOYMENT.md").read_text(encoding="utf-8")
+    comfyui_guide = (PROJECT_ROOT / "docs" / "COMFYUI_LTX23_GUIDE.md").read_text(encoding="utf-8")
+    template_guide = (PROJECT_ROOT / "docs" / "TEMPLATE_GUIDE.md").read_text(encoding="utf-8")
+
+    for required in (
+        "python -m pip install -e .",
+        "GEMINI_API_KEY",
+        "DEEPSEEK_API_KEY",
+        "OPENAI_API_KEY",
+        "relief-story-agent setup",
+        "relief-story-agent diagnose",
+        "smoke-comfyui --dry-run",
+        "POST /api/batches",
+        "export/validate",
+        "acceptance",
+    ):
+        assert required in local_deployment
+
+    for required in (
+        "LiteGraph",
+        "API prompt JSON",
+        "POST /api/comfyui/connect",
+        "LoadImage",
+        "four-grid",
+        "out of VRAM",
+        "does not generate nodes",
+    ):
+        assert required in comfyui_guide
+
+    for required in (
+        "{{script_json}}",
+        "{{storyboard_json}}",
+        "{{workflow_context}}",
+        "gpt_prompt_reviser",
+        "one revision",
+        "relief-story-agent diagnose",
+        "artifacts",
+    ):
+        assert required in template_guide
+
+
 def test_start_server_example_uses_module_entrypoint():
     text = (EXAMPLES_DIR / "start_server.example.ps1").read_text(encoding="utf-8")
     assert "python -m relief_story_agent.server" in text
@@ -124,3 +166,6 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "run_request.full-ltx.example.json" in text
     assert "batch_request.full-ltx.example.json" in text
     assert "examples/templates/prompt_writer.default.md" in text
+    assert "docs/LOCAL_DEPLOYMENT.md" in text
+    assert "docs/COMFYUI_LTX23_GUIDE.md" in text
+    assert "docs/TEMPLATE_GUIDE.md" in text

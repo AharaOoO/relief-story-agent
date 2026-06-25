@@ -1,0 +1,74 @@
+name: Codex implement active plan
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - "plans/active.md"
+      - ".github/codex/prompts/execute-plan.md"
+      - "AGENTS.md"
+      - ".github/workflows/codex-plan.yml"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  implement:
+    if: github.actor == 'AharaOoO'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Check plan status
+        id: plan
+        shell: bash
+        run: |
+          if grep -qiE '^status:[[:space:]]*ready[[:space:]]*$' plans/active.md; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "plans/active.md is not status: ready; skipping Codex execution."
+          fi
+
+      - name: Run Codex
+        if: steps.plan.outputs.ready == 'true'
+        id: run_codex
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          prompt-file: .github/codex/prompts/execute-plan.md
+          sandbox: workspace-write
+          output-file: ${{ runner.temp }}/codex-output.md
+          allow-users: AharaOoO
+
+      - name: Open pull request
+        if: steps.plan.outputs.ready == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "No changes produced by Codex."
+            exit 0
+          fi
+
+          branch="codex/plan-${GITHUB_RUN_ID}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git switch -c "$branch"
+          git add -A
+          git commit -m "Implement Codex plan"
+          git push origin "$branch"
+
+          gh pr create \
+            --title "Codex: implement active plan" \
+            --body-file "${RUNNER_TEMP}/codex-output.md" \
+            --base master \
+            --head "$branch"

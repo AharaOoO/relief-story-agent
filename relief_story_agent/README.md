@@ -80,6 +80,7 @@ the server starts:
 
 ```powershell
 relief-story-agent local-bootstrap --pretty
+relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
 
 Preflight validation for a run request:

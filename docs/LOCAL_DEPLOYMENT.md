@@ -109,6 +109,7 @@ project to another operator:
 ```powershell
 relief-story-agent pipeline-schema --pretty
 relief-story-agent local-bootstrap --pretty
+relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
 
 Run local diagnostics before creating a real run:

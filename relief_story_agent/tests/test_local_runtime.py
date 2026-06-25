@@ -3,7 +3,11 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from relief_story_agent.api import create_app
-from relief_story_agent.local_runtime import LocalRuntimeConfig, build_local_bootstrap
+from relief_story_agent.local_runtime import (
+    LocalRuntimeConfig,
+    build_local_bootstrap,
+    build_local_doctor,
+)
 from relief_story_agent.orchestrator import StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
 from relief_story_agent.server import build_app
@@ -69,3 +73,48 @@ def test_server_build_app_allows_local_ui_cors_origin(tmp_path):
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5174"
+
+
+def test_build_local_doctor_reports_missing_model_environment():
+    report = build_local_doctor(
+        bootstrap=build_local_bootstrap(),
+        model_status={
+            "profiles": {
+                "writer": {
+                    "api_key_env": "MISSING_KEY",
+                    "secret_required": True,
+                    "secret_configured": False,
+                }
+            },
+            "stages": {"chief_screenwriter": "writer"},
+            "missing_environment_variables": ["MISSING_KEY"],
+        },
+        resource_status={"image_generation_concurrency": 2, "comfyui_submission_concurrency": 1},
+        scheduler_enabled=True,
+        state_persistent=True,
+    )
+
+    checks = {check["id"]: check for check in report["checks"]}
+    assert report["ready"] is False
+    assert checks["model_environment"]["status"] == "fail"
+    assert checks["model_environment"]["details"]["missing_environment_variables"] == ["MISSING_KEY"]
+    assert "configure_model_environment" in report["suggested_actions"]
+
+
+def test_api_local_doctor_reports_ready_when_runtime_is_configured(tmp_path):
+    app = build_app(
+        state_dir=str(tmp_path / "state"),
+        provider=FakeModelProvider.minimal_success(),
+        host="127.0.0.1",
+        port=8899,
+        ui_origin="http://127.0.0.1:5174",
+    )
+    client = TestClient(app)
+
+    response = client.get("/api/local/doctor")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["bootstrap"]["api"]["base_url"] == "http://127.0.0.1:8899"
+    assert body["summary"]["failed"] == 0
+    assert body["checks"][0]["id"] == "api"

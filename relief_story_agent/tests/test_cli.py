@@ -30,6 +30,7 @@ def test_cli_help_lists_core_local_commands():
     assert "diagnose" in completed.stdout
     assert "pipeline-schema" in completed.stdout
     assert "local-bootstrap" in completed.stdout
+    assert "local-doctor" in completed.stdout
     assert "run" in completed.stdout
     assert "batch-plan" in completed.stdout
     assert "batch" in completed.stdout
@@ -500,6 +501,31 @@ def test_cli_scheduler_gets_scheduler_status():
     recorded = server.requests[0]
     assert recorded["method"] == "GET"
     assert recorded["path"] == "/api/scheduler"
+
+
+def test_cli_local_doctor_gets_running_server_report():
+    server = _CliApiServer({"ready": True, "summary": {"failed": 0}})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "local-doctor",
+                "--server",
+                server.url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["ready"] is True
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/local/doctor"
 
 
 def test_cli_run_events_gets_incremental_events():

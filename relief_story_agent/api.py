@@ -35,7 +35,7 @@ from .models import (
     RunRetryRequest,
     RunState,
 )
-from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
+from .local_runtime import LocalRuntimeConfig, build_local_bootstrap, build_local_doctor
 from .orchestrator import StoryRunOrchestrator
 from .pipeline import build_pipeline_schema
 from .planning import build_batch_plan
@@ -87,6 +87,17 @@ def create_app(
     @app.get("/api/local/bootstrap")
     def get_local_bootstrap():
         return build_local_bootstrap(runtime)
+
+    @app.get("/api/local/doctor")
+    def get_local_doctor():
+        bootstrap = build_local_bootstrap(runtime)
+        return build_local_doctor(
+            bootstrap=bootstrap,
+            model_status=orchestrator.model_registry.status(),
+            resource_status=orchestrator.resource_limits.status(),
+            scheduler_enabled=scheduler is not None,
+            state_persistent=orchestrator.store.__class__.__name__ == "JsonFileRunStore",
+        )
 
     @app.get("/api/metrics")
     def get_metrics():

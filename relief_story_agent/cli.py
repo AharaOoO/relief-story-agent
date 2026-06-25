@@ -66,6 +66,11 @@ def main(argv: list[str] | None = None) -> int:
     local_bootstrap_parser.add_argument("--comfyui-endpoint", default="http://127.0.0.1:8188", help="ComfyUI endpoint.")
     local_bootstrap_parser.add_argument("--cors-origin", action="append", default=[], help="Extra allowed UI origin.")
     local_bootstrap_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    local_doctor_parser = subparsers.add_parser(
+        "local-doctor",
+        help="Fetch local server readiness and suggested setup actions.",
+    )
+    _add_api_base_args(local_doctor_parser)
     run_parser = subparsers.add_parser(
         "run",
         help="Create a run through a running local API server.",
@@ -234,6 +239,8 @@ def main(argv: list[str] | None = None) -> int:
         return _pipeline_schema(args)
     if args.command == "local-bootstrap":
         return _local_bootstrap(args)
+    if args.command == "local-doctor":
+        return _local_doctor(args)
     if args.command == "run":
         return _create_run(args)
     if args.command == "batch-plan":
@@ -384,6 +391,10 @@ def _local_bootstrap(args: argparse.Namespace) -> int:
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
+
+
+def _local_doctor(args: argparse.Namespace) -> int:
+    return _get_json_command(args, "/api/local/doctor")
 
 
 def _create_run(args: argparse.Namespace) -> int:

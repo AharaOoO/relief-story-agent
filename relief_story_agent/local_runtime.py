@@ -81,6 +81,135 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
     }
 
 
+def build_local_doctor(
+    *,
+    bootstrap: dict,
+    model_status: dict,
+    resource_status: dict,
+    scheduler_enabled: bool,
+    state_persistent: bool,
+) -> dict:
+    checks = [
+        _doctor_check(
+            "api",
+            "pass",
+            "Local API is running.",
+            {"base_url": bootstrap["api"]["base_url"]},
+        ),
+        _doctor_check(
+            "ui_bootstrap",
+            "pass",
+            "UI bootstrap contract is available.",
+            {
+                "recommended_dev_origin": bootstrap["ui"]["recommended_dev_origin"],
+                "allowed_origins": bootstrap["ui"]["allowed_origins"],
+            },
+        ),
+        _model_profiles_check(model_status),
+        _model_environment_check(model_status),
+        _doctor_check(
+            "state_backend",
+            "pass" if state_persistent else "warn",
+            (
+                "Persistent state backend is enabled."
+                if state_persistent
+                else "State is in-memory; use --state-dir for local deployment."
+            ),
+            {"persistent": state_persistent},
+        ),
+        _doctor_check(
+            "scheduler",
+            "pass" if scheduler_enabled else "warn",
+            (
+                "Background scheduler is enabled."
+                if scheduler_enabled
+                else "Background scheduler is not attached."
+            ),
+            {"enabled": scheduler_enabled},
+        ),
+        _doctor_check(
+            "resource_limits",
+            "pass",
+            "Resource limits are configured.",
+            resource_status,
+        ),
+    ]
+    summary = {
+        "passed": sum(1 for check in checks if check["status"] == "pass"),
+        "warnings": sum(1 for check in checks if check["status"] == "warn"),
+        "failed": sum(1 for check in checks if check["status"] == "fail"),
+    }
+    return {
+        "ready": summary["failed"] == 0,
+        "summary": summary,
+        "checks": checks,
+        "suggested_actions": _doctor_actions(checks),
+        "bootstrap": bootstrap,
+    }
+
+
+def _model_profiles_check(model_status: dict) -> dict:
+    profiles = model_status.get("profiles") or {}
+    stages = model_status.get("stages") or {}
+    if not profiles or not stages:
+        return _doctor_check(
+            "model_profiles",
+            "warn",
+            "No model profiles or stage bindings are configured.",
+            {"profile_count": len(profiles), "stage_count": len(stages)},
+        )
+    return _doctor_check(
+        "model_profiles",
+        "pass",
+        "Model profiles and stage bindings are configured.",
+        {"profile_count": len(profiles), "stage_count": len(stages)},
+    )
+
+
+def _model_environment_check(model_status: dict) -> dict:
+    missing = list(model_status.get("missing_environment_variables") or [])
+    if missing:
+        return _doctor_check(
+            "model_environment",
+            "fail",
+            "Model API key environment variables are missing.",
+            {"missing_environment_variables": missing},
+        )
+    return _doctor_check(
+        "model_environment",
+        "pass",
+        "Required model API key environment variables are configured.",
+        {"missing_environment_variables": []},
+    )
+
+
+def _doctor_actions(checks: list[dict]) -> list[str]:
+    actions: list[str] = []
+    for check in checks:
+        if check["status"] == "pass":
+            continue
+        if check["id"] == "model_profiles":
+            actions.append("run_setup")
+        elif check["id"] == "model_environment":
+            actions.append("configure_model_environment")
+        elif check["id"] == "state_backend":
+            actions.append("restart_with_state_dir")
+        elif check["id"] == "scheduler":
+            actions.append("start_server_entrypoint")
+        else:
+            actions.append("inspect_local_runtime")
+    return _dedupe(actions)
+
+
+def _doctor_check(check_id: str, status: str, message: str, details: dict) -> dict:
+    return {
+        "id": check_id,
+        "status": status,
+        "message": message,
+        "details": details,
+    }
+
+
 def _normalize_origin(value: str) -> str:
     stripped = str(value or "").strip().rstrip("/")
     if not stripped:

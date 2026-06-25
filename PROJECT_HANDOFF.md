@@ -110,6 +110,7 @@ grid shape: 2x2
 - 机器可读 pipeline schema：`GET /api/pipeline/schema` 和 `relief-story-agent pipeline-schema --pretty` 可查询固定工序、阶段类型、可重试性、副作用和关键不变量。
 - 单条 run 审计：`GET /api/runs/{run_id}/audit` 和 `relief-story-agent run-audit` 可检查事件序列、阶段顺序、未知阶段名和失败记录一致性。
 - 本地 UI/bootstrap 契约：`GET /api/local/bootstrap` 和 `relief-story-agent local-bootstrap --pretty` 返回 API 端口、推荐 UI origin、CORS 白名单、默认 ComfyUI 地址和核心端点路径。
+- 本地 doctor 就绪检查：`GET /api/local/doctor` 和 `relief-story-agent local-doctor` 返回模型环境、状态持久化、scheduler、资源限制和下一步建议。
 
 ### 3.4 本地 ComfyUI smoke runner
 
@@ -298,7 +299,7 @@ git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-291 passed
+294 passed
 ```
 
 最近已推送的核心功能提交：

@@ -102,6 +102,7 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "relief-story-agent diagnose",
         "relief-story-agent pipeline-schema",
         "relief-story-agent local-bootstrap",
+        "relief-story-agent local-doctor",
         "smoke-comfyui --dry-run",
         "POST /api/batches",
         "export/validate",
@@ -199,6 +200,7 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "relief-story-agent run" in text
     assert "relief-story-agent pipeline-schema" in text
     assert "relief-story-agent local-bootstrap" in text
+    assert "relief-story-agent local-doctor" in text
     assert "relief-story-agent batch-plan" in text
     assert "relief-story-agent export-batch" in text
     assert "relief-story-agent recovery-plan" in text

@@ -1,10 +1,29 @@
 # Relief Story Agent
 
-面向本地部署的批量全自动短片生成 agent。当前定位是 API-first 的多模型编排服务，用来稳定产出 60-120 秒“压力人群低刺激情绪缓冲短片”，并逐步打通 LTX 2.3 / ComfyUI 四宫格视频工作流。
+本仓库是一个本地部署优先的短片生成 agent。当前目标不是先做漂亮 UI，而是把核心流水线打磨稳定：多模型编剧、提示词模板迭代、提示词漏洞检查、LTX 2.3 四宫格图、ComfyUI 工作流入队、批量任务与恢复能力。
 
-## 当前主线
+项目正在逐步走向“可以分享给粉丝本地部署使用”的软件形态。现在最重要的是让下一个开发会话能快速接手，不需要翻长聊天记录。
 
-固定工序保持为：
+## 先读这几个文件
+
+1. [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md)
+   当前进度、核心架构、已完成能力、未完成事项、开发注意点。
+
+2. [NEXT_SESSION_PROMPT.md](NEXT_SESSION_PROMPT.md)
+   另开 Codex 会话时直接复制这段，让新会话快速进入状态。
+
+3. [relief_story_agent/README.md](relief_story_agent/README.md)
+   API、配置、启动方式、模板、ComfyUI 支持说明。
+
+4. [docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md](docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md)
+   下一阶段 `local_comfyui_smoke` 的规格。
+
+5. [docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md](docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md)
+   下一阶段的 TDD 实现计划。
+
+## 当前固定工序
+
+工序顺序不要随意改：
 
 ```text
 chief_screenwriter
@@ -19,22 +38,16 @@ chief_screenwriter
 -> comfyui
 ```
 
-其中：
+简要理解：
 
-- Gemini 侧定位为 `chief_screenwriter`，不是单一治愈模板，而是总编剧。
-- DeepSeek 负责增强剧本细节和可看性，但不能提高刺激强度。
-- GPT 负责按可迭代 Markdown 模板写分镜、提示词、漏洞检查和必要修正。
-- ComfyUI 阶段读取用户提供的 workflow API/LiteGraph JSON，只替换声明字段并入队。
-- LTX 2.3 四宫格工作流已设计并实现四宫格资产适配层。
-
-## 交接入口
-
-请先读：
-
-- [PROJECT_HANDOFF.md](PROJECT_HANDOFF.md)：项目进度、已完成能力、下一步计划、注意点。
-- [relief_story_agent/README.md](relief_story_agent/README.md)：API、运行方式、配置说明。
-- [docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md](docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md)：下一阶段真实 ComfyUI smoke runner 规格。
-- [docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md](docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md)：下一阶段实现计划。
+- `chief_screenwriter`：Gemini 总编剧，负责内核、风格、系列方向、情绪曲线和初稿。
+- `deepseek_polish`：DeepSeek 增强剧本细节，但不能提高刺激强度。
+- `quality_gate`：只在 DeepSeek 改稿后做剧本质量门禁。
+- `gpt_prompt_writer`：根据可配置 Markdown 模板生成分镜、图像提示词、负面提示词和 LTX/ComfyUI 填充值。
+- `gpt_prompt_audit`：根据可配置 Markdown 模板检查角色站位、空间关系、越轴、动态/静态画面逻辑、镜头含义。
+- `gpt_prompt_reviser`：最多自动修正一次。
+- `four_grid_asset`：为 LTX 2.3 四宫格工作流准备、校验、上传参考图。
+- `comfyui`：只替换声明字段并调用 ComfyUI。
 
 ## 本地启动
 
@@ -57,26 +70,53 @@ python -m relief_story_agent.server --host 127.0.0.1 --port 8891
 GET http://127.0.0.1:8891/api/health
 ```
 
-## 下一步
+## 当前验证基线
 
-按计划实现 `local_comfyui_smoke`：
+最近一次完整验证：
 
-- `POST /api/smoke/comfyui`
-- `python -m relief_story_agent.smoke_comfyui --request smoke_request.json`
-- dry-run 不上传、不入队
-- real-run 上传四宫格图、patch LTX workflow、调用 ComfyUI `/prompt`
-- 写出 smoke artifacts 方便排错和交接
+```text
+python -m compileall -q relief_story_agent
+python -m pytest relief_story_agent/tests -q
+220 passed
+```
 
-## GitHub 上传说明
+## 下一步开发
 
-当前工作区是 `D:\codex工作区`，里面有多个无关项目。这个仓库只应提交 Relief Story Agent 相关文件：
+从 `local_comfyui_smoke` 开始：
 
-- `README.md`
-- `PROJECT_HANDOFF.md`
-- `pyproject.toml`
-- `start_relief_story_agent.bat`
-- `relief_story_agent/`
-- `docs/superpowers/specs/`
-- `docs/superpowers/plans/`
+- 新增 `POST /api/smoke/comfyui`
+- 新增 `python -m relief_story_agent.smoke_comfyui --request smoke_request.json`
+- dry-run：只做预检和 workflow patch 预览，不上传、不入队
+- real-run：上传四宫格图，patch LTX workflow，调用 ComfyUI `/prompt`
+- 写出 smoke artifacts，方便定位本地部署问题
 
-不要直接 `git add .`，避免把其他项目、模型产物或本地缓存一起传上去。
+执行计划在：
+
+```text
+docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md
+```
+
+## GitHub / Git 注意
+
+这个仓库位于 `D:\codex工作区`。该目录下还有很多其他项目，所以不要直接 `git add .`。
+
+本仓库只应该跟踪：
+
+```text
+README.md
+PROJECT_HANDOFF.md
+NEXT_SESSION_PROMPT.md
+pyproject.toml
+start_relief_story_agent.bat
+relief_story_agent/
+docs/superpowers/specs/
+docs/superpowers/plans/
+.gitignore
+.gitattributes
+```
+
+GitHub 仓库：
+
+```text
+https://github.com/AharaOoO/relief-story-agent
+```

@@ -5,8 +5,10 @@ import json
 from pathlib import Path
 
 from .acceptance import write_acceptance_report
+from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
 from .comfyui import connect_comfyui
-from .models import ComfyUIConnectionRequest
+from .model_config import ModelConfigRegistry
+from .models import BatchRunRequest, ComfyUIConnectionRequest, RunRequest
 from .server import main as server_main
 from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import main as smoke_main
@@ -26,6 +28,24 @@ def main(argv: list[str] | None = None) -> int:
     connect_parser.add_argument("--workflow-api-path", default="", help="Optional workflow JSON path.")
     connect_parser.add_argument("--timeout-seconds", type=float, default=0, help="Network timeout.")
     connect_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    diagnose_parser = subparsers.add_parser(
+        "diagnose",
+        help="Diagnose a local run or batch request without enqueueing work.",
+    )
+    diagnose_parser.add_argument("--request", required=True, help="Run or batch request JSON file.")
+    diagnose_parser.add_argument("--model-config", default="", help="Optional model registry JSON file.")
+    diagnose_parser.add_argument(
+        "--kind",
+        choices=("auto", "run", "batch"),
+        default="auto",
+        help="Request type. Defaults to auto-detecting batch files with items[].",
+    )
+    diagnose_parser.add_argument(
+        "--check-comfyui-connection",
+        action="store_true",
+        help="Also ping the configured ComfyUI /queue endpoint.",
+    )
+    diagnose_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     setup_parser = subparsers.add_parser(
         "setup",
         help="Write a local configuration bundle for first-run deployment.",
@@ -67,6 +87,8 @@ def main(argv: list[str] | None = None) -> int:
         return smoke_main(rest)
     if args.command == "connect-comfyui":
         return _connect_comfyui(args)
+    if args.command == "diagnose":
+        return _diagnose(args)
     if args.command == "setup":
         return _setup(args)
     if args.command == "acceptance":
@@ -97,6 +119,39 @@ def _connect_comfyui(args: argparse.Namespace) -> int:
         )
     )
     return 0 if result.get("ready") else 1
+
+
+def _diagnose(args: argparse.Namespace) -> int:
+    payload = json.loads(Path(args.request).read_text(encoding="utf-8"))
+    registry = (
+        ModelConfigRegistry.from_file(args.model_config)
+        if args.model_config
+        else ModelConfigRegistry()
+    )
+    kind = _diagnose_kind(payload, args.kind)
+    if kind == "batch":
+        request = BatchRunRequest.model_validate(payload)
+        result = diagnose_batch_configuration(
+            request,
+            registry,
+            check_comfyui_connection=args.check_comfyui_connection,
+        )
+    else:
+        request = RunRequest.model_validate(payload)
+        result = diagnose_run_configuration(
+            request,
+            registry,
+            check_comfyui_connection=args.check_comfyui_connection,
+        )
+    result = {"kind": kind, **result}
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("ready") else 1
+
+
+def _diagnose_kind(payload: dict, requested_kind: str) -> str:
+    if requested_kind in {"run", "batch"}:
+        return requested_kind
+    return "batch" if isinstance(payload.get("items"), list) else "run"
 
 
 def _setup(args: argparse.Namespace) -> int:

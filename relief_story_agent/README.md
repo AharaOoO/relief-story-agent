@@ -97,6 +97,35 @@ POST /api/batches?preflight=true
 
 If validation fails, the API returns `400` with the full validation report and does not create run or batch state. Add `check_comfyui_connection=true` as well when the launcher should ping ComfyUI before enqueueing.
 
+The same diagnostic checks can run from the unified CLI before the API server is
+started. This reads local request/config files only; it does not enqueue work or
+call text/image models.
+
+Single run:
+
+```powershell
+relief-story-agent diagnose `
+  --request "D:/relief_story_config/run_request.full-ltx.json" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --check-comfyui-connection `
+  --pretty
+```
+
+Batch:
+
+```powershell
+relief-story-agent diagnose `
+  --request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --kind batch `
+  --pretty
+```
+
+`--kind auto` is the default and treats files with `items[]` as batch requests.
+The command exits `0` when `ready=true` and exits `1` when configuration is
+blocked, so Windows launchers and install scripts can stop before spending
+model quota or submitting to ComfyUI.
+
 Useful scheduler options:
 
 ```powershell

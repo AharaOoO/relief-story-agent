@@ -72,6 +72,13 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     assert smoke_request.final_storyboard
     assert result["files"]["smoke_request"]["exists"] is True
     assert "smoke-comfyui" in result["next_commands"]["smoke_dry_run"]
+    assert "local-acceptance" in result["next_commands"]["local_acceptance"]
+    assert f'--model-config "{result["model_config"]}"' in result["next_commands"]["local_acceptance"]
+    assert f'--run-request "{result["run_request"]}"' in result["next_commands"]["local_acceptance"]
+    assert f'--batch-request "{result["batch_request"]}"' in result["next_commands"]["local_acceptance"]
+    assert f'--smoke-request "{result["smoke_request"]}"' in result["next_commands"]["local_acceptance"]
+    assert "--local-demo" in result["next_commands"]["local_acceptance"]
+    assert "--smoke-dry-run" in result["next_commands"]["local_acceptance"]
     assert result["next_endpoints"]["smoke_comfyui"] == "/api/smoke/comfyui"
     assert connect_payload["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert "{{script_json}}" in writer

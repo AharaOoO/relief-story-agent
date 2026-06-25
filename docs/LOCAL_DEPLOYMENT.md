@@ -75,7 +75,9 @@ and which validation action should run next. `next_commands.doctor` uses the
 normalized ComfyUI endpoint from the user's address box and the selected
 workflow path. The generated `smoke_request.json` is wired for the same
 workflow and endpoint; use `next_commands.smoke_dry_run` before
-`next_commands.smoke_real_run`.
+`next_commands.smoke_real_run`. `next_commands.local_acceptance` chains the
+generated model config, run request, batch request, smoke request, and local
+demo into one evidence-collection command.
 
 Generated run and batch request files include an `execution_policy` safety
 valve. It limits stage starts before they happen, which protects unattended

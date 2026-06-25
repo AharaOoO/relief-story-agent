@@ -453,6 +453,8 @@ def _next_commands(
     run_request = target_dir / "run_request.full-ltx.json"
     batch_request = target_dir / "batch_request.full-ltx.json"
     smoke_request = target_dir / "smoke_request.json"
+    acceptance_dir = target_dir / "acceptance"
+    repo_root = Path.cwd()
     return {
         "doctor": (
             "relief-story-agent local-doctor --check-comfyui-connection "
@@ -465,6 +467,16 @@ def _next_commands(
         "run_preflight": (
             f'relief-story-agent diagnose --request "{run_request}" '
             f'--model-config "{model_config}" --pretty'
+        ),
+        "local_acceptance": (
+            f'relief-story-agent local-acceptance --output-dir "{acceptance_dir}" '
+            f'--repo-root "{repo_root}" '
+            f'--model-config "{model_config}" '
+            f'--run-request "{run_request}" '
+            f'--batch-request "{batch_request}" '
+            "--local-demo "
+            f'--smoke-request "{smoke_request}" '
+            "--smoke-dry-run --pretty"
         ),
         "batch_plan": (
             f'relief-story-agent batch-plan --request "{batch_request}" '

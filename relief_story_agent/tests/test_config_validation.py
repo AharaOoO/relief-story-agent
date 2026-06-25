@@ -228,6 +228,77 @@ def test_config_validation_accepts_litegraph_ltx_workflow(tmp_path):
     }
 
 
+def test_config_validation_accepts_litegraph_ltx_widget_patch_workflow(tmp_path, monkeypatch):
+    workflow = tmp_path / "ltx_widget_workflow.json"
+    workflow.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {
+                        "id": 10,
+                        "type": "LoadImage",
+                        "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [100]}],
+                        "widgets_values": ["example.png", "image"],
+                    },
+                    {
+                        "id": 20,
+                        "type": "CLIPTextEncode",
+                        "title": "Negative Prompt",
+                        "widgets_values": ["old negative"],
+                    },
+                    {
+                        "id": 21,
+                        "type": "CLIPTextEncode",
+                        "title": "Positive Prompt",
+                        "widgets_values": ["old positive"],
+                    },
+                    {
+                        "id": 30,
+                        "type": "RandomNoise",
+                        "widgets_values": [42, "fixed"],
+                    },
+                    {
+                        "id": 40,
+                        "type": "SaveVideo",
+                        "widgets_values": ["old_prefix", "auto", "auto"],
+                    },
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-image-key")
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=InMemoryRunStore(),
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/config/validate",
+        json={
+            "idea": "litegraph widget ltx",
+            "comfyui": {
+                "enabled": True,
+                "workflow_api_path": str(workflow),
+            },
+        },
+    )
+
+    body = response.json()
+    checks = {check["name"]: check for check in body["checks"]}
+    assert body["passed"] is True
+    assert checks["comfyui_workflow"]["status"] == "passed"
+    assert checks["comfyui_workflow"]["details"]["ltx_mode"] == "litegraph_ltx_widget_patch"
+    assert checks["comfyui_workflow"]["details"]["ltx_widget_patch_points"]["image_node_ids"] == ["10"]
+    assert checks["grid_image"]["status"] == "passed"
+
+
 def test_config_diagnose_reports_output_root_and_suggested_actions(tmp_path):
     output_root = tmp_path / "diagnose_outputs"
     workflow = tmp_path / "workflow_api.json"
@@ -627,10 +698,16 @@ def test_config_validation_can_check_comfyui_connection(tmp_path, monkeypatch):
         assert request.url.path == "/queue"
         return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
 
-    monkeypatch.setattr(
-        "relief_story_agent.config_validation.httpx.Client",
-        lambda **kwargs: HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
-    )
+    created_clients: list[dict] = []
+
+    def client_factory(**kwargs):
+        created_clients.append(kwargs)
+        return HTTPX_CLIENT(
+            transport=httpx.MockTransport(handler),
+            trust_env=kwargs.get("trust_env", True),
+        )
+
+    monkeypatch.setattr("relief_story_agent.config_validation.httpx.Client", client_factory)
     client = TestClient(
         create_app(
             StoryRunOrchestrator(
@@ -664,6 +741,7 @@ def test_config_validation_can_check_comfyui_connection(tmp_path, monkeypatch):
     checks = {check["name"]: check for check in body["checks"]}
     assert checks["comfyui_endpoint"]["status"] == "passed"
     assert checks["comfyui_endpoint"]["details"]["queue_pending"] == 0
+    assert created_clients[0].get("trust_env") is False
 
 
 def test_config_validation_reports_comfyui_connection_failure(tmp_path, monkeypatch):

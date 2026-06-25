@@ -11,7 +11,12 @@ import httpx
 
 from .comfyui import resolve_placeholder_map
 from .grid_image import validate_grid_image
-from .ltx_workflow import detect_workflow_format, find_ltx_injection_points, litegraph_to_api_prompt
+from .ltx_workflow import (
+    detect_workflow_format,
+    find_ltx_injection_points,
+    find_ltx_widget_patch_points,
+    litegraph_to_api_prompt,
+)
 from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, RunRequest
 from .pipeline import CANONICAL_STAGE_ORDER, stage_ids_for_run
@@ -236,16 +241,28 @@ def _validate_comfyui_workflow(request: RunRequest) -> dict[str, Any]:
             "placeholder_map_keys": sorted(placeholder_map.keys()),
         }
         if workflow_format == "litegraph":
-            points = find_ltx_injection_points(workflow)
-            details.update(
-                {
-                    "ltx_mode": "litegraph_ltx_auto_injection",
-                    "node_count": len(workflow.get("nodes") or []),
-                    "link_count": len(workflow.get("links") or []),
-                    "api_node_count": len(litegraph_to_api_prompt(workflow)),
-                }
-            )
-            details["ltx_injection_points"] = _ltx_injection_points_payload(points)
+            try:
+                points = find_ltx_injection_points(workflow)
+                details.update(
+                    {
+                        "ltx_mode": "litegraph_ltx_auto_injection",
+                        "node_count": len(workflow.get("nodes") or []),
+                        "link_count": len(workflow.get("links") or []),
+                        "api_node_count": len(litegraph_to_api_prompt(workflow)),
+                    }
+                )
+                details["ltx_injection_points"] = _ltx_injection_points_payload(points)
+            except ValueError:
+                widget_points = find_ltx_widget_patch_points(workflow)
+                details.update(
+                    {
+                        "ltx_mode": "litegraph_ltx_widget_patch",
+                        "node_count": len(workflow.get("nodes") or []),
+                        "link_count": len(workflow.get("links") or []),
+                        "api_node_count": len(litegraph_to_api_prompt(workflow)),
+                    }
+                )
+                details["ltx_widget_patch_points"] = _ltx_widget_patch_points_payload(widget_points)
         else:
             _validate_placeholder_map_targets(workflow, placeholder_map)
         return _check("comfyui_workflow", "passed", "Workflow is readable.", details)
@@ -302,7 +319,10 @@ def _workflow_requires_grid_image(path: str | None) -> bool:
         workflow = json.loads(workflow_path.read_text(encoding="utf-8"))
         if detect_workflow_format(workflow) != "litegraph":
             return False
-        return find_ltx_injection_points(workflow).grid_image_node_id is not None
+        try:
+            return find_ltx_injection_points(workflow).grid_image_node_id is not None
+        except ValueError:
+            return bool(find_ltx_widget_patch_points(workflow).image_node_ids)
     except Exception:
         return False
 
@@ -325,13 +345,23 @@ def _ltx_injection_points_payload(points) -> dict[str, Any]:
     return payload
 
 
+def _ltx_widget_patch_points_payload(points) -> dict[str, Any]:
+    return {
+        "positive_prompt_node_ids": list(points.positive_prompt_node_ids),
+        "negative_prompt_node_ids": list(points.negative_prompt_node_ids),
+        "seed_node_ids": list(points.seed_node_ids),
+        "filename_prefix_node_ids": list(points.filename_prefix_node_ids),
+        "image_node_ids": list(points.image_node_ids),
+    }
+
+
 def _validate_comfyui_endpoint(request: RunRequest) -> dict[str, Any]:
     config = request.comfyui
     if not config or not config.enabled:
         return _check("comfyui_endpoint", "skipped", "ComfyUI is disabled.")
     base_url = config.endpoint.rstrip("/")
     try:
-        with httpx.Client(timeout=5.0) as client:
+        with httpx.Client(timeout=5.0, trust_env=False) as client:
             response = client.get(f"{base_url}/queue")
             response.raise_for_status()
             payload = response.json()

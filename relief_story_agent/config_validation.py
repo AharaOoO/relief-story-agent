@@ -14,7 +14,7 @@ from .grid_image import validate_grid_image
 from .ltx_workflow import detect_workflow_format, find_ltx_injection_points, litegraph_to_api_prompt
 from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, RunRequest
-from .pipeline import stage_ids_for_run
+from .pipeline import CANONICAL_STAGE_ORDER, stage_ids_for_run
 from .provenance import build_run_configuration_provenance
 
 
@@ -393,10 +393,24 @@ def _validate_execution_policy(request: RunRequest) -> dict[str, Any]:
     policy = request.execution_policy
     details = {
         "planned_stages": planned_stages,
+        "valid_stage_ids": list(CANONICAL_STAGE_ORDER),
         "minimum_required_stage_executions": minimum,
         "max_total_stage_executions": policy.max_total_stage_executions,
         "max_stage_executions": dict(policy.max_stage_executions),
     }
+    unknown_stage_limits = sorted(
+        stage
+        for stage in policy.max_stage_executions
+        if stage not in CANONICAL_STAGE_ORDER
+    )
+    if unknown_stage_limits:
+        details["unknown_stage_limits"] = unknown_stage_limits
+        return _check(
+            "execution_policy",
+            "failed",
+            "execution_policy contains unknown stage limit name(s).",
+            details,
+        )
     if policy.max_total_stage_executions and policy.max_total_stage_executions < minimum:
         return _check(
             "execution_policy",
@@ -482,7 +496,7 @@ def _suggest_actions_for_checks(checks: list[dict[str, Any]]) -> list[dict[str, 
             label = "Fix output directory"
         elif name == "execution_policy":
             code = "fix_execution_policy"
-            label = "Increase execution policy budget"
+            label = "Fix execution policy"
         else:
             code = "manual_review_configuration"
             label = "Review configuration"

@@ -318,6 +318,26 @@ def test_config_diagnose_suggests_fix_execution_policy_for_low_budget():
     assert body["suggested_actions"][0]["code"] == "fix_execution_policy"
 
 
+def test_config_validation_rejects_unknown_execution_policy_stage_limits():
+    request = RunRequest(
+        idea="stage typo",
+        approval_mode="auto",
+        execution_policy={
+            "max_total_stage_executions": 6,
+            "max_stage_executions": {"gpt_prompt_aduit": 2},
+        },
+    )
+
+    result = validate_run_configuration(request, ModelConfigRegistry())
+    check = next(item for item in result["checks"] if item["name"] == "execution_policy")
+
+    assert result["passed"] is False
+    assert check["status"] == "failed"
+    assert "unknown stage" in check["message"]
+    assert check["details"]["unknown_stage_limits"] == ["gpt_prompt_aduit"]
+    assert "gpt_prompt_audit" in check["details"]["valid_stage_ids"]
+
+
 def test_config_validation_accepts_execution_policy_that_covers_planned_stages():
     request = RunRequest(
         idea="budget ok",

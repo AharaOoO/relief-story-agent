@@ -10,6 +10,7 @@ import httpx
 from .acceptance import write_acceptance_report
 from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
 from .comfyui import connect_comfyui
+from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, ComfyUIConnectionRequest, RunRequest
 from .pipeline import build_pipeline_schema
@@ -55,6 +56,16 @@ def main(argv: list[str] | None = None) -> int:
         help="Print the fixed stage contract used by runs, recovery, and diagnostics.",
     )
     pipeline_schema_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    local_bootstrap_parser = subparsers.add_parser(
+        "local-bootstrap",
+        help="Print local API/UI/ComfyUI ports and endpoint paths for UI integration.",
+    )
+    local_bootstrap_parser.add_argument("--api-host", default="127.0.0.1", help="API host.")
+    local_bootstrap_parser.add_argument("--api-port", type=int, default=8891, help="API port.")
+    local_bootstrap_parser.add_argument("--ui-origin", default="http://127.0.0.1:5173", help="Local UI origin.")
+    local_bootstrap_parser.add_argument("--comfyui-endpoint", default="http://127.0.0.1:8188", help="ComfyUI endpoint.")
+    local_bootstrap_parser.add_argument("--cors-origin", action="append", default=[], help="Extra allowed UI origin.")
+    local_bootstrap_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     run_parser = subparsers.add_parser(
         "run",
         help="Create a run through a running local API server.",
@@ -221,6 +232,8 @@ def main(argv: list[str] | None = None) -> int:
         return _diagnose(args)
     if args.command == "pipeline-schema":
         return _pipeline_schema(args)
+    if args.command == "local-bootstrap":
+        return _local_bootstrap(args)
     if args.command == "run":
         return _create_run(args)
     if args.command == "batch-plan":
@@ -356,6 +369,20 @@ def _diagnose_kind(payload: dict, requested_kind: str) -> str:
 
 def _pipeline_schema(args: argparse.Namespace) -> int:
     print(json.dumps(build_pipeline_schema(), ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0
+
+
+def _local_bootstrap(args: argparse.Namespace) -> int:
+    result = build_local_bootstrap(
+        LocalRuntimeConfig(
+            api_host=args.api_host,
+            api_port=args.api_port,
+            ui_origin=args.ui_origin,
+            comfyui_endpoint=args.comfyui_endpoint,
+            allowed_origins=args.cors_origin,
+        )
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
 
 

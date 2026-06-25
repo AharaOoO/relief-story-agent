@@ -6,6 +6,7 @@ import uvicorn
 
 from .api import create_app
 from .image_providers import OpenAICompatibleGridImageProvider
+from .local_runtime import DEFAULT_COMFYUI_ENDPOINT, DEFAULT_UI_ORIGIN, LocalRuntimeConfig
 from .model_config import ModelConfigRegistry
 from .orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from .providers import OpenAICompatibleProvider
@@ -18,6 +19,11 @@ def build_app(
     state_dir: str | None = None,
     provider: OpenAICompatibleProvider | None = None,
     model_config_path: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8891,
+    ui_origin: str = DEFAULT_UI_ORIGIN,
+    cors_origin: list[str] | None = None,
+    comfyui_endpoint: str = DEFAULT_COMFYUI_ENDPOINT,
     max_workers: int = 2,
     lease_seconds: float = 300.0,
     recovery_poll_seconds: float = 5.0,
@@ -47,13 +53,35 @@ def build_app(
         lease_seconds=lease_seconds,
         recovery_poll_seconds=recovery_poll_seconds,
     )
-    return create_app(orchestrator, scheduler=scheduler)
+    return create_app(
+        orchestrator,
+        scheduler=scheduler,
+        local_runtime=LocalRuntimeConfig(
+            api_host=host,
+            api_port=port,
+            ui_origin=ui_origin,
+            allowed_origins=cors_origin or [],
+            comfyui_endpoint=comfyui_endpoint,
+        ),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8891, type=int)
+    parser.add_argument("--ui-origin", default=DEFAULT_UI_ORIGIN, help="Local UI origin allowed by CORS.")
+    parser.add_argument(
+        "--cors-origin",
+        action="append",
+        default=[],
+        help="Extra allowed local UI origin. Repeat for multiple origins.",
+    )
+    parser.add_argument(
+        "--comfyui-endpoint",
+        default=DEFAULT_COMFYUI_ENDPOINT,
+        help="Default ComfyUI endpoint advertised to local UI bootstrap.",
+    )
     parser.add_argument("--state-dir", default=None, help="Optional directory for persistent run and batch JSON state.")
     parser.add_argument(
         "--model-config",
@@ -75,6 +103,11 @@ def main(argv: list[str] | None = None) -> int:
         build_app(
             state_dir=args.state_dir,
             model_config_path=args.model_config,
+            host=args.host,
+            port=args.port,
+            ui_origin=args.ui_origin,
+            cors_origin=args.cors_origin,
+            comfyui_endpoint=args.comfyui_endpoint,
             max_workers=args.max_workers,
             lease_seconds=args.lease_seconds,
             recovery_poll_seconds=args.recovery_poll_seconds,

@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
 
 from .artifacts import (
     export_batch_artifact_package,
@@ -34,6 +35,7 @@ from .models import (
     RunRetryRequest,
     RunState,
 )
+from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .orchestrator import StoryRunOrchestrator
 from .pipeline import build_pipeline_schema
 from .planning import build_batch_plan
@@ -46,6 +48,7 @@ from .smoke_comfyui import ComfyUISmokeRequest, run_comfyui_smoke
 def create_app(
     orchestrator: StoryRunOrchestrator,
     scheduler: PersistentRunScheduler | None = None,
+    local_runtime: LocalRuntimeConfig | None = None,
 ) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -56,6 +59,14 @@ def create_app(
             scheduler.shutdown()
 
     app = FastAPI(title="Relief Story Agent API", lifespan=lifespan)
+    runtime = local_runtime or LocalRuntimeConfig()
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=runtime.normalized_allowed_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @app.get("/api/health")
     def get_health():
@@ -72,6 +83,10 @@ def create_app(
             "resources": orchestrator.resource_limits.status(),
             "model_config": orchestrator.model_registry.status(),
         }
+
+    @app.get("/api/local/bootstrap")
+    def get_local_bootstrap():
+        return build_local_bootstrap(runtime)
 
     @app.get("/api/metrics")
     def get_metrics():

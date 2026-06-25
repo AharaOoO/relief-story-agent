@@ -108,6 +108,7 @@ project to another operator:
 
 ```powershell
 relief-story-agent pipeline-schema --pretty
+relief-story-agent local-bootstrap --pretty
 ```
 
 Run local diagnostics before creating a real run:

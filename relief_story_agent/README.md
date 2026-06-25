@@ -136,6 +136,19 @@ relief-story-agent serve --host 127.0.0.1 --port 8891
 
 The package also keeps `relief-story-agent-server` as a direct server entrypoint for scripts that do not need the unified CLI.
 
+Generate a local starter bundle for a non-developer machine:
+
+```powershell
+relief-story-agent setup `
+  --output-dir "D:/relief_story_config" `
+  --workflow-path "D:/ComfyUI/workflows/ltx23_four_grid.json" `
+  --comfyui-endpoint "http://127.0.0.1:8188" `
+  --output-root "D:/relief_story_runs" `
+  --pretty
+```
+
+The setup command writes `model_config.local.json`, `comfyui_connect.json`, `run_request.full-ltx.json`, `batch_request.full-ltx.json`, and editable prompt templates under `templates/`. It never writes API keys; generated model config files reference `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, and `OPENAI_API_KEY` environment variables.
+
 Copyable deployment examples live in `relief_story_agent/examples/`:
 
 - `start_server.example.ps1`
@@ -204,6 +217,12 @@ The same check is available without starting the API:
 
 ```powershell
 relief-story-agent connect-comfyui --request .\relief_story_agent\examples\comfyui_connect.example.json --pretty
+```
+
+After `setup`, use the generated local file instead:
+
+```powershell
+relief-story-agent connect-comfyui --request "D:/relief_story_config/comfyui_connect.json" --pretty
 ```
 
 `workflow_api_path` accepts two workflow shapes:

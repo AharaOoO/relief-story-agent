@@ -7,6 +7,7 @@ from pathlib import Path
 from .comfyui import connect_comfyui
 from .models import ComfyUIConnectionRequest
 from .server import main as server_main
+from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import main as smoke_main
 
 
@@ -24,6 +25,15 @@ def main(argv: list[str] | None = None) -> int:
     connect_parser.add_argument("--workflow-api-path", default="", help="Optional workflow JSON path.")
     connect_parser.add_argument("--timeout-seconds", type=float, default=0, help="Network timeout.")
     connect_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    setup_parser = subparsers.add_parser(
+        "setup",
+        help="Write a local configuration bundle for first-run deployment.",
+    )
+    setup_parser.add_argument("--output-dir", required=True, help="Directory to write local config files.")
+    setup_parser.add_argument("--workflow-path", required=True, help="Local ComfyUI workflow JSON path.")
+    setup_parser.add_argument("--comfyui-endpoint", default="http://127.0.0.1:8188", help="ComfyUI base URL.")
+    setup_parser.add_argument("--output-root", default="D:/relief_story_runs", help="Directory for generated runs.")
+    setup_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
 
     args, rest = parser.parse_known_args(argv)
     if args.command == "serve":
@@ -32,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
         return smoke_main(rest)
     if args.command == "connect-comfyui":
         return _connect_comfyui(args)
+    if args.command == "setup":
+        return _setup(args)
     if rest and rest[0].startswith("-"):
         return server_main(rest)
     parser.print_help()
@@ -58,6 +70,17 @@ def _connect_comfyui(args: argparse.Namespace) -> int:
         )
     )
     return 0 if result.get("ready") else 1
+
+
+def _setup(args: argparse.Namespace) -> int:
+    result = write_local_config_bundle(
+        args.output_dir,
+        workflow_path=args.workflow_path,
+        comfyui_endpoint=args.comfyui_endpoint,
+        output_root=args.output_root,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0
 
 
 if __name__ == "__main__":

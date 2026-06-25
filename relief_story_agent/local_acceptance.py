@@ -20,6 +20,9 @@ def run_local_acceptance(
     repo_root: str | Path | None = None,
     python_executable: str | None = None,
     smoke_request: str | Path | None = None,
+    model_config: str | Path | None = None,
+    run_request: str | Path | None = None,
+    batch_request: str | Path | None = None,
     force_smoke_dry_run: bool = False,
     command_timeout_seconds: float = 600,
     command_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
@@ -64,6 +67,89 @@ def run_local_acceptance(
             required_evidence="python -m pytest relief_story_agent/tests -q output",
         )
     )
+
+    if model_config:
+        model_result = _execute_and_record(
+            "model_check",
+            [
+                python,
+                "-m",
+                "relief_story_agent.cli",
+                "model-check",
+                "--model-config",
+                str(model_config),
+            ],
+            cwd=cwd,
+            output_root=output_root,
+            runner=runner,
+            timeout_seconds=command_timeout_seconds,
+        )
+        commands.append(model_result)
+        checks.append(
+            _check_from_command(
+                model_result,
+                check_id="model_check",
+                required_evidence="model-check JSON stdout",
+            )
+        )
+
+    if run_request:
+        diagnose_command = [
+            python,
+            "-m",
+            "relief_story_agent.cli",
+            "diagnose",
+            "--request",
+            str(run_request),
+        ]
+        if model_config:
+            diagnose_command.extend(["--model-config", str(model_config)])
+        run_diagnose_result = _execute_and_record(
+            "run_diagnose",
+            diagnose_command,
+            cwd=cwd,
+            output_root=output_root,
+            runner=runner,
+            timeout_seconds=command_timeout_seconds,
+        )
+        commands.append(run_diagnose_result)
+        checks.append(
+            _check_from_command(
+                run_diagnose_result,
+                check_id="run_diagnose",
+                required_evidence="diagnose run JSON stdout",
+            )
+        )
+
+    if batch_request:
+        diagnose_command = [
+            python,
+            "-m",
+            "relief_story_agent.cli",
+            "diagnose",
+            "--request",
+            str(batch_request),
+            "--kind",
+            "batch",
+        ]
+        if model_config:
+            diagnose_command.extend(["--model-config", str(model_config)])
+        batch_diagnose_result = _execute_and_record(
+            "batch_diagnose",
+            diagnose_command,
+            cwd=cwd,
+            output_root=output_root,
+            runner=runner,
+            timeout_seconds=command_timeout_seconds,
+        )
+        commands.append(batch_diagnose_result)
+        checks.append(
+            _check_from_command(
+                batch_diagnose_result,
+                check_id="batch_diagnose",
+                required_evidence="diagnose batch JSON stdout",
+            )
+        )
 
     if smoke_request:
         smoke_command = [python, "-m", "relief_story_agent.smoke_comfyui", "--request", str(smoke_request)]
@@ -195,9 +281,9 @@ def _check_from_command(
     extra_evidence: str = "",
 ) -> dict[str, Any]:
     evidence_parts = [f"exit_code={command_result['exit_code']}"]
-    summary = _last_nonempty_line(command_result.get("stdout") or command_result.get("stderr") or "")
+    summary = _command_output_summary(command_result)
     if summary:
-        evidence_parts.append(summary)
+        evidence_parts.extend(summary)
     if extra_evidence:
         evidence_parts.append(extra_evidence)
     return {
@@ -221,6 +307,26 @@ def _last_nonempty_line(text: str) -> str:
         if stripped:
             return stripped
     return ""
+
+
+def _command_output_summary(command_result: dict[str, Any]) -> list[str]:
+    stdout = str(command_result.get("stdout") or "")
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        line = _last_nonempty_line(stdout or str(command_result.get("stderr") or ""))
+        return [line] if line else []
+    parts: list[str] = []
+    if "kind" in payload:
+        parts.append(f"kind={payload['kind']}")
+    if "ready" in payload:
+        parts.append(f"ready={str(bool(payload['ready'])).lower()}")
+    if "valid" in payload:
+        parts.append(f"valid={str(bool(payload['valid'])).lower()}")
+    if not parts:
+        line = _last_nonempty_line(stdout)
+        return [line] if line else []
+    return parts
 
 
 def _smoke_result_path_from_stdout(stdout: str) -> Path | None:

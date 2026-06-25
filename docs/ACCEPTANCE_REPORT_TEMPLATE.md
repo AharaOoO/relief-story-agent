@@ -8,6 +8,9 @@ the referenced artifact exists on the machine that ran the check.
 | Full tests | `python -m pytest relief_story_agent/tests -q` output | |
 | ComfyUI dry smoke | `smoke_result.json`, no prompt id | |
 | ComfyUI real smoke | `smoke_result.json`, prompt id | |
+| Model check | `model-check` JSON, `ready=true` | |
+| Run diagnose | `diagnose` run JSON, `ready=true` | |
+| Batch diagnose | `diagnose --kind batch` JSON, `ready=true` | |
 | Single run | run artifact dir, downloaded video path | |
 | Batch run | batch id, item summaries | |
 | Restart recovery | recovery-plan before/after restart | |
@@ -20,6 +23,9 @@ Suggested generated report command:
 relief-story-agent local-acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --repo-root "D:/codex工作区" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
+  --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --pretty
 ```
 

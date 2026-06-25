@@ -149,14 +149,17 @@ single evidence bundle:
 relief-story-agent local-acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --repo-root "D:/codex工作区" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
+  --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
   --pretty
 ```
 
-This runs `compileall`, full tests, optional `smoke-comfyui`, stores raw
-stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
-acceptance reports.
+This runs `compileall`, full tests, optional `model-check`, run/batch
+`diagnose`, and optional `smoke-comfyui`, stores raw stdout/stderr under
+`command_outputs/`, and writes both JSON and Markdown acceptance reports.
 
 To check the same local ComfyUI address a future UI box would collect, keep the
 API server running and ask local doctor to ping `/queue`:
@@ -465,6 +468,9 @@ For the repeatable local evidence bundle:
 relief-story-agent local-acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --repo-root "D:/codex工作区" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
+  --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
   --pretty

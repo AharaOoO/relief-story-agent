@@ -267,6 +267,9 @@ def main(argv: list[str] | None = None) -> int:
     local_acceptance_parser.add_argument("--output-dir", required=True, help="Directory to write acceptance artifacts.")
     local_acceptance_parser.add_argument("--repo-root", default=".", help="Repository root for verification commands.")
     local_acceptance_parser.add_argument("--smoke-request", default="", help="Optional smoke_request.json to run.")
+    local_acceptance_parser.add_argument("--model-config", default="", help="Optional model registry JSON to check.")
+    local_acceptance_parser.add_argument("--run-request", default="", help="Optional run request JSON to diagnose.")
+    local_acceptance_parser.add_argument("--batch-request", default="", help="Optional batch request JSON to diagnose.")
     local_acceptance_parser.add_argument(
         "--smoke-dry-run",
         action="store_true",
@@ -743,6 +746,9 @@ def _local_acceptance(args: argparse.Namespace) -> int:
         args.output_dir,
         repo_root=args.repo_root,
         smoke_request=args.smoke_request,
+        model_config=args.model_config,
+        run_request=args.run_request,
+        batch_request=args.batch_request,
         force_smoke_dry_run=args.smoke_dry_run,
         command_timeout_seconds=args.timeout_seconds,
     )

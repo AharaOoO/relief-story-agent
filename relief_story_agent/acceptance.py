@@ -24,6 +24,18 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
         "required_evidence": "smoke_result.json, prompt id",
     },
     {
+        "id": "model_check",
+        "required_evidence": "model-check JSON, ready=true",
+    },
+    {
+        "id": "run_diagnose",
+        "required_evidence": "diagnose run JSON, ready=true",
+    },
+    {
+        "id": "batch_diagnose",
+        "required_evidence": "diagnose batch JSON, ready=true",
+    },
+    {
         "id": "single_run",
         "required_evidence": "run artifact dir, downloaded video path",
     },

@@ -97,6 +97,9 @@ def test_write_acceptance_report_can_include_default_matrix(tmp_path):
     check_ids = [check["id"] for check in report["checks"]]
 
     assert "full_tests" in check_ids
+    assert "model_check" in check_ids
+    assert "run_diagnose" in check_ids
+    assert "batch_diagnose" in check_ids
     assert "restart_recovery" in check_ids
     assert "fresh_setup" in check_ids
     assert all(check["status"] == "manual_pending" for check in report["checks"])

@@ -74,6 +74,62 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     assert checks["restart_recovery"]["status"] == "manual_pending"
 
 
+def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
+    calls: list[list[str]] = []
+    model_config = tmp_path / "model_config.json"
+    run_request = tmp_path / "run_request.json"
+    batch_request = tmp_path / "batch_request.json"
+    for path in (model_config, run_request, batch_request):
+        path.write_text("{}", encoding="utf-8")
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "330 passed in 52.86s\n", "")
+        if command[2:5] == ["relief_story_agent.cli", "model-check", "--model-config"]:
+            return subprocess.CompletedProcess(command, 0, '{"ready": true, "checks": []}\n', "")
+        if command[2:5] == ["relief_story_agent.cli", "diagnose", "--request"] and "--kind" not in command:
+            return subprocess.CompletedProcess(command, 0, '{"kind": "run", "ready": true}\n', "")
+        if command[2:5] == ["relief_story_agent.cli", "diagnose", "--request"] and "--kind" in command:
+            return subprocess.CompletedProcess(command, 0, '{"kind": "batch", "ready": true}\n', "")
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        model_config=model_config,
+        run_request=run_request,
+        batch_request=batch_request,
+        command_runner=runner,
+    )
+
+    assert [command[2] for command in calls] == [
+        "compileall",
+        "pytest",
+        "relief_story_agent.cli",
+        "relief_story_agent.cli",
+        "relief_story_agent.cli",
+    ]
+    assert calls[2][3] == "model-check"
+    assert calls[3][3] == "diagnose"
+    assert calls[4][3] == "diagnose"
+    assert "--kind" in calls[4]
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "completed"
+    assert checks["model_check"]["status"] == "pass"
+    assert checks["model_check"]["evidence"] == "exit_code=0; ready=true"
+    assert checks["run_diagnose"]["status"] == "pass"
+    assert checks["run_diagnose"]["evidence"] == "exit_code=0; kind=run; ready=true"
+    assert checks["batch_diagnose"]["status"] == "pass"
+    assert checks["batch_diagnose"]["evidence"] == "exit_code=0; kind=batch; ready=true"
+
+
 def test_run_local_acceptance_marks_failed_commands(tmp_path):
     def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         if command[2] == "compileall":
@@ -107,6 +163,9 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         *,
         repo_root: str,
         smoke_request: str,
+        model_config: str,
+        run_request: str,
+        batch_request: str,
         force_smoke_dry_run: bool,
         command_timeout_seconds: float,
     ) -> dict[str, str]:
@@ -115,6 +174,9 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
                 "output_dir": output_dir,
                 "repo_root": repo_root,
                 "smoke_request": smoke_request,
+                "model_config": model_config,
+                "run_request": run_request,
+                "batch_request": batch_request,
                 "force_smoke_dry_run": force_smoke_dry_run,
                 "command_timeout_seconds": command_timeout_seconds,
             }
@@ -138,6 +200,12 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
             "D:/repo",
             "--smoke-request",
             "D:/smoke_request.json",
+            "--model-config",
+            "D:/model_config.json",
+            "--run-request",
+            "D:/run_request.json",
+            "--batch-request",
+            "D:/batch_request.json",
             "--smoke-dry-run",
             "--timeout-seconds",
             "12.5",
@@ -150,6 +218,9 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         "output_dir": str(tmp_path),
         "repo_root": "D:/repo",
         "smoke_request": "D:/smoke_request.json",
+        "model_config": "D:/model_config.json",
+        "run_request": "D:/run_request.json",
+        "batch_request": "D:/batch_request.json",
         "force_smoke_dry_run": True,
         "command_timeout_seconds": 12.5,
     }

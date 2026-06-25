@@ -29,7 +29,7 @@ python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 
 注意：local_comfyui_smoke 已实现；真实本机 ComfyUI real-run 已通过 `/prompt` 入队验证。
-另有 `relief-story-agent local-acceptance --output-dir "D:/relief_story_acceptance" --repo-root "D:/codex工作区" --pretty` 可生成可查询的本地验收证据包。
+另有 `relief-story-agent local-acceptance --output-dir "D:/relief_story_acceptance" --repo-root "D:/codex工作区" --model-config ... --run-request ... --batch-request ... --pretty` 可生成可查询的本地验收证据包。
 模板改动前可用 `relief-story-agent template-check --writer-template ... --audit-template ... --pretty` 校验占位符和模板指纹。
 模型配置可用 `relief-story-agent model-check --model-config ... --pretty` dry-run 检查，或加 `--real-run` 发真实小探针。
 
@@ -45,7 +45,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-330 passed
+331 passed
 
 最近核心功能提交包括：
 

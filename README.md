@@ -80,7 +80,7 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-330 passed
+331 passed
 ```
 
 可交给另一个 AI 或操作者核查的本地证据包命令：
@@ -89,11 +89,14 @@ python -m pytest relief_story_agent/tests -q
 relief-story-agent local-acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --repo-root "D:/codex工作区" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
+  --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --pretty
 ```
 
-该命令会跑 `compileall` 和全量测试，可选加 `--smoke-request ...`
-收集 ComfyUI smoke 证据，并写出 `local_acceptance_summary.json`、
+该命令会跑 `compileall`、全量测试、模型检查和 run/batch 诊断，可选加
+`--smoke-request ...` 收集 ComfyUI smoke 证据，并写出 `local_acceptance_summary.json`、
 `acceptance_report.json`、`ACCEPTANCE_REPORT.md` 和原始 stdout/stderr。
 
 模板迭代前可单独检查占位符和 sha256：

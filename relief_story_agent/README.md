@@ -184,6 +184,23 @@ Copyable deployment examples live in `relief_story_agent/examples/`:
 - `run_request.example.json`
 - `batch_request.example.json`
 - `comfyui_connect.example.json`
+- `smoke_request.example.json`
+- `model_config.local.example.json`
+- `run_request.full-ltx.example.json`
+- `batch_request.full-ltx.example.json`
+- `examples/templates/prompt_writer.default.md`
+- `examples/templates/prompt_audit.default.md`
+
+For a realistic local LTX setup, copy the full examples into a writable config
+directory, edit the ComfyUI workflow path and model names, then run:
+
+```powershell
+relief-story-agent diagnose `
+  --request "D:/relief_story_config/run_request.full-ltx.json" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --check-comfyui-connection `
+  --pretty
+```
 
 For both single runs and batches, set `idempotency_key` when calling from a launcher or script. Re-sending the same key with the same payload returns the existing job; re-sending the same key with different payload returns `409 Conflict`.
 

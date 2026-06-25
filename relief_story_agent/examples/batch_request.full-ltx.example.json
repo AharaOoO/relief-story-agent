@@ -1,0 +1,58 @@
+{
+  "idempotency_key": "relief-batch-demo-001",
+  "failure_policy": {
+    "auto_retry_failed_items": 1,
+    "pause_on_failure_count": 2,
+    "pause_on_failure_rate": 0.5
+  },
+  "defaults": {
+    "approval_mode": "auto",
+    "queue_priority": 0,
+    "output_root": "D:/relief_story_runs",
+    "duration_seconds": 90,
+    "template_paths": {
+      "prompt_writer_template_path": "D:/relief_story_config/templates/prompt_writer.default.md",
+      "prompt_audit_template_path": "D:/relief_story_config/templates/prompt_audit.default.md"
+    },
+    "comfyui": {
+      "enabled": true,
+      "endpoint": "http://127.0.0.1:8188",
+      "workflow_api_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+      "wait_for_completion": true,
+      "download_outputs": true,
+      "output_timeout_seconds": 1800,
+      "output_poll_interval_seconds": 5,
+      "grid_image": {
+        "mode": "auto",
+        "provider": "openai_compatible",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "model": "gpt-image-2",
+        "size": "1024x1024",
+        "quality": "medium",
+        "output_format": "png"
+      }
+    }
+  },
+  "items": [
+    {
+      "idea": "A convenience-store clerk adds one extra pair of chopsticks for tomorrow.",
+      "queue_priority": 5,
+      "audience_pressure": "late-night work fatigue",
+      "preferred_series": "Convenience Store Nights",
+      "preferred_style": "realistic urban, soft rain, low stimulation"
+    },
+    {
+      "idea": "A tiny pressure creature grows quiet after warm soup is offered.",
+      "audience_pressure": "commute anxiety and social exhaustion",
+      "preferred_series": "Pressure Little Creature",
+      "preferred_style": "soft fantasy, gentle humor, warm light"
+    },
+    {
+      "idea": "A folder of unfinished tasks is tucked under a small blanket.",
+      "audience_pressure": "unfinished work and self-blame",
+      "preferred_series": "Unfinished Things Office",
+      "preferred_style": "gentle miniature office, warm desk lamp, low stimulation"
+    }
+  ]
+}

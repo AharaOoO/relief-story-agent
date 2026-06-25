@@ -1,0 +1,33 @@
+{
+  "idempotency_key": "relief-single-demo-001",
+  "idea": "After a draining workday, a tired person receives a small kindness at a convenience store.",
+  "audience_pressure": "long work hours, emotional fatigue, and feeling unnoticed",
+  "preferred_series": "Convenience Store Nights",
+  "preferred_style": "realistic, soft urban night, low stimulation, rain reflections",
+  "duration_seconds": 90,
+  "approval_mode": "auto",
+  "output_root": "D:/relief_story_runs",
+  "template_paths": {
+    "prompt_writer_template_path": "D:/relief_story_config/templates/prompt_writer.default.md",
+    "prompt_audit_template_path": "D:/relief_story_config/templates/prompt_audit.default.md"
+  },
+  "comfyui": {
+    "enabled": true,
+    "endpoint": "http://127.0.0.1:8188",
+    "workflow_api_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+    "wait_for_completion": true,
+    "download_outputs": true,
+    "output_timeout_seconds": 1800,
+    "output_poll_interval_seconds": 5,
+    "grid_image": {
+      "mode": "auto",
+      "provider": "openai_compatible",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "model": "gpt-image-2",
+      "size": "1024x1024",
+      "quality": "medium",
+      "output_format": "png"
+    }
+  }
+}

@@ -24,4 +24,10 @@ relief-story-agent-server = "relief_story_agent.server:main"
 packages = ["relief_story_agent"]
 
 [tool.setuptools.package-data]
-relief_story_agent = ["model_config.example.json", "examples/*.json", "examples/*.ps1", "examples/*.bat"]
+relief_story_agent = [
+  "model_config.example.json",
+  "examples/*.json",
+  "examples/*.ps1",
+  "examples/*.bat",
+  "examples/templates/*.md",
+]

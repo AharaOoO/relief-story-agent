@@ -2,6 +2,10 @@ import json
 import tomllib
 from pathlib import Path
 
+from relief_story_agent.model_config import ModelConfigRegistry
+from relief_story_agent.models import BatchRunRequest, RunRequest
+from relief_story_agent.smoke_comfyui import ComfyUISmokeRequest
+
 
 PACKAGE_DIR = Path(__file__).resolve().parents[1]
 PROJECT_ROOT = PACKAGE_DIR.parent
@@ -22,6 +26,64 @@ def test_comfyui_connect_example_targets_local_address_box_flow():
     assert payload["timeout_seconds"] == 5
 
 
+def test_smoke_request_example_is_valid_and_safe_by_default():
+    payload = json.loads((EXAMPLES_DIR / "smoke_request.example.json").read_text(encoding="utf-8"))
+    request = ComfyUISmokeRequest.model_validate(payload)
+
+    assert request.dry_run is True
+    assert request.workflow_path.endswith(".json")
+    assert request.comfyui_base_url == "http://127.0.0.1:8188"
+    assert request.manual_grid_image_path
+    assert request.output_root == "D:/relief_story_smoke"
+
+
+def test_prompt_template_examples_contain_required_placeholders():
+    writer = (EXAMPLES_DIR / "templates" / "prompt_writer.default.md").read_text(encoding="utf-8")
+    audit = (EXAMPLES_DIR / "templates" / "prompt_audit.default.md").read_text(encoding="utf-8")
+
+    assert "{{script_json}}" in writer
+    assert "{{duration_seconds}}" in writer
+    assert "{{preferred_style}}" in writer
+    assert "{{workflow_context}}" in writer
+    assert "{{script_json}}" in audit
+    assert "{{storyboard_json}}" in audit
+    assert "{{workflow_context}}" in audit
+
+
+def test_full_ltx_run_examples_are_valid_json():
+    model_config_path = EXAMPLES_DIR / "model_config.local.example.json"
+    run_request_path = EXAMPLES_DIR / "run_request.full-ltx.example.json"
+
+    registry = ModelConfigRegistry.from_file(model_config_path, environ={})
+    run_request = RunRequest.model_validate(
+        json.loads(run_request_path.read_text(encoding="utf-8"))
+    )
+
+    assert "gemini_writer" in registry.profiles
+    assert registry.stages["chief_screenwriter"] == "gemini_writer"
+    assert run_request.approval_mode == "auto"
+    assert run_request.comfyui is not None
+    assert run_request.comfyui.enabled is True
+    assert run_request.comfyui.workflow_api_path.endswith("ltx23_four_grid.json")
+    assert run_request.comfyui.grid_image.model == "gpt-image-2"
+    assert run_request.template_paths.prompt_writer_template_path.endswith(".md")
+
+
+def test_full_ltx_batch_example_has_multiple_items_and_failure_policy():
+    payload = json.loads(
+        (EXAMPLES_DIR / "batch_request.full-ltx.example.json").read_text(encoding="utf-8")
+    )
+    request = BatchRunRequest.model_validate(payload)
+
+    assert request.idempotency_key
+    assert len(request.items) >= 3
+    assert request.failure_policy.auto_retry_failed_items == 1
+    assert request.failure_policy.pause_on_failure_count >= 1
+    assert request.defaults.approval_mode == "auto"
+    assert request.defaults.comfyui is not None
+    assert request.defaults.comfyui.grid_image.model == "gpt-image-2"
+
+
 def test_start_server_example_uses_module_entrypoint():
     text = (EXAMPLES_DIR / "start_server.example.ps1").read_text(encoding="utf-8")
     assert "python -m relief_story_agent.server" in text
@@ -38,6 +100,7 @@ def test_project_can_be_installed_with_console_script():
     assert "relief_story_agent" in pyproject["tool"]["setuptools"]["packages"]
     package_data = pyproject["tool"]["setuptools"]["package-data"]["relief_story_agent"]
     assert "examples/*.bat" in package_data
+    assert "examples/templates/*.md" in package_data
 
 
 def test_source_checkout_has_portable_windows_launchers():
@@ -57,3 +120,7 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "start_relief_story_agent.bat" in text
     assert 'python -m pip install -e "D:\\codex工作区"' in text
     assert "relief-story-agent serve --host 127.0.0.1 --port 8891" in text
+    assert "smoke_request.example.json" in text
+    assert "run_request.full-ltx.example.json" in text
+    assert "batch_request.full-ltx.example.json" in text
+    assert "examples/templates/prompt_writer.default.md" in text

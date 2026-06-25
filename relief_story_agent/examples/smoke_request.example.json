@@ -1,0 +1,26 @@
+{
+  "workflow_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+  "comfyui_base_url": "http://127.0.0.1:8188",
+  "run_id": "smoke_relief_story",
+  "output_root": "D:/relief_story_smoke",
+  "manual_grid_image_path": "D:/relief_story_inputs/four_grid_smoke.png",
+  "dry_run": true,
+  "seed": 123456,
+  "filename_prefix": "smoke_relief_story",
+  "final_storyboard": [
+    {
+      "shot_id": 1,
+      "time_range": "0-15s",
+      "description": "A tired worker pauses beside a quiet convenience-store window at night.",
+      "image_prompt": "rainy convenience-store window at night, tired office worker, warm soup steam, soft neon reflection, gentle realistic low-stimulation mood",
+      "negative_prompt": "shouting, horror, violence, panic, chaos, text, watermark, distorted hands",
+      "comfyui_inputs": {
+        "positive": "rainy convenience-store window, tired office worker, warm soup steam, soft neon reflection",
+        "negative": "shouting, horror, violence, chaos, text, watermark",
+        "seed": 123456,
+        "strength": 0.72,
+        "filename_prefix": "smoke_relief_story"
+      }
+    }
+  ]
+}

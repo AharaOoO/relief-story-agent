@@ -122,6 +122,7 @@ def write_local_config_bundle(
     run_request = target_dir / "run_request.full-ltx.json"
     batch_request = target_dir / "batch_request.full-ltx.json"
     smoke_request = target_dir / "smoke_request.json"
+    manual_grid_image = target_dir / "four_grid_smoke.png"
     comfyui_connect = target_dir / "comfyui_connect.json"
 
     prompt_writer_template.write_text(PROMPT_WRITER_TEMPLATE, encoding="utf-8")
@@ -161,7 +162,7 @@ def write_local_config_bundle(
             workflow_path=workflow_path,
             comfyui_endpoint=comfyui_endpoint,
             output_root=output_root,
-            manual_grid_image_path=target_dir / "four_grid_smoke.png",
+            manual_grid_image_path=manual_grid_image,
         ),
     )
 
@@ -181,6 +182,7 @@ def write_local_config_bundle(
             workflow_path=workflow_path,
             comfyui_endpoint=comfyui_endpoint,
             output_root=output_root,
+            manual_grid_image_path=manual_grid_image,
         ),
         "next_commands": _next_commands(
             target_dir,
@@ -409,10 +411,12 @@ def _bundle_checks(
     workflow_path: str,
     comfyui_endpoint: str,
     output_root: str,
+    manual_grid_image_path: Path,
 ) -> dict[str, dict[str, Any]]:
     workflow = Path(workflow_path)
     output = Path(output_root)
     workflow_exists = workflow.exists()
+    smoke_grid_exists = manual_grid_image_path.exists()
     return {
         "workflow_path": {
             "status": "pass" if workflow_exists else "warn",
@@ -422,6 +426,16 @@ def _bundle_checks(
                 "Workflow file exists."
                 if workflow_exists
                 else "Workflow path was written into config but does not exist on this machine yet."
+            ),
+        },
+        "smoke_grid_image": {
+            "status": "pass" if smoke_grid_exists else "warn",
+            "path": str(manual_grid_image_path),
+            "exists": smoke_grid_exists,
+            "message": (
+                "Smoke four-grid image exists."
+                if smoke_grid_exists
+                else "Place a manual 2x2 smoke image here or edit smoke_request.json before smoke dry-run."
             ),
         },
         "comfyui_endpoint": {

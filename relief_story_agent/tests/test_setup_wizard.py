@@ -42,6 +42,8 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     assert result["files"]["model_config"]["path"] == result["model_config"]
     assert result["checks"]["workflow_path"]["status"] == "warn"
     assert result["checks"]["workflow_path"]["path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
+    assert result["checks"]["smoke_grid_image"]["status"] == "warn"
+    assert result["checks"]["smoke_grid_image"]["path"] == str(tmp_path / "four_grid_smoke.png")
     assert result["checks"]["comfyui_endpoint"]["normalized"] == "http://127.0.0.1:8188"
     assert "relief-story-agent local-doctor" in result["next_commands"]["doctor"]
     assert result["next_endpoints"]["local_doctor"] == "/api/local/doctor"

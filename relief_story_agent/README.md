@@ -402,7 +402,7 @@ such as `127.0.0.1:8188`, `http://127.0.0.1:8188/`, and
 inside generated config files.
 
 The setup command writes `model_config.local.json`, `comfyui_connect.json`, `run_request.full-ltx.json`, `batch_request.full-ltx.json`, `smoke_request.json`, and editable prompt templates under `templates/`. It never writes API keys; generated model config files reference `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, and `OPENAI_API_KEY` environment variables.
-Its JSON response keeps the legacy top-level file path keys and also includes `files`, `checks`, `next_commands`, and `next_endpoints` for local launchers and future UI shells. `next_commands.smoke_dry_run` and `next_commands.smoke_real_run` use the generated smoke request, while `next_commands.local_acceptance` collects a repeatable local evidence bundle.
+Its JSON response keeps the legacy top-level file path keys and also includes `files`, `checks`, `next_commands`, and `next_endpoints` for local launchers and future UI shells. `checks.smoke_grid_image` reports whether the manual smoke image is in place. `next_commands.smoke_dry_run` and `next_commands.smoke_real_run` use the generated smoke request, while `next_commands.local_acceptance` collects a repeatable local evidence bundle.
 
 Copyable deployment examples live in `relief_story_agent/examples/`:
 

@@ -71,6 +71,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Fetch local server readiness and suggested setup actions.",
     )
     _add_api_base_args(local_doctor_parser)
+    local_doctor_parser.add_argument(
+        "--check-comfyui-connection",
+        action="store_true",
+        help="Ask the server to ping ComfyUI /queue.",
+    )
+    local_doctor_parser.add_argument("--comfyui-endpoint", default="", help="Optional ComfyUI endpoint override.")
+    local_doctor_parser.add_argument("--comfyui-timeout-seconds", type=float, default=5.0, help="ComfyUI ping timeout.")
     run_parser = subparsers.add_parser(
         "run",
         help="Create a run through a running local API server.",
@@ -394,7 +401,13 @@ def _local_bootstrap(args: argparse.Namespace) -> int:
 
 
 def _local_doctor(args: argparse.Namespace) -> int:
-    return _get_json_command(args, "/api/local/doctor")
+    query: dict[str, str | int | bool] = {}
+    if args.check_comfyui_connection:
+        query["check_comfyui_connection"] = True
+        if args.comfyui_endpoint:
+            query["comfyui_endpoint"] = args.comfyui_endpoint
+        query["comfyui_timeout_seconds"] = args.comfyui_timeout_seconds
+    return _get_json_command(args, "/api/local/doctor", query=query)
 
 
 def _create_run(args: argparse.Namespace) -> int:

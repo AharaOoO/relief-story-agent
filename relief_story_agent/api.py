@@ -89,14 +89,40 @@ def create_app(
         return build_local_bootstrap(runtime)
 
     @app.get("/api/local/doctor")
-    def get_local_doctor():
+    def get_local_doctor(
+        check_comfyui_connection: bool = False,
+        comfyui_endpoint: str = "",
+        comfyui_timeout_seconds: float = 5.0,
+    ):
         bootstrap = build_local_bootstrap(runtime)
+        comfyui_status = None
+        if check_comfyui_connection:
+            endpoint = comfyui_endpoint or runtime.comfyui_endpoint
+            connection = connect_comfyui(
+                ComfyUIConnectionRequest(
+                    endpoint=endpoint,
+                    timeout_seconds=comfyui_timeout_seconds,
+                )
+            )
+            message = ""
+            for check in connection.get("checks") or []:
+                if check.get("name") == "comfyui_endpoint":
+                    message = str(check.get("message") or "")
+                    break
+            comfyui_status = {
+                "checked": True,
+                "connected": bool(connection.get("connected")),
+                "endpoint": connection.get("endpoint") or endpoint,
+                "queue": connection.get("queue") or {},
+                "message": message,
+            }
         return build_local_doctor(
             bootstrap=bootstrap,
             model_status=orchestrator.model_registry.status(),
             resource_status=orchestrator.resource_limits.status(),
             scheduler_enabled=scheduler is not None,
             state_persistent=orchestrator.store.__class__.__name__ == "JsonFileRunStore",
+            comfyui_status=comfyui_status,
         )
 
     @app.get("/api/metrics")

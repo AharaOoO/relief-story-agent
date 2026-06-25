@@ -112,6 +112,17 @@ relief-story-agent local-bootstrap --pretty
 relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
 
+To check the same local ComfyUI address a future UI box would collect, keep the
+API server running and ask local doctor to ping `/queue`:
+
+```powershell
+relief-story-agent local-doctor `
+  --server "http://127.0.0.1:8891" `
+  --check-comfyui-connection `
+  --comfyui-endpoint "127.0.0.1:8188/queue" `
+  --pretty
+```
+
 Run local diagnostics before creating a real run:
 
 ```powershell

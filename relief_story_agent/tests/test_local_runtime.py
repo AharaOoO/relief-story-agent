@@ -101,6 +101,28 @@ def test_build_local_doctor_reports_missing_model_environment():
     assert "configure_model_environment" in report["suggested_actions"]
 
 
+def test_build_local_doctor_reports_comfyui_connection_failure():
+    report = build_local_doctor(
+        bootstrap=build_local_bootstrap(),
+        model_status={"profiles": {}, "stages": {}, "missing_environment_variables": []},
+        resource_status={"image_generation_concurrency": 2, "comfyui_submission_concurrency": 1},
+        scheduler_enabled=True,
+        state_persistent=True,
+        comfyui_status={
+            "checked": True,
+            "connected": False,
+            "endpoint": "http://127.0.0.1:8188",
+            "message": "Cannot reach ComfyUI /queue: offline",
+        },
+    )
+
+    checks = {check["id"]: check for check in report["checks"]}
+    assert report["ready"] is False
+    assert checks["comfyui_connection"]["status"] == "fail"
+    assert checks["comfyui_connection"]["details"]["endpoint"] == "http://127.0.0.1:8188"
+    assert "start_or_check_comfyui" in report["suggested_actions"]
+
+
 def test_api_local_doctor_reports_ready_when_runtime_is_configured(tmp_path):
     app = build_app(
         state_dir=str(tmp_path / "state"),
@@ -118,3 +140,50 @@ def test_api_local_doctor_reports_ready_when_runtime_is_configured(tmp_path):
     assert body["bootstrap"]["api"]["base_url"] == "http://127.0.0.1:8899"
     assert body["summary"]["failed"] == 0
     assert body["checks"][0]["id"] == "api"
+
+
+def test_api_local_doctor_can_ping_comfyui_when_requested(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_connect(request):
+        calls.append(request)
+        return {
+            "connected": True,
+            "ready": True,
+            "endpoint": request.endpoint,
+            "queue": {"running": 1, "pending": 2},
+            "checks": [
+                {
+                    "name": "comfyui_endpoint",
+                    "status": "passed",
+                    "message": "ComfyUI /queue is reachable.",
+                    "details": {},
+                }
+            ],
+        }
+
+    monkeypatch.setattr("relief_story_agent.api.connect_comfyui", fake_connect)
+    app = build_app(
+        state_dir=str(tmp_path / "state"),
+        provider=FakeModelProvider.minimal_success(),
+        host="127.0.0.1",
+        port=8899,
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/local/doctor",
+        params={
+            "check_comfyui_connection": "true",
+            "comfyui_endpoint": "127.0.0.1:8188/queue",
+            "comfyui_timeout_seconds": "3",
+        },
+    )
+
+    body = response.json()
+    checks = {check["id"]: check for check in body["checks"]}
+    assert response.status_code == 200
+    assert calls[0].endpoint == "http://127.0.0.1:8188"
+    assert calls[0].timeout_seconds == 3
+    assert checks["comfyui_connection"]["status"] == "pass"
+    assert checks["comfyui_connection"]["details"]["queue"] == {"running": 1, "pending": 2}

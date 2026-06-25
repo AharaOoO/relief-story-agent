@@ -528,6 +528,39 @@ def test_cli_local_doctor_gets_running_server_report():
     assert recorded["path"] == "/api/local/doctor"
 
 
+def test_cli_local_doctor_can_request_comfyui_check():
+    server = _CliApiServer({"ready": True, "summary": {"failed": 0}})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "local-doctor",
+                "--server",
+                server.url,
+                "--check-comfyui-connection",
+                "--comfyui-endpoint",
+                "127.0.0.1:8188/queue",
+                "--comfyui-timeout-seconds",
+                "3",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    recorded = server.requests[0]
+    assert recorded["path"] == "/api/local/doctor"
+    assert recorded["query"] == {
+        "check_comfyui_connection": ["true"],
+        "comfyui_endpoint": ["127.0.0.1:8188/queue"],
+        "comfyui_timeout_seconds": ["3.0"],
+    }
+
+
 def test_cli_run_events_gets_incremental_events():
     server = _CliApiServer({"run_id": "run_cli", "events": [{"sequence": 13, "type": "stage_started"}]})
 

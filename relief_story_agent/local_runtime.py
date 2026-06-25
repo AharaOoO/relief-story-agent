@@ -88,6 +88,7 @@ def build_local_doctor(
     resource_status: dict,
     scheduler_enabled: bool,
     state_persistent: bool,
+    comfyui_status: dict | None = None,
 ) -> dict:
     checks = [
         _doctor_check(
@@ -134,6 +135,8 @@ def build_local_doctor(
             resource_status,
         ),
     ]
+    if comfyui_status and comfyui_status.get("checked"):
+        checks.append(_comfyui_connection_check(comfyui_status))
     summary = {
         "passed": sum(1 for check in checks if check["status"] == "pass"),
         "warnings": sum(1 for check in checks if check["status"] == "warn"),
@@ -146,6 +149,23 @@ def build_local_doctor(
         "suggested_actions": _doctor_actions(checks),
         "bootstrap": bootstrap,
     }
+
+
+def _comfyui_connection_check(comfyui_status: dict) -> dict:
+    connected = bool(comfyui_status.get("connected"))
+    return _doctor_check(
+        "comfyui_connection",
+        "pass" if connected else "fail",
+        (
+            "ComfyUI /queue is reachable."
+            if connected
+            else str(comfyui_status.get("message") or "Cannot reach ComfyUI /queue.")
+        ),
+        {
+            "endpoint": str(comfyui_status.get("endpoint") or ""),
+            "queue": comfyui_status.get("queue") or {},
+        },
+    )
 
 
 def _model_profiles_check(model_status: dict) -> dict:
@@ -196,6 +216,8 @@ def _doctor_actions(checks: list[dict]) -> list[str]:
             actions.append("restart_with_state_dir")
         elif check["id"] == "scheduler":
             actions.append("start_server_entrypoint")
+        elif check["id"] == "comfyui_connection":
+            actions.append("start_or_check_comfyui")
         else:
             actions.append("inspect_local_runtime")
     return _dedupe(actions)

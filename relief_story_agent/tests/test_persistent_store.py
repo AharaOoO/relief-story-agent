@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -125,6 +126,29 @@ def test_json_file_store_retries_transient_replace_permission_error(
 
     assert attempts == 2
     assert store.get(run.run_id).request.idea == "retry replace"
+
+
+def test_json_file_store_retries_transient_read_permission_error(
+    tmp_path,
+    monkeypatch,
+):
+    store = JsonFileRunStore(tmp_path / "state")
+    run = RunState(run_id="run_read_retry", request=RunRequest(idea="retry read"))
+    store.save(run)
+    real_read_text = Path.read_text
+    attempts = 0
+
+    def flaky_read_text(path, *args, **kwargs):
+        nonlocal attempts
+        if path.name == "run_read_retry.json" and attempts == 0:
+            attempts += 1
+            raise PermissionError(13, "temporarily locked")
+        return real_read_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", flaky_read_text)
+
+    assert store.get(run.run_id).request.idea == "retry read"
+    assert attempts == 1
 
 
 def test_batch_idempotency_key_survives_store_restart(tmp_path):

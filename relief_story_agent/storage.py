@@ -24,7 +24,7 @@ class JsonFileRunStore:
         with self._lock:
             path = self._run_path(state.run_id)
             if path.exists() and state.status == "running":
-                current = RunState.model_validate_json(path.read_text(encoding="utf-8"))
+                current = RunState.model_validate_json(_read_text_with_retry(path))
                 if current.cancel_requested:
                     state.cancel_requested = True
             self._write_json(path, state.model_dump())
@@ -34,12 +34,12 @@ class JsonFileRunStore:
             path = self._run_path(run_id)
             if not path.exists():
                 raise KeyError(run_id)
-            return RunState.model_validate_json(path.read_text(encoding="utf-8"))
+            return RunState.model_validate_json(_read_text_with_retry(path))
 
     def list_runs(self) -> list[RunState]:
         with self._lock:
             return [
-                RunState.model_validate_json(path.read_text(encoding="utf-8"))
+                RunState.model_validate_json(_read_text_with_retry(path))
                 for path in sorted(self.runs_dir.glob("*.json"))
             ]
 
@@ -77,12 +77,12 @@ class JsonFileRunStore:
             path = self._batch_path(batch_id)
             if not path.exists():
                 raise KeyError(batch_id)
-            return BatchRunState.model_validate_json(path.read_text(encoding="utf-8"))
+            return BatchRunState.model_validate_json(_read_text_with_retry(path))
 
     def list_batches(self) -> list[BatchRunState]:
         with self._lock:
             return [
-                BatchRunState.model_validate_json(path.read_text(encoding="utf-8"))
+                BatchRunState.model_validate_json(_read_text_with_retry(path))
                 for path in sorted(self.batches_dir.glob("*.json"))
             ]
 
@@ -121,6 +121,17 @@ def _replace_with_retry(source: str, destination: Path, *, max_attempts: int = 5
             if attempt == max_attempts:
                 raise
             time.sleep(0.01 * attempt)
+
+
+def _read_text_with_retry(path: Path, *, max_attempts: int = 5) -> str:
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return path.read_text(encoding="utf-8")
+        except PermissionError:
+            if attempt == max_attempts:
+                raise
+            time.sleep(0.01 * attempt)
+    raise RuntimeError("unreachable")
 
 
 def _safe_id(value: str) -> str:

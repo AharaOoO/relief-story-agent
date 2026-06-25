@@ -510,9 +510,26 @@ class StoryRunOrchestrator:
         return run
 
     def refresh_batch(self, batch_id: str) -> BatchRunState:
+        batch, _ = self.snapshot_batch(batch_id)
+        return batch
+
+    def snapshot_batch(
+        self,
+        batch_id: str,
+        *,
+        tolerate_missing_runs: bool = False,
+    ) -> tuple[BatchRunState, list[RunState]]:
         batch = self.store.get_batch(batch_id)
+        runs: list[RunState] = []
         for item in batch.items:
-            run = self.store.get(item.run_id)
+            try:
+                run = self.store.get(item.run_id)
+            except KeyError:
+                if not tolerate_missing_runs:
+                    raise
+                item.error = item.error or "run not found"
+                continue
+            runs.append(run)
             item.status = run.status
             item.current_stage = run.current_stage
             item.queue_priority = run.queue_priority
@@ -521,7 +538,7 @@ class StoryRunOrchestrator:
         batch.status = self._derive_batch_status(batch.summary)
         batch.updated_at = datetime.now(timezone.utc).isoformat()
         self.store.save_batch(batch)
-        return batch
+        return batch, runs
 
     def refresh_comfyui_outputs(self, run_id: str) -> RunState:
         run = self.store.get(run_id)

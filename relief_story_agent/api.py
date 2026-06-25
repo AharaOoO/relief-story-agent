@@ -354,8 +354,10 @@ def create_app(
     @app.get("/api/batches/{batch_id}/artifacts")
     def get_batch_artifacts(batch_id: str):
         try:
-            batch = orchestrator.refresh_batch(batch_id)
-            runs = [orchestrator.store.get(item.run_id) for item in batch.items]
+            batch, runs = orchestrator.snapshot_batch(
+                batch_id,
+                tolerate_missing_runs=True,
+            )
             return read_batch_artifact_index(batch, runs)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="batch not found") from exc
@@ -363,8 +365,10 @@ def create_app(
     @app.get("/api/batches/{batch_id}/timeline")
     def get_batch_timeline(batch_id: str):
         try:
-            batch = orchestrator.refresh_batch(batch_id)
-            runs = [orchestrator.store.get(item.run_id) for item in batch.items]
+            batch, runs = orchestrator.snapshot_batch(
+                batch_id,
+                tolerate_missing_runs=True,
+            )
             return build_batch_timeline(batch, runs)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="batch not found") from exc
@@ -372,8 +376,10 @@ def create_app(
     @app.get("/api/batches/{batch_id}/recovery-plan")
     def get_batch_recovery_plan(batch_id: str):
         try:
-            batch = orchestrator.refresh_batch(batch_id)
-            runs = [orchestrator.store.get(item.run_id) for item in batch.items]
+            batch, runs = orchestrator.snapshot_batch(
+                batch_id,
+                tolerate_missing_runs=True,
+            )
             return build_batch_recovery_plan(batch, runs)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="batch not found") from exc
@@ -381,8 +387,10 @@ def create_app(
     @app.get("/api/batches/{batch_id}/health")
     def get_batch_health_report(batch_id: str):
         try:
-            batch = orchestrator.refresh_batch(batch_id)
-            runs = [orchestrator.store.get(item.run_id) for item in batch.items]
+            batch, runs = orchestrator.snapshot_batch(
+                batch_id,
+                tolerate_missing_runs=True,
+            )
             return build_batch_health_report(batch, runs)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="batch not found") from exc

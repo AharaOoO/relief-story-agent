@@ -130,6 +130,7 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "relief-story-agent run-artifacts",
         "relief-story-agent run-audit",
         "relief-story-agent batch-artifacts",
+        "relief-story-agent batch-timeline",
         "relief-story-agent batch-health",
         "relief-story-agent validate-export",
         "relief-story-agent validate-export-zip",
@@ -224,6 +225,7 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "relief-story-agent run-status" in text
     assert "relief-story-agent runs" in text
     assert "relief-story-agent batch-health" in text
+    assert "relief-story-agent batch-timeline" in text
     assert "relief-story-agent run-events" in text
     assert "relief-story-agent run-audit" in text
     assert "relief-story-agent scheduler" in text

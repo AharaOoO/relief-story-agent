@@ -147,6 +147,52 @@ def test_api_batch_timeline_returns_persisted_batch_timeline(tmp_path):
     assert body["items"][0]["stage_percent"] > 0
 
 
+def test_api_batch_diagnostics_tolerate_missing_child_run_state():
+    store = InMemoryRunStore()
+    batch = BatchRunState(
+        batch_id="batch_missing_child",
+        status="running",
+        summary={"total": 1, "running": 1},
+        items=[
+            BatchRunItem(
+                index=0,
+                run_id="run_missing_child",
+                idea="missing child",
+                status="running",
+                current_stage="comfyui",
+            )
+        ],
+    )
+    store.save_batch(batch)
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=store,
+            )
+        )
+    )
+
+    for path in (
+        "/api/batches/batch_missing_child/timeline",
+        "/api/batches/batch_missing_child/artifacts",
+        "/api/batches/batch_missing_child/recovery-plan",
+        "/api/batches/batch_missing_child/health",
+    ):
+        response = client.get(path)
+
+        assert response.status_code == 200, path
+        body = response.json()
+        assert body["batch_id"] == "batch_missing_child"
+
+    timeline = client.get("/api/batches/batch_missing_child/timeline").json()
+    assert timeline["items"][0]["error"] == "run not found"
+    assert timeline["items"][0]["recommended_action"]["code"] == "inspect_missing_run"
+
+    recovery = client.get("/api/batches/batch_missing_child/recovery-plan").json()
+    assert recovery["items"][0]["action_code"] == "inspect_missing_run"
+
+
 def test_cli_batch_timeline_fetches_batch_timeline():
     from relief_story_agent.tests.test_cli import _CliApiServer
 

@@ -915,6 +915,8 @@ You can restrict execution to specific action codes:
 
 The recovery executor only runs items marked `safe_to_auto_execute`. Manual blockers are returned in `skipped` with a reason, so a launcher can show exactly which templates, workflow maps, quality gates, or prompt-audit issues still need human attention.
 
+Batch diagnostic endpoints (`/timeline`, `/artifacts`, `/recovery-plan`, and `/health`) tolerate missing child run state files when the batch state still exists. Missing children are returned as `inspect_missing_run` items instead of hiding the whole batch behind a 404, which makes restart and local file-damage drills easier to debug.
+
 To stop a whole batch, cancel it once instead of cancelling every child run manually:
 
 ```http

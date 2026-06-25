@@ -358,3 +358,5 @@ b487761 feat: add ComfyUI check to local doctor
   retryability, recommended actions, and links to artifacts, health,
   recovery-plan, recover, and export endpoints.
 - Bootstrap now exposes `batch_timeline` in `GET /api/local/bootstrap`.
+- Batch diagnostic endpoints now tolerate missing child run state files and
+  return `inspect_missing_run` items instead of failing the whole batch lookup.

@@ -1,0 +1,24 @@
+{
+  "idempotency_key": "relief-run-2026-06-24-demo",
+  "idea": "A tired office worker finds a small kindness at a convenience store.",
+  "audience_pressure": "after-work fatigue and quiet anxiety",
+  "preferred_series": "Convenience Store Nights",
+  "preferred_style": "realistic urban",
+  "duration_seconds": 90,
+  "approval_mode": "auto",
+  "output_root": "D:/relief_story_runs",
+  "template_paths": {
+    "prompt_writer_template_path": "D:/relief_story_templates/prompt_writer.md",
+    "prompt_audit_template_path": "D:/relief_story_templates/prompt_audit.md"
+  },
+  "comfyui": {
+    "enabled": true,
+    "endpoint": "http://127.0.0.1:8188",
+    "workflow_api_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+    "placeholder_map_path": "D:/relief_story_templates/placeholder_map.json",
+    "wait_for_completion": true,
+    "download_outputs": true,
+    "output_timeout_seconds": 1800,
+    "output_poll_interval_seconds": 5
+  }
+}

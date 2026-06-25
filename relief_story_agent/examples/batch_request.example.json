@@ -1,0 +1,51 @@
+{
+  "idempotency_key": "relief-batch-2026-06-24-demo",
+  "failure_policy": {
+    "auto_retry_failed_items": 1,
+    "pause_on_failure_count": 3,
+    "pause_on_failure_rate": 0.4
+  },
+  "defaults": {
+    "approval_mode": "auto",
+    "queue_priority": 0,
+    "output_root": "D:/relief_story_runs",
+    "template_paths": {
+      "prompt_writer_template_path": "D:/relief_story_templates/prompt_writer.md",
+      "prompt_audit_template_path": "D:/relief_story_templates/prompt_audit.md"
+    },
+    "comfyui": {
+      "enabled": true,
+      "endpoint": "http://127.0.0.1:8188",
+      "workflow_api_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+      "grid_image": {
+        "mode": "auto",
+        "provider": "openai_compatible",
+        "base_url": "https://api.openai.com/v1",
+        "api_key_env": "OPENAI_API_KEY",
+        "model": "gpt-image-2",
+        "size": "1024x1024",
+        "quality": "medium",
+        "output_format": "png"
+      },
+      "wait_for_completion": true,
+      "download_outputs": true
+    }
+  },
+  "items": [
+    {
+      "idea": "A tired worker receives one extra pair of chopsticks for tomorrow.",
+      "queue_priority": 5,
+      "audience_pressure": "late-night work fatigue",
+      "preferred_series": "Convenience Store Nights",
+      "preferred_style": "realistic urban",
+      "duration_seconds": 90
+    },
+    {
+      "idea": "A tiny pressure creature shrinks after being offered warm soup.",
+      "audience_pressure": "commute anxiety",
+      "preferred_series": "Pressure Little Creature",
+      "preferred_style": "soft fantasy",
+      "duration_seconds": 100
+    }
+  ]
+}

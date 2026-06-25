@@ -1,0 +1,35 @@
+{
+  "profiles": {
+    "gemini_writer": {
+      "base_url": "https://YOUR_GEMINI_OPENAI_COMPATIBLE_ENDPOINT/v1",
+      "api_key_env": "GEMINI_API_KEY",
+      "model": "YOUR_GEMINI_MODEL",
+      "temperature": 0.7,
+      "max_attempts": 3,
+      "requests_per_minute": 20
+    },
+    "deepseek_editor": {
+      "base_url": "https://YOUR_DEEPSEEK_OPENAI_COMPATIBLE_ENDPOINT/v1",
+      "api_key_env": "DEEPSEEK_API_KEY",
+      "model": "YOUR_DEEPSEEK_MODEL",
+      "temperature": 0.8,
+      "max_attempts": 3,
+      "requests_per_minute": 20
+    },
+    "gpt_visual": {
+      "base_url": "https://YOUR_GPT_OPENAI_COMPATIBLE_ENDPOINT/v1",
+      "api_key_env": "OPENAI_API_KEY",
+      "model": "YOUR_GPT_MODEL",
+      "temperature": 0.4,
+      "max_attempts": 3,
+      "requests_per_minute": 30
+    }
+  },
+  "stages": {
+    "chief_screenwriter": "gemini_writer",
+    "deepseek_polish": "deepseek_editor",
+    "gpt_prompt_writer": "gpt_visual",
+    "gpt_prompt_audit": "gpt_visual",
+    "gpt_prompt_reviser": "gpt_visual"
+  }
+}

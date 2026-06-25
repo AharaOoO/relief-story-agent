@@ -1,0 +1,24 @@
+{
+  "placeholder_map": {
+    "positive": {
+      "node": "1",
+      "input": "text",
+      "source": "comfyui_inputs.positive"
+    },
+    "negative": {
+      "node": "2",
+      "input": "text",
+      "source": "negative_prompt"
+    },
+    "seed": {
+      "node": "3",
+      "input": "seed",
+      "source": "comfyui_inputs.seed"
+    },
+    "filename_prefix": {
+      "node": "4",
+      "input": "filename_prefix",
+      "source": "comfyui_inputs.filename_prefix"
+    }
+  }
+}

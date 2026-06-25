@@ -1,0 +1,27 @@
+{
+  "run_id": "preview-local-ltx",
+  "duration_seconds": 90,
+  "include_workflow": false,
+  "comfyui": {
+    "enabled": true,
+    "endpoint": "http://127.0.0.1:8188",
+    "workflow_api_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+    "placeholder_map_path": "D:/relief_story_templates/placeholder_map.json"
+  },
+  "storyboard": [
+    {
+      "shot_id": 1,
+      "time_range": "0-10s",
+      "description": "A tired office worker enters a quiet convenience store after rain.",
+      "image_prompt": "quiet rainy convenience store night, tired office worker, soft neon reflection, low stimulation, cinematic keyframe",
+      "negative_prompt": "shouting, horror, violence, chaos, distorted face, text, watermark",
+      "comfyui_inputs": {
+        "positive": "quiet rainy convenience store night, tired office worker, soft neon reflection, low stimulation",
+        "negative": "shouting, horror, violence, chaos, distorted face, text, watermark",
+        "seed": 101,
+        "strength": 0.72,
+        "filename_prefix": "preview-local-ltx"
+      }
+    }
+  ]
+}

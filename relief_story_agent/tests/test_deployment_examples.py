@@ -194,11 +194,18 @@ def test_source_checkout_has_portable_windows_launchers():
         assert "python -m relief_story_agent.server" in text
         assert "--state-dir" in text
 
+    assert "relief_story_agent\\examples\\model_config.local.example.json" in root_bat
+    assert "relief_story_agent\\examples\\model_config.local.example.json" in example_bat
+    assert (PROJECT_ROOT / "relief_story_agent" / "examples" / "model_config.local.example.json").exists()
+    assert "set \"PORT=8891\"" in root_bat
+
 
 def test_readme_documents_one_click_and_editable_startup_paths():
     text = (PACKAGE_DIR / "README.md").read_text(encoding="utf-8")
 
     assert "start_relief_story_agent.bat" in text
+    assert "relief_story_agent/examples/model_config.local.example.json" in text
+    assert "relief_story_agent/model_config.example.json" not in text
     assert 'python -m pip install -e "D:\\codex工作区"' in text
     assert "relief-story-agent serve --host 127.0.0.1 --port 8891" in text
     assert "smoke_request.example.json" in text
@@ -246,3 +253,4 @@ def test_handoff_docs_do_not_keep_obsolete_local_baseline():
         text = path.read_text(encoding="utf-8")
         assert "229 passed" not in text
         assert "80da952 feat: add local ComfyUI smoke runner" not in text
+        assert "relief_story_agent/model_config.example.json" not in text

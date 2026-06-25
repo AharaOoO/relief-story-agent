@@ -252,7 +252,7 @@ python -m relief_story_agent.server `
 `--max-workers` limits concurrent runs. `--lease-seconds` controls how long a running job is considered owned by a worker before another process restart may recover it. `--recovery-poll-seconds` controls how often the scheduler scans persistent state for queued or expired running work.
 `--image-generation-concurrency` limits GPT Image/OpenAI-compatible four-grid generation. `--comfyui-submission-concurrency` limits ComfyUI `/prompt` submissions, which is useful when the local GPU should process one LTX job at a time.
 
-For a reusable multi-model deployment, copy `relief_story_agent/model_config.example.json`, set the referenced environment variables, and pass the registry at startup:
+For a reusable multi-model deployment, copy `relief_story_agent/examples/model_config.local.example.json`, set the referenced environment variables, and pass the copied registry at startup:
 
 ```powershell
 $env:GEMINI_API_KEY = "your-gemini-key"

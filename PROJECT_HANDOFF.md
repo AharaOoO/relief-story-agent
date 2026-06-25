@@ -203,7 +203,7 @@ docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md
 - `start_relief_story_agent.bat`：Windows 一键启动。
 - `relief_story_agent/server.py`：命令行 server 入口。
 - `relief_story_agent/api.py`：FastAPI 路由。
-- `relief_story_agent/model_config.example.json`：模型配置示例。
+- `relief_story_agent/examples/model_config.local.example.json`：模型配置示例。
 
 ### 核心流水线
 

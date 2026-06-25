@@ -164,8 +164,9 @@ relief-story-agent local-demo `
 
 `local-demo` uses the built-in fake model provider and disables ComfyUI/image
 generation. It proves the local orchestration skeleton can create run artifacts
-and a completed batch summary without API keys or GPU, but it is not a real
-model/video acceptance run.
+and a completed batch summary, then reload persisted state for a restart
+recovery-plan drill without API keys or GPU. It is not a real model/video
+acceptance run.
 
 Preflight validation for a run request:
 

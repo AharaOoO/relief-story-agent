@@ -157,6 +157,9 @@ def test_run_local_acceptance_can_collect_offline_local_demo(tmp_path):
                             "comfyui": False,
                             "image_generation": False,
                         },
+                        "restart_recovery": {
+                            "status": "completed",
+                        },
                     }
                 ),
                 encoding="utf-8",
@@ -187,7 +190,7 @@ def test_run_local_acceptance_can_collect_offline_local_demo(tmp_path):
 
     assert result["status"] == "completed"
     assert checks["local_demo"]["status"] == "pass"
-    assert checks["local_demo"]["evidence"] == "single_run=completed; batch=completed; batch_completed=2/2; no_external_calls=true"
+    assert checks["local_demo"]["evidence"] == "single_run=completed; batch=completed; batch_completed=2/2; restart_recovery=completed; no_external_calls=true"
 
 
 def test_run_local_acceptance_marks_failed_commands(tmp_path):

@@ -99,6 +99,9 @@ def test_write_acceptance_report_can_collect_local_demo_summary(tmp_path):
                     "comfyui": False,
                     "image_generation": False,
                 },
+                "restart_recovery": {
+                    "status": "completed",
+                },
             }
         ),
         encoding="utf-8",
@@ -116,7 +119,7 @@ def test_write_acceptance_report_can_collect_local_demo_summary(tmp_path):
 
     demo_check = next(check for check in report["checks"] if check["id"] == "local_demo")
     assert demo_check["status"] == "pass"
-    assert demo_check["evidence"] == "single_run=completed; batch=completed; batch_completed=2/2; no_external_calls=true"
+    assert demo_check["evidence"] == "single_run=completed; batch=completed; batch_completed=2/2; restart_recovery=completed; no_external_calls=true"
     assert demo_check["details"]["source"] == str(summary_path)
 
 

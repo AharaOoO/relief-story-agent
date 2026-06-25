@@ -39,6 +39,14 @@ def test_run_local_demo_writes_single_and_batch_artifacts(tmp_path):
         assert (artifact_dir / "00_manifest.json").exists()
         assert (artifact_dir / "05_final_prompts.json").exists()
 
+    recovery = result["restart_recovery"]
+    assert recovery["status"] == "completed"
+    assert Path(recovery["state_dir"]).exists()
+    assert Path(recovery["report_path"]).exists()
+    assert recovery["before_restart"]["batch_id"] == recovery["after_restart"]["batch_id"]
+    assert recovery["after_restart"]["summary"]["auto_retryable_count"] == 1
+    assert recovery["after_restart"]["summary"]["by_action"]["retry_from_stage"] == 1
+
 
 def test_cli_local_demo_command_outputs_summary_json(tmp_path):
     completed = subprocess.run(

@@ -6,14 +6,19 @@ from pathlib import Path
 from typing import Any
 
 from .artifacts import read_batch_artifact_index, read_run_artifact_index
+from .recovery import build_batch_recovery_plan
 from .models import (
+    BatchRunItem,
     BatchRunRequest,
+    BatchRunState,
     ComfyUIRunConfig,
     RunRequest,
     RunRequestDefaults,
+    RunState,
 )
 from .orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from .providers import FakeModelProvider
+from .storage import JsonFileRunStore
 
 
 def run_local_demo(output_dir: str | Path, *, batch_size: int = 2) -> dict[str, Any]:
@@ -55,10 +60,20 @@ def run_local_demo(output_dir: str | Path, *, batch_size: int = 2) -> dict[str, 
         )
     )
     batch_runs = [store.get(item.run_id) for item in batch.items]
+    restart_recovery = _run_restart_recovery_demo(
+        target_dir,
+        output_root=runs_root,
+    )
 
     result: dict[str, Any] = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "status": "completed" if single_run.status == "completed" and batch.status == "completed" else "failed",
+        "status": (
+            "completed"
+            if single_run.status == "completed"
+            and batch.status == "completed"
+            and restart_recovery["status"] == "completed"
+            else "failed"
+        ),
         "mode": "offline_demo",
         "output_dir": str(target_dir),
         "external_calls": {
@@ -74,6 +89,7 @@ def run_local_demo(output_dir: str | Path, *, batch_size: int = 2) -> dict[str, 
             "artifact_index": read_batch_artifact_index(batch, batch_runs),
             "items": [_batch_item_summary(store.get(item.run_id), item.index) for item in batch.items],
         },
+        "restart_recovery": restart_recovery,
         "model_stage_calls": list(provider.calls),
     }
     summary_path = target_dir / "local_demo_summary.json"
@@ -124,3 +140,62 @@ def _batch_item_summary(run, index: int) -> dict[str, Any]:
     summary["index"] = index
     summary["idea"] = run.request.idea
     return summary
+
+
+def _run_restart_recovery_demo(target_dir: Path, *, output_root: Path) -> dict[str, Any]:
+    state_dir = target_dir / "state_restart_recovery"
+    first_store = JsonFileRunStore(state_dir)
+    provider = FakeModelProvider.minimal_success()
+    failed_run = RunState(
+        run_id="run_local_demo_retryable",
+        request=RunRequest(
+            idea="A retryable local demo item",
+            approval_mode="auto",
+            output_root=str(output_root),
+            comfyui=ComfyUIRunConfig(enabled=False),
+        ),
+        status="failed",
+        current_stage="failed",
+        failed_stage="deepseek_polish",
+        error="temporary model timeout",
+        selected_core=provider.responses["chief_screenwriter"]["core_candidates"][0],
+        script=provider.responses["chief_screenwriter"]["draft_script"],
+    )
+    failed_run.add_event("stage_started", stage="chief_screenwriter")
+    failed_run.add_event("stage_completed", stage="chief_screenwriter")
+    failed_run.add_event("stage_started", stage="deepseek_polish")
+    first_store.save(failed_run)
+    batch = BatchRunState(
+        batch_id="batch_local_demo_restart",
+        status="failed",
+        summary={"total": 1, "failed": 1},
+        items=[
+            BatchRunItem(
+                index=0,
+                run_id=failed_run.run_id,
+                idea=failed_run.request.idea,
+                status=failed_run.status,
+                current_stage=failed_run.current_stage,
+                error=failed_run.error,
+            )
+        ],
+    )
+    first_store.save_batch(batch)
+    before_plan = build_batch_recovery_plan(batch, [failed_run])
+
+    restarted_store = JsonFileRunStore(state_dir)
+    recovered_batch = restarted_store.get_batch(batch.batch_id)
+    recovered_runs = [restarted_store.get(item.run_id) for item in recovered_batch.items]
+    after_plan = build_batch_recovery_plan(recovered_batch, recovered_runs)
+
+    status = "completed" if after_plan["summary"]["auto_retryable_count"] == 1 else "failed"
+    report = {
+        "status": status,
+        "state_dir": str(state_dir),
+        "before_restart": before_plan,
+        "after_restart": after_plan,
+    }
+    report_path = target_dir / "local_demo_restart_recovery.json"
+    report["report_path"] = str(report_path)
+    report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return report

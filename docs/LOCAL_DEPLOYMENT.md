@@ -188,10 +188,12 @@ relief-story-agent local-demo `
   --pretty
 ```
 
-This writes `local_demo_summary.json`, a single completed fake-model run, and a
-completed fake-model batch under the chosen output directory. It deliberately
-keeps ComfyUI and image generation disabled, so treat it as an orchestration and
-artifact smoke check, not as proof that real videos render.
+This writes `local_demo_summary.json`, a single completed fake-model run, a
+completed fake-model batch, and `local_demo_restart_recovery.json` under the
+chosen output directory. The restart drill reloads persisted state and confirms
+the recovery plan can still identify a retryable item. It deliberately keeps
+ComfyUI and image generation disabled, so treat it as an orchestration,
+artifact, and recovery smoke check, not as proof that real videos render.
 
 To check the same local ComfyUI address a future UI box would collect, keep the
 API server running and ask local doctor to ping `/queue`:

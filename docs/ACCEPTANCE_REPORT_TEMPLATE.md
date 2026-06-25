@@ -6,7 +6,7 @@ the referenced artifact exists on the machine that ran the check.
 | Check | Required Evidence | Status |
 | --- | --- | --- |
 | Full tests | `python -m pytest relief_story_agent/tests -q` output | |
-| Local demo | `local_demo_summary.json`, fake model run artifacts, fake model batch summary | |
+| Local demo | `local_demo_summary.json`, fake model run artifacts, fake model batch summary, restart recovery drill | |
 | ComfyUI dry smoke | `smoke_result.json`, no prompt id | |
 | ComfyUI real smoke | `smoke_result.json`, prompt id | |
 | Model check | `model-check` JSON, `ready=true` | |

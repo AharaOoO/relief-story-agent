@@ -185,6 +185,8 @@ def _check_from_local_demo_summary(path: Path) -> dict[str, Any]:
     batch_summary = batch.get("summary") or {}
     batch_total = int(batch_summary.get("total") or 0)
     batch_completed = int(batch_summary.get("completed") or 0)
+    restart_recovery = payload.get("restart_recovery") or {}
+    restart_recovery_status = str(restart_recovery.get("status") or "")
     external_calls = payload.get("external_calls") or {}
     no_external_calls = (
         str(external_calls.get("model_provider") or "") == "fake"
@@ -197,6 +199,7 @@ def _check_from_local_demo_summary(path: Path) -> dict[str, Any]:
         and batch_status == "completed"
         and batch_total > 0
         and batch_completed == batch_total
+        and restart_recovery_status == "completed"
         and no_external_calls
     )
     return {
@@ -207,6 +210,7 @@ def _check_from_local_demo_summary(path: Path) -> dict[str, Any]:
             f"single_run={single_status}; "
             f"batch={batch_status}; "
             f"batch_completed={batch_completed}/{batch_total}; "
+            f"restart_recovery={restart_recovery_status}; "
             f"no_external_calls={str(no_external_calls).lower()}"
         ),
         "details": {
@@ -215,6 +219,7 @@ def _check_from_local_demo_summary(path: Path) -> dict[str, Any]:
             "single_run_status": single_status,
             "batch_status": batch_status,
             "batch_summary": batch_summary,
+            "restart_recovery": restart_recovery,
             "external_calls": external_calls,
         },
     }

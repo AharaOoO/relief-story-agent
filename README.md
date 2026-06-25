@@ -108,7 +108,7 @@ relief-story-agent local-demo `
   --pretty
 ```
 
-`local-demo` 只使用内置 fake model，且关闭 ComfyUI 和图片生成；它用于确认流水线、artifacts、batch 摘要可以本地跑通，不代表真实模型或真实视频已验收完成。
+`local-demo` 只使用内置 fake model，且关闭 ComfyUI 和图片生成；它用于确认流水线、artifacts、batch 摘要和持久化重启恢复演练可以本地跑通，不代表真实模型或真实视频已验收完成。
 
 未来 UI 或本地启动器可以通过 `GET /api/local/bootstrap` 读取端口和端点契约，并通过
 `POST /api/local/setup-bundle` 生成本地配置包；该接口接收 `output_dir`、

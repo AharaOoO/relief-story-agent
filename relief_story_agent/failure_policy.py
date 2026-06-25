@@ -14,6 +14,9 @@ def classify_failure(stage: str, exc: Exception) -> FailureRecord:
     status = _status_code(exc)
     message = str(exc)
     exception_type = type(exc).__name__
+    details = getattr(exc, "details", {})
+    if not isinstance(details, dict):
+        details = {}
     category = "unknown"
     code = "unknown_error"
     retryable = False
@@ -21,6 +24,9 @@ def classify_failure(stage: str, exc: Exception) -> FailureRecord:
     if "CancellationRequested" in exception_type or "cancel" in message.lower():
         category = "cancelled"
         code = "cancelled"
+    elif exception_type == "ExecutionPolicyExceeded":
+        category = "validation"
+        code = str(getattr(exc, "code", "") or "execution_policy_exhausted")
     elif isinstance(exc, json.JSONDecodeError):
         category = "contract"
         code = "malformed_json"
@@ -54,6 +60,7 @@ def classify_failure(stage: str, exc: Exception) -> FailureRecord:
         message=message,
         exception_type=exception_type,
         http_status=status,
+        details=details,
     )
 
 
@@ -78,6 +85,8 @@ def _classify_message(stage: str, message: str) -> tuple[str, str, bool]:
         return "validation", "grid_image_invalid", False
     if "quality gate failed" in lower or stage == "quality_gate":
         return "validation", "quality_gate_failed", False
+    if "execution policy" in lower or "execution budget" in lower:
+        return "validation", "execution_policy_exhausted", False
     if "missing required field" in lower or "must return between" in lower:
         return "contract", "output_contract_failed", False
     if "template" in lower or "placeholder(s)" in lower:

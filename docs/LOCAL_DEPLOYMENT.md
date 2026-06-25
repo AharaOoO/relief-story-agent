@@ -53,6 +53,30 @@ The setup command writes:
 
 Editable examples are also available under `relief_story_agent/examples/`.
 
+Generated run and batch request files include an `execution_policy` safety
+valve. It limits stage starts before they happen, which protects unattended
+batches from spending model quota or GPU time in a runaway retry pattern. The
+default bundle uses:
+
+```json
+{
+  "execution_policy": {
+    "max_total_stage_executions": 18,
+    "max_stage_executions": {
+      "chief_screenwriter": 2,
+      "deepseek_polish": 2,
+      "gpt_prompt_writer": 2,
+      "gpt_prompt_audit": 2,
+      "four_grid_asset": 3,
+      "comfyui": 3
+    }
+  }
+}
+```
+
+For batches, keep this under `defaults.execution_policy` unless a specific item
+needs a different budget.
+
 ## 4. Check ComfyUI
 
 Start ComfyUI, then test the local address box flow:

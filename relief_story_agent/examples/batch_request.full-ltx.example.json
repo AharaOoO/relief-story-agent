@@ -10,6 +10,17 @@
     "queue_priority": 0,
     "output_root": "D:/relief_story_runs",
     "duration_seconds": 90,
+    "execution_policy": {
+      "max_total_stage_executions": 18,
+      "max_stage_executions": {
+        "chief_screenwriter": 2,
+        "deepseek_polish": 2,
+        "gpt_prompt_writer": 2,
+        "gpt_prompt_audit": 2,
+        "four_grid_asset": 3,
+        "comfyui": 3
+      }
+    },
     "template_paths": {
       "prompt_writer_template_path": "D:/relief_story_config/templates/prompt_writer.default.md",
       "prompt_audit_template_path": "D:/relief_story_config/templates/prompt_audit.default.md"

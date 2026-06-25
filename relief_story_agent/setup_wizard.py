@@ -216,6 +216,7 @@ def _run_request_payload(
         "duration_seconds": 90,
         "approval_mode": "auto",
         "output_root": output_root,
+        "execution_policy": _execution_policy_payload(),
         "template_paths": {
             "prompt_writer_template_path": str(prompt_writer_template),
             "prompt_audit_template_path": str(prompt_audit_template),
@@ -244,6 +245,7 @@ def _batch_request_payload(
             "queue_priority": 0,
             "output_root": output_root,
             "duration_seconds": 90,
+            "execution_policy": _execution_policy_payload(),
             "template_paths": {
                 "prompt_writer_template_path": str(prompt_writer_template),
                 "prompt_audit_template_path": str(prompt_audit_template),
@@ -292,6 +294,20 @@ def _comfyui_payload(workflow_path: str, comfyui_endpoint: str) -> dict[str, Any
             "size": "1024x1024",
             "quality": "medium",
             "output_format": "png",
+        },
+    }
+
+
+def _execution_policy_payload() -> dict[str, Any]:
+    return {
+        "max_total_stage_executions": 18,
+        "max_stage_executions": {
+            "chief_screenwriter": 2,
+            "deepseek_polish": 2,
+            "gpt_prompt_writer": 2,
+            "gpt_prompt_audit": 2,
+            "four_grid_asset": 3,
+            "comfyui": 3,
         },
     }
 

@@ -28,6 +28,7 @@ from .content import (
     build_chief_screenwriter_prompt,
     build_deepseek_polish_prompt,
 )
+from .execution_policy import ExecutionPolicyExceeded, enforce_execution_policy
 from .failure_policy import classify_failure
 from .grid_image import (
     GridImageProvider,
@@ -562,6 +563,7 @@ class StoryRunOrchestrator:
             for stage in self._stage_sequence(run, resume=resume, start_stage=start_stage):
                 self._check_cancelled(run)
                 self._renew_lease(run)
+                self._check_execution_policy(run, stage)
                 run.add_event("stage_started", stage=stage)
                 self.store.save(run)
                 self._run_stage(run, stage)
@@ -582,6 +584,20 @@ class StoryRunOrchestrator:
         if persisted.cancel_requested:
             run.cancel_requested = True
             raise RunCancellationRequested("run cancellation requested")
+
+    def _check_execution_policy(self, run: RunState, stage: str) -> None:
+        try:
+            enforce_execution_policy(run, stage)
+        except ExecutionPolicyExceeded as exc:
+            run.current_stage = stage
+            run.add_event(
+                "execution_policy_blocked",
+                stage=stage,
+                message=str(exc),
+                data=exc.details,
+            )
+            self.store.save(run)
+            raise
 
     def _renew_lease(self, run: RunState) -> None:
         if not run.lease_owner:

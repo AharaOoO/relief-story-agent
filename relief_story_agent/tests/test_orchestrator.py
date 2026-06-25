@@ -293,6 +293,67 @@ def test_failed_run_records_structured_failure_for_unknown_error():
     assert saved.failure_records[-1] == saved.last_failure
 
 
+def test_execution_policy_stops_before_total_stage_budget_is_exhausted():
+    provider = FakeModelProvider.minimal_success()
+    store = InMemoryRunStore()
+    orchestrator = StoryRunOrchestrator(provider=provider, store=store)
+
+    run = orchestrator.create_run(
+        RunRequest(
+            idea="budgeted run",
+            approval_mode="auto",
+            execution_policy={"max_total_stage_executions": 1},
+        )
+    )
+    saved = store.get(run.run_id)
+
+    assert saved.status == "failed"
+    assert saved.failed_stage == "deepseek_polish"
+    assert saved.last_completed_stage == "chief_screenwriter"
+    assert saved.last_failure is not None
+    assert saved.last_failure.code == "execution_policy_exhausted"
+    assert saved.last_failure.retryable is False
+    assert any(
+        event.event_type == "execution_policy_blocked"
+        and event.stage == "deepseek_polish"
+        for event in saved.events
+    )
+    assert provider.calls == ["chief_screenwriter"]
+
+
+def test_execution_policy_stage_budget_applies_across_retry():
+    provider = FakeModelProvider.minimal_success()
+    provider.responses.pop("gpt_prompt_audit")
+    store = InMemoryRunStore()
+    orchestrator = StoryRunOrchestrator(provider=provider, store=store)
+
+    first = orchestrator.create_run(
+        RunRequest(
+            idea="stage budgeted run",
+            approval_mode="auto",
+            execution_policy={"max_stage_executions": {"gpt_prompt_audit": 1}},
+        )
+    )
+    assert store.get(first.run_id).failed_stage == "gpt_prompt_audit"
+    assert provider.calls.count("gpt_prompt_audit") == 1
+
+    provider.responses["gpt_prompt_audit"] = {
+        "passed": True,
+        "issues": [],
+        "revision_instructions": [],
+        "scores": {},
+    }
+    orchestrator.queue_retry(first.run_id, RunRetryRequest(from_stage="gpt_prompt_audit"))
+    second = orchestrator.execute_scheduled(first.run_id)
+
+    assert second.status == "failed"
+    assert second.failed_stage == "gpt_prompt_audit"
+    assert second.last_failure is not None
+    assert second.last_failure.code == "execution_policy_exhausted"
+    assert second.last_failure.details["stage_execution_count"] == 1
+    assert provider.calls.count("gpt_prompt_audit") == 1
+
+
 def test_orchestrator_runs_multimodel_pipeline_without_comfyui(tmp_path):
     provider = FakeModelProvider(
         {

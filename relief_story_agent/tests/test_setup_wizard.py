@@ -43,7 +43,10 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     assert run_payload["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
     assert run_payload["comfyui"]["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert run_payload["output_root"] == "D:/relief_story_runs"
+    assert run_payload["execution_policy"]["max_total_stage_executions"] >= 10
+    assert run_payload["execution_policy"]["max_stage_executions"]["gpt_prompt_audit"] == 2
     assert batch_payload["defaults"]["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
+    assert batch_payload["defaults"]["execution_policy"]["max_total_stage_executions"] >= 10
     assert connect_payload["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert "{{script_json}}" in writer
     assert "{{duration_seconds}}" in writer

@@ -584,6 +584,27 @@ Use `defaults` to avoid repeating shared configuration on every item. Any field 
 }
 ```
 
+Use `execution_policy` as a per-run safety valve for unattended local batches.
+It is checked before each stage starts, so it stops at a safe boundary without
+killing an active model request or ComfyUI job:
+
+```json
+{
+  "execution_policy": {
+    "max_total_stage_executions": 18,
+    "max_stage_executions": {
+      "gpt_prompt_audit": 2,
+      "four_grid_asset": 3,
+      "comfyui": 3
+    }
+  }
+}
+```
+
+Put the same object under batch `defaults` to apply it to every child run. When
+the policy blocks a stage, the run records `execution_policy_blocked`,
+`last_failure.code=execution_policy_exhausted`, and a non-retryable failure.
+
 `queue_priority` controls background scheduling order. Higher numbers run earlier; equal priorities keep their original enqueue order. A practical pattern is to give smoke-test items a higher priority, confirm templates and ComfyUI settings, then let the larger batch continue at normal priority.
 
 Before enqueueing a real batch, preview the resolved plan:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class StageModelConfig(BaseModel):
@@ -218,6 +218,21 @@ class TemplatePaths(BaseModel):
     prompt_audit_template_path: str | None = None
 
 
+class ExecutionPolicy(BaseModel):
+    max_total_stage_executions: int = Field(default=0, ge=0)
+    max_stage_executions: dict[str, int] = Field(default_factory=dict)
+
+    @field_validator("max_stage_executions")
+    @classmethod
+    def _validate_stage_execution_limits(cls, value: dict[str, int]) -> dict[str, int]:
+        for stage, limit in value.items():
+            if not stage:
+                raise ValueError("execution policy stage names must be non-empty")
+            if limit < 0:
+                raise ValueError("execution policy stage limits must be >= 0")
+        return value
+
+
 class RunRequest(BaseModel):
     idempotency_key: str = ""
     idea: str
@@ -233,6 +248,7 @@ class RunRequest(BaseModel):
     template_paths: TemplatePaths = Field(default_factory=TemplatePaths)
     model_profiles: dict[str, str] = Field(default_factory=dict)
     model_configs: dict[str, StageModelConfig] = Field(default_factory=dict)
+    execution_policy: ExecutionPolicy = Field(default_factory=ExecutionPolicy)
 
 
 class RunRequestDefaults(BaseModel):
@@ -248,6 +264,7 @@ class RunRequestDefaults(BaseModel):
     template_paths: TemplatePaths | None = None
     model_profiles: dict[str, str] | None = None
     model_configs: dict[str, StageModelConfig] | None = None
+    execution_policy: ExecutionPolicy | None = None
 
 
 def apply_run_defaults(defaults: RunRequestDefaults, item: RunRequest) -> RunRequest:

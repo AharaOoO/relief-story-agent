@@ -67,6 +67,8 @@ def test_full_ltx_run_examples_are_valid_json():
     assert run_request.comfyui.workflow_api_path.endswith("ltx23_four_grid.json")
     assert run_request.comfyui.grid_image.model == "gpt-image-2"
     assert run_request.template_paths.prompt_writer_template_path.endswith(".md")
+    assert run_request.execution_policy.max_total_stage_executions >= 10
+    assert run_request.execution_policy.max_stage_executions["gpt_prompt_audit"] == 2
 
 
 def test_full_ltx_batch_example_has_multiple_items_and_failure_policy():
@@ -82,6 +84,8 @@ def test_full_ltx_batch_example_has_multiple_items_and_failure_policy():
     assert request.defaults.approval_mode == "auto"
     assert request.defaults.comfyui is not None
     assert request.defaults.comfyui.grid_image.model == "gpt-image-2"
+    assert request.defaults.execution_policy is not None
+    assert request.defaults.execution_policy.max_total_stage_executions >= 10
 
 
 def test_local_deployment_guides_cover_required_operator_workflows():
@@ -117,6 +121,7 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "relief-story-agent batch-health",
         "relief-story-agent validate-export",
         "relief-story-agent validate-export-zip",
+        "execution_policy",
     ):
         assert required in local_deployment
 
@@ -196,3 +201,4 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "relief-story-agent run-events" in text
     assert "relief-story-agent scheduler" in text
     assert "relief-story-agent validate-export" in text
+    assert "execution_policy" in text

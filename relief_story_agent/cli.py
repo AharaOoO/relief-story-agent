@@ -10,12 +10,19 @@ import httpx
 from .acceptance import write_acceptance_report
 from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
 from .comfyui import connect_comfyui, discover_workflows
+from .comfyui_outputs import refresh_comfyui_prompt_outputs
 from .local_acceptance import run_local_acceptance
 from .local_demo import run_local_demo
 from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .model_config import ModelConfigRegistry
 from .model_probe import run_model_probe
-from .models import BatchRunRequest, ComfyUIConnectionRequest, ComfyUIWorkflowDiscoveryRequest, RunRequest
+from .models import (
+    BatchRunRequest,
+    ComfyUIConnectionRequest,
+    ComfyUIOutputRefreshRequest,
+    ComfyUIWorkflowDiscoveryRequest,
+    RunRequest,
+)
 from .pipeline import build_pipeline_schema
 from .prompt_templates import validate_prompt_template_file
 from .server import main as server_main
@@ -47,6 +54,19 @@ def main(argv: list[str] | None = None) -> int:
     discover_parser.add_argument("--filename-keyword", action="append", default=[], help="Only include JSON filenames containing this text.")
     discover_parser.add_argument("--hide-unsupported", action="store_true", help="Omit workflows that cannot be analyzed.")
     discover_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    outputs_parser = subparsers.add_parser(
+        "comfyui-outputs",
+        help="Check and optionally download ComfyUI outputs by prompt id.",
+    )
+    outputs_parser.add_argument("--request", default="", help="Optional JSON request file.")
+    outputs_parser.add_argument("--endpoint", default="", help="ComfyUI base URL.")
+    outputs_parser.add_argument("--prompt-id", action="append", default=[], help="ComfyUI prompt id. Repeatable.")
+    outputs_parser.add_argument("--artifact-dir", default="", help="Directory for downloaded output files.")
+    outputs_parser.add_argument("--wait", action="store_true", help="Poll until every prompt id has output or times out.")
+    outputs_parser.add_argument("--download", action="store_true", help="Download files returned by /history.")
+    outputs_parser.add_argument("--timeout-seconds", type=float, default=None, help="Output wait timeout.")
+    outputs_parser.add_argument("--poll-interval-seconds", type=float, default=None, help="Output wait poll interval.")
+    outputs_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     diagnose_parser = subparsers.add_parser(
         "diagnose",
         help="Diagnose a local run or batch request without enqueueing work.",
@@ -311,6 +331,8 @@ def main(argv: list[str] | None = None) -> int:
         return _connect_comfyui(args)
     if args.command == "discover-comfyui-workflows":
         return _discover_comfyui_workflows(args)
+    if args.command == "comfyui-outputs":
+        return _comfyui_outputs(args)
     if args.command == "diagnose":
         return _diagnose(args)
     if args.command == "pipeline-schema":
@@ -450,6 +472,42 @@ def _discover_comfyui_workflows(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _comfyui_outputs(args: argparse.Namespace) -> int:
+    payload: dict = {}
+    if args.request:
+        payload.update(json.loads(Path(args.request).read_text(encoding="utf-8")))
+    if args.endpoint:
+        payload["endpoint"] = args.endpoint
+    if args.prompt_id:
+        payload["prompt_ids"] = args.prompt_id
+    if args.artifact_dir:
+        payload["artifact_dir"] = args.artifact_dir
+    if args.wait:
+        payload["wait_for_completion"] = True
+    if args.download:
+        payload["download_outputs"] = True
+    if args.timeout_seconds is not None:
+        payload["output_timeout_seconds"] = args.timeout_seconds
+    if args.poll_interval_seconds is not None:
+        payload["output_poll_interval_seconds"] = args.poll_interval_seconds
+
+    try:
+        result = refresh_comfyui_prompt_outputs(
+            ComfyUIOutputRefreshRequest.model_validate(payload)
+        )
+    except ValueError as exc:
+        result = {
+            "status": "invalid_request",
+            "ready": False,
+            "error": str(exc),
+        }
+        print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+        return 1
+
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("ready") else 1
 
 
 def _diagnose(args: argparse.Namespace) -> int:

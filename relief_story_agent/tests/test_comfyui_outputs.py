@@ -14,8 +14,10 @@ from relief_story_agent.comfyui import (
     download_prompt_outputs,
     wait_for_prompt_outputs,
 )
+from relief_story_agent.comfyui_outputs import refresh_comfyui_prompt_outputs
 from relief_story_agent.models import (
     ComfyUIOutput,
+    ComfyUIOutputRefreshRequest,
     ComfyUIRunConfig,
     RunRequest,
     RunRetryRequest,
@@ -147,6 +149,38 @@ def test_collect_prompt_outputs_reads_images_and_video_files_from_history():
     assert outputs[0].media_type == "image"
     assert outputs[1].media_type == "video"
     assert outputs[1].url == "http://comfy.local/view?filename=movie.mp4&type=output"
+
+
+def test_collect_prompt_outputs_prefers_video_extension_when_comfyui_uses_images_bucket():
+    def handler(request: httpx.Request):
+        assert request.url.path == "/history/prompt_1"
+        return httpx.Response(
+            200,
+            json={
+                "prompt_1": {
+                    "outputs": {
+                        "12": {
+                            "images": [
+                                {
+                                    "filename": "ltx_render.mp4",
+                                    "subfolder": "",
+                                    "type": "output",
+                                }
+                            ]
+                        }
+                    }
+                }
+            },
+        )
+
+    outputs = collect_prompt_outputs(
+        ComfyUIRunConfig(endpoint="http://comfy.local"),
+        ["prompt_1"],
+        client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+
+    assert outputs[0].filename == "ltx_render.mp4"
+    assert outputs[0].media_type == "video"
 
 
 def test_download_prompt_outputs_saves_files_under_artifact_dir(tmp_path):
@@ -293,6 +327,134 @@ def test_wait_for_prompt_outputs_prefers_cancellation_observed_during_history_re
             sleep_fn=lambda _: None,
             should_cancel=lambda: cancel_requested,
         )
+
+
+def test_standalone_comfyui_output_refresh_waits_and_downloads(tmp_path):
+    def handler(request: httpx.Request):
+        if request.url.path == "/history/prompt_1":
+            return httpx.Response(
+                200,
+                json={
+                    "prompt_1": {
+                        "outputs": {
+                            "12": {
+                                "videos": [
+                                    {
+                                        "filename": "standalone.mp4",
+                                        "subfolder": "",
+                                        "type": "output",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+            )
+        if request.url.path == "/view":
+            return httpx.Response(200, content=b"standalone-video")
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    result = refresh_comfyui_prompt_outputs(
+        ComfyUIOutputRefreshRequest(
+            endpoint="http://comfy.local",
+            prompt_ids=["prompt_1"],
+            artifact_dir=str(tmp_path),
+            wait_for_completion=True,
+            download_outputs=True,
+            output_timeout_seconds=1,
+            output_poll_interval_seconds=0,
+        ),
+        client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+        sleep_fn=lambda _: None,
+    )
+
+    assert result["ready"] is True
+    assert result["status"] == "ready"
+    assert result["output_count"] == 1
+    assert result["video_count"] == 1
+    assert result["downloaded_count"] == 1
+    assert Path(result["actual_outputs"][0]["local_path"]).read_bytes() == b"standalone-video"
+
+
+def test_standalone_comfyui_output_refresh_returns_error_when_endpoint_is_unreachable():
+    def handler(request: httpx.Request):
+        raise httpx.ConnectError("offline", request=request)
+
+    result = refresh_comfyui_prompt_outputs(
+        ComfyUIOutputRefreshRequest(
+            endpoint="http://comfy.local",
+            prompt_ids=["prompt_1"],
+        ),
+        client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+
+    assert result["ready"] is False
+    assert result["status"] == "error"
+    assert "offline" in result["error"]
+    assert result["actual_outputs"] == []
+
+
+def test_api_refreshes_standalone_comfyui_outputs(tmp_path, monkeypatch):
+    captured: dict[str, object] = {}
+
+    def fake_refresh(request: ComfyUIOutputRefreshRequest):
+        captured["request"] = request
+        return {
+            "endpoint": request.endpoint,
+            "prompt_ids": request.prompt_ids,
+            "status": "ready",
+            "ready": True,
+            "output_count": 1,
+            "video_count": 1,
+            "image_count": 0,
+            "audio_count": 0,
+            "downloaded_count": 0,
+            "artifact_dir": request.artifact_dir,
+            "actual_outputs": [
+                {
+                    "prompt_id": "prompt_1",
+                    "node_id": "12",
+                    "filename": "api.mp4",
+                    "subfolder": "",
+                    "type": "output",
+                    "media_type": "video",
+                    "url": "http://comfy.local/view?filename=api.mp4&type=output",
+                    "local_path": "",
+                }
+            ],
+            "diagnostics": {},
+        }
+
+    monkeypatch.setattr(
+        "relief_story_agent.api.refresh_comfyui_prompt_outputs",
+        fake_refresh,
+    )
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=InMemoryRunStore(),
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/comfyui/outputs",
+        json={
+            "endpoint": "comfy.local:8188",
+            "prompt_ids": ["prompt_1"],
+            "artifact_dir": str(tmp_path),
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ready"] is True
+    assert body["actual_outputs"][0]["filename"] == "api.mp4"
+    request = captured["request"]
+    assert isinstance(request, ComfyUIOutputRefreshRequest)
+    assert request.endpoint == "http://comfy.local:8188"
+    assert request.prompt_ids == ["prompt_1"]
 
 
 def test_api_refreshes_comfyui_outputs_and_artifact_index(tmp_path, monkeypatch):

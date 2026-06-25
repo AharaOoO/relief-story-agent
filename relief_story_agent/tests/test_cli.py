@@ -33,6 +33,7 @@ def test_cli_help_lists_core_local_commands():
     assert "local-bootstrap" in completed.stdout
     assert "local-doctor" in completed.stdout
     assert "local-demo" in completed.stdout
+    assert "comfyui-outputs" in completed.stdout
     assert "run" in completed.stdout
     assert "batch-plan" in completed.stdout
     assert "batch" in completed.stdout
@@ -146,6 +147,39 @@ def test_cli_discover_comfyui_workflows_returns_zero_when_no_recommendation(tmp_
     assert completed.returncode == 0
     assert body["recommended"] == {}
     assert body["items"][0]["status"] == "unsupported"
+
+
+def test_cli_comfyui_outputs_queries_and_downloads_prompt_outputs(tmp_path):
+    with _ComfyUIHistoryServer(video_bytes=b"cli-video") as server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "comfyui-outputs",
+                "--endpoint",
+                server.url,
+                "--prompt-id",
+                "prompt_cli",
+                "--artifact-dir",
+                str(tmp_path),
+                "--download",
+                "--pretty",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    body = json.loads(completed.stdout)
+    assert body["ready"] is True
+    assert body["actual_outputs"][0]["filename"] == "cli.mp4"
+    assert Path(body["actual_outputs"][0]["local_path"]).read_bytes() == b"cli-video"
+    assert [request["path"] for request in server.requests] == [
+        "/history/prompt_cli",
+        "/view",
+    ]
 
 
 def test_cli_diagnose_run_reports_ready_configuration(tmp_path):
@@ -995,6 +1029,83 @@ class _CliApiServer:
                 self.send_header("content-length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
+
+            def log_message(self, format, *args):
+                return
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        assert self._server is not None
+        self._server.shutdown()
+        self._server.server_close()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+
+
+class _ComfyUIHistoryServer:
+    def __init__(self, *, video_bytes: bytes):
+        self.video_bytes = video_bytes
+        self.requests: list[dict] = []
+        self._server: ThreadingHTTPServer | None = None
+        self._thread: Thread | None = None
+
+    @property
+    def url(self) -> str:
+        assert self._server is not None
+        host, port = self._server.server_address
+        return f"http://{host}:{port}"
+
+    def __enter__(self):
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                parsed = urlparse(self.path)
+                owner.requests.append(
+                    {
+                        "method": "GET",
+                        "path": parsed.path,
+                        "query": parse_qs(parsed.query),
+                    }
+                )
+                if parsed.path.startswith("/history/"):
+                    prompt_id = parsed.path.rsplit("/", 1)[-1]
+                    body = json.dumps(
+                        {
+                            prompt_id: {
+                                "outputs": {
+                                    "12": {
+                                        "videos": [
+                                            {
+                                                "filename": "cli.mp4",
+                                                "subfolder": "",
+                                                "type": "output",
+                                            }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+                    ).encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("content-type", "application/json")
+                    self.send_header("content-length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
+                    return
+                if parsed.path == "/view":
+                    self.send_response(200)
+                    self.send_header("content-type", "video/mp4")
+                    self.send_header("content-length", str(len(owner.video_bytes)))
+                    self.end_headers()
+                    self.wfile.write(owner.video_bytes)
+                    return
+                self.send_response(404)
+                self.end_headers()
 
             def log_message(self, format, *args):
                 return

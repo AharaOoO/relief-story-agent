@@ -119,6 +119,7 @@ grid shape: 2x2
 - 本地 UI/bootstrap 契约：`GET /api/local/bootstrap` 和 `relief-story-agent local-bootstrap --pretty` 返回 API 端口、推荐 UI origin、CORS 白名单、默认 ComfyUI 地址和核心端点路径。
 - 本地 doctor 就绪检查：`GET /api/local/doctor` 和 `relief-story-agent local-doctor` 返回模型环境、状态持久化、scheduler、资源限制和下一步建议；可选 `check_comfyui_connection=true` / `--check-comfyui-connection --comfyui-endpoint ...` 直接 ping 用户填入的本地 ComfyUI 地址。
 - ComfyUI 连接检查会读取 `/object_info`，验证 workflow 需要的 node class 是否在当前本地 ComfyUI 运行时存在。缺节点时返回 `comfyui_node_types` 失败和 `install_or_enable_comfyui_nodes` 建议。
+- 独立 ComfyUI 输出查询/下载：`POST /api/comfyui/outputs` 和 `relief-story-agent comfyui-outputs` 可在已有 `prompt_id` 的情况下读取 `/history`、可选等待、可选下载 `/view` 文件；它不会调用大模型、不会 patch workflow、不会重新入队。
 - 本地离线演练：`relief-story-agent local-demo --output-dir D:/relief_story_demo --batch-size 2 --pretty` 使用内置 fake model，关闭 ComfyUI 和图片生成，写出单条 run artifacts、batch 摘要、持久化重启恢复演练和 `local_demo_summary.json`；它只证明本地编排骨架、artifact 和恢复计划能跑通，不代表真实模型/真实视频验收完成。
 - 本地 UI/启动器配置入口：`GET /api/local/bootstrap` 暴露推荐端口和核心 endpoint；`POST /api/local/setup-bundle` 接收 `output_dir`、`workflow_path`、`comfyui_endpoint`、`output_root`，写出与 `relief-story-agent setup` 相同的配置包，并且只保存环境变量名，不保存 API key。
 - 本地验收证据收集器：`relief-story-agent local-acceptance` 会运行 `compileall`、全量 pytest，并可选用 `--local-demo` 收集离线演练证据、收集 `model-check`、run/batch `diagnose`、`smoke-comfyui`，落盘 `command_outputs/`、`local_acceptance_summary.json`、`acceptance_report.json` 和 `ACCEPTANCE_REPORT.md`，方便另一个 AI 或操作者核查当前进度。
@@ -331,7 +332,7 @@ git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-331 passed
+341 passed
 ```
 
 最近已推送的核心功能提交：

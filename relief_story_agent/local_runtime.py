@@ -53,6 +53,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
             "default_endpoint": normalize_comfyui_endpoint(runtime.comfyui_endpoint),
             "connect_endpoint": "/api/comfyui/connect",
             "discover_workflows_endpoint": "/api/comfyui/discover-workflows",
+            "outputs_endpoint": "/api/comfyui/outputs",
         },
         "limits": {
             "default_api_port": DEFAULT_API_PORT,
@@ -80,6 +81,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
             "comfyui_connect": "/api/comfyui/connect",
             "comfyui_discover_workflows": "/api/comfyui/discover-workflows",
             "comfyui_preview": "/api/comfyui/preview",
+            "comfyui_outputs": "/api/comfyui/outputs",
             "smoke_comfyui": "/api/smoke/comfyui",
         },
     }

@@ -1361,12 +1361,18 @@ def _history_record_for_prompt(payload: dict[str, Any], prompt_id: str) -> dict[
 
 def _infer_media_type(category: str, filename: str) -> str:
     suffix = Path(filename).suffix.lower()
-    if category == "images" or suffix in {".png", ".jpg", ".jpeg", ".webp"}:
-        return "image"
-    if category in {"gifs", "videos"} or suffix in {".mp4", ".webm", ".mov", ".gif"}:
+    if suffix in {".mp4", ".webm", ".mov", ".gif"}:
         return "video"
-    if category == "audio" or suffix in {".wav", ".mp3", ".flac", ".ogg"}:
+    if suffix in {".wav", ".mp3", ".flac", ".ogg"}:
         return "audio"
+    if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
+        return "image"
+    if category in {"gifs", "videos"}:
+        return "video"
+    if category == "audio":
+        return "audio"
+    if category == "images":
+        return "image"
     return "other"
 
 

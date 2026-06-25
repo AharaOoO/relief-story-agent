@@ -19,6 +19,7 @@ from .config_validation import (
     validate_run_configuration,
 )
 from .comfyui import analyze_workflow_config, connect_comfyui, discover_workflows, preview_storyboard_submission
+from .comfyui_outputs import refresh_comfyui_prompt_outputs
 from .metrics import build_batch_health_report, build_system_metrics
 from .model_probe import run_model_probe
 from .models import (
@@ -30,6 +31,7 @@ from .models import (
     BatchRunRequest,
     BatchRunState,
     ComfyUIConnectionRequest,
+    ComfyUIOutputRefreshRequest,
     ComfyUIPreviewRequest,
     ComfyUIWorkflowAnalysisRequest,
     ComfyUIWorkflowDiscoveryRequest,
@@ -288,6 +290,13 @@ def create_app(
     def analyze_comfyui_workflow(request: ComfyUIWorkflowAnalysisRequest):
         try:
             return analyze_workflow_config(request.comfyui)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/comfyui/outputs")
+    def refresh_standalone_comfyui_outputs(request: ComfyUIOutputRefreshRequest):
+        try:
+            return refresh_comfyui_prompt_outputs(request)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 

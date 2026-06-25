@@ -45,7 +45,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-331 passed
+341 passed
 
 最近核心功能提交包括：
 
@@ -56,6 +56,8 @@ b487761 feat: add ComfyUI check to local doctor
 96e3e82 feat: normalize ComfyUI endpoint inputs
 3f1b70a feat: validate execution policy budgets
 8102aae feat: add execution policy guardrails
+
+新增补充：已有 ComfyUI prompt_id 时，可用 `relief-story-agent comfyui-outputs --endpoint "http://127.0.0.1:8188" --prompt-id "{prompt_id}" --artifact-dir "D:/relief_story_outputs/manual_check" --download --pretty` 或 `POST /api/comfyui/outputs` 查询/等待/下载输出；它只读 `/history`、`/queue`、`/view`，不会重新入队。
 
 不要重复实现 smoke runner 或本地 ComfyUI 入队探针。优先从真实模型端到端继续；如果本地分支落后远端，先 `git pull --ff-only`。
 

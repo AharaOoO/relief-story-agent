@@ -482,7 +482,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:331 passed" `
+  --check "full_tests=pass:341 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `
@@ -1086,6 +1086,59 @@ relief-story-agent validate-export-zip `
 
 The zip validator checks file existence, internal zip CRC, and optional expected size/sha256. With `save_report: true`, it writes a `.validation.json` report next to the zip.
 
+## Standalone ComfyUI Output Refresh
+
+When you already have a ComfyUI `prompt_id`, you can query outputs without
+re-running models and without submitting another workflow. This is useful after
+a smoke real-run, after a server restart, or from a future UI button that only
+needs to check/download rendered files from the user's local ComfyUI package.
+
+CLI:
+
+```powershell
+relief-story-agent comfyui-outputs `
+  --endpoint "http://127.0.0.1:8188" `
+  --prompt-id "{prompt_id}" `
+  --artifact-dir "D:/relief_story_outputs/manual_check" `
+  --download `
+  --pretty
+```
+
+Wait until ComfyUI history has files:
+
+```powershell
+relief-story-agent comfyui-outputs `
+  --endpoint "http://127.0.0.1:8188" `
+  --prompt-id "{prompt_id}" `
+  --wait `
+  --timeout-seconds 1200 `
+  --poll-interval-seconds 5 `
+  --artifact-dir "D:/relief_story_outputs/manual_check" `
+  --download `
+  --pretty
+```
+
+API:
+
+```http
+POST /api/comfyui/outputs
+```
+
+```json
+{
+  "endpoint": "http://127.0.0.1:8188",
+  "prompt_ids": ["{prompt_id}"],
+  "wait_for_completion": false,
+  "download_outputs": true,
+  "artifact_dir": "D:/relief_story_outputs/manual_check"
+}
+```
+
+The response includes `ready`, media counts, `actual_outputs`, downloaded
+`local_path` values, and timeout diagnostics when waiting does not finish. This
+endpoint only reads ComfyUI `/history`, `/queue`, and `/view`; it does not call
+large models, patch workflows, or enqueue prompts.
+
 ## ComfyUI Idempotency
 
 Each ComfyUI submission now has a persistent record containing:
@@ -1225,6 +1278,7 @@ A run may select another registered profile without changing the server configur
 - `POST /api/comfyui/connect`
 - `POST /api/comfyui/discover-workflows`
 - `POST /api/comfyui/preview`
+- `POST /api/comfyui/outputs`
 - `POST /api/smoke/comfyui`
 - `POST /api/runs`
 - `GET /api/runs`

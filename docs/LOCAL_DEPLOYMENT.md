@@ -252,6 +252,22 @@ relief-story-agent smoke-comfyui `
 Real smoke uploads the four-grid image, patches the workflow, and queues
 ComfyUI `/prompt`. It still does not wait for video rendering or download video.
 
+If ComfyUI later finishes that prompt, check and optionally download the output
+without submitting anything new:
+
+```powershell
+relief-story-agent comfyui-outputs `
+  --endpoint "http://127.0.0.1:8188" `
+  --prompt-id "{prompt_id_from_smoke_result}" `
+  --artifact-dir "D:/relief_story_outputs/smoke_manual_check" `
+  --download `
+  --pretty
+```
+
+For a future launcher or UI, the equivalent endpoint is `POST /api/comfyui/outputs`.
+The request accepts the user's local ComfyUI address, one or more `prompt_ids`,
+`wait_for_completion`, `download_outputs`, and an `artifact_dir`.
+
 ## 7. Start The API
 
 ```powershell

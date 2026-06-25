@@ -80,7 +80,7 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-331 passed
+341 passed
 ```
 
 可交给另一个 AI 或操作者核查的本地证据包命令：
@@ -132,6 +132,19 @@ relief-story-agent model-check `
   --model-config "D:/relief_story_config/model_config.local.json" `
   --pretty
 ```
+
+已有 ComfyUI `prompt_id` 时，可以独立查询和下载输出，不会重新调用大模型，也不会重新入队：
+
+```powershell
+relief-story-agent comfyui-outputs `
+  --endpoint "http://127.0.0.1:8188" `
+  --prompt-id "{prompt_id}" `
+  --artifact-dir "D:/relief_story_outputs/manual_check" `
+  --download `
+  --pretty
+```
+
+未来 UI 可直接调用 `POST /api/comfyui/outputs`，让用户填写本地 ComfyUI 地址、prompt id 和下载目录。
 
 ## 下一步开发
 

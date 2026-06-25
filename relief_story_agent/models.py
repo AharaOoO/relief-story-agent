@@ -196,6 +196,29 @@ class ComfyUIWorkflowDiscoveryRequest(BaseModel):
         return normalize_comfyui_endpoint(value)
 
 
+class ComfyUIOutputRefreshRequest(BaseModel):
+    endpoint: str = "http://127.0.0.1:8188"
+    prompt_ids: list[str] = Field(min_length=1)
+    artifact_dir: str = ""
+    wait_for_completion: bool = False
+    download_outputs: bool = False
+    output_timeout_seconds: float = Field(default=600.0, ge=0)
+    output_poll_interval_seconds: float = Field(default=5.0, ge=0)
+
+    @field_validator("endpoint")
+    @classmethod
+    def _normalize_endpoint(cls, value: str) -> str:
+        return normalize_comfyui_endpoint(value)
+
+    @field_validator("prompt_ids")
+    @classmethod
+    def _normalize_prompt_ids(cls, value: list[str]) -> list[str]:
+        prompt_ids = [str(item).strip() for item in value if str(item).strip()]
+        if not prompt_ids:
+            raise ValueError("At least one non-empty prompt id is required")
+        return prompt_ids
+
+
 class ComfyUISubmission(BaseModel):
     submission_key: str
     content_fingerprint: str

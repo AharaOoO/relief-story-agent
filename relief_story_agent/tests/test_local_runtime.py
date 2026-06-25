@@ -34,6 +34,7 @@ def test_build_local_bootstrap_exposes_ui_ports_and_core_endpoints():
     assert bootstrap["endpoints"]["model_check"] == "/api/config/model-check"
     assert bootstrap["endpoints"]["comfyui_connect"] == "/api/comfyui/connect"
     assert bootstrap["endpoints"]["comfyui_discover_workflows"] == "/api/comfyui/discover-workflows"
+    assert bootstrap["endpoints"]["comfyui_outputs"] == "/api/comfyui/outputs"
 
 
 def test_api_local_bootstrap_returns_runtime_config_for_ui_shell():

@@ -183,8 +183,16 @@ Render runs out of VRAM:
 Wrong or missing output:
 
 - check `/history/{prompt_id}` in ComfyUI;
+- run `relief-story-agent comfyui-outputs --endpoint "http://127.0.0.1:8188" --prompt-id "{prompt_id}" --pretty`;
+- add `--wait --timeout-seconds 1200 --artifact-dir "D:/relief_story_outputs/manual_check" --download` when you want the Agent to wait and save rendered files;
+- call `POST /api/comfyui/outputs` from a launcher or future UI when the user has pasted their local ComfyUI address and prompt id;
 - call `POST /api/runs/{run_id}/refresh-comfyui`;
 - inspect run artifacts and `comfyui_diagnostics`.
+
+Standalone output refresh only reads ComfyUI `/history`, `/queue`, and `/view`.
+It does not enqueue a prompt and does not rerun any model stage. This makes it a
+safe post-render check for local ComfyUI bundles where users may keep the UI open
+and render manually.
 
 ## Operational Rule
 

@@ -303,6 +303,10 @@ relief-story-agent run-audit `
   --run-id "{run_id}" `
   --pretty
 
+relief-story-agent run-timeline `
+  --run-id "{run_id}" `
+  --pretty
+
 relief-story-agent run-artifacts `
   --run-id "{run_id}" `
   --pretty
@@ -484,7 +488,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:342 passed" `
+  --check "full_tests=pass:345 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `
@@ -1286,6 +1290,7 @@ A run may select another registered profile without changing the server configur
 - `GET /api/runs`
 - `GET /api/runs/{run_id}`
 - `GET /api/runs/{run_id}/events`
+- `GET /api/runs/{run_id}/timeline`
 - `GET /api/runs/{run_id}/artifacts`
 - `POST /api/runs/{run_id}/refresh-comfyui`
 - `POST /api/runs/{run_id}/approve`

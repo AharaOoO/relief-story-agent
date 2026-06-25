@@ -73,6 +73,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
             "run_detail": "/api/runs/{run_id}",
             "run_events": "/api/runs/{run_id}/events",
             "run_audit": "/api/runs/{run_id}/audit",
+            "run_timeline": "/api/runs/{run_id}/timeline",
             "run_artifacts": "/api/runs/{run_id}/artifacts",
             "batches": "/api/batches",
             "batch_plan": "/api/batches/plan",

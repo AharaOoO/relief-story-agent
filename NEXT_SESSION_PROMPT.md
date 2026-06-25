@@ -45,7 +45,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-342 passed
+345 passed
 
 最近核心功能提交包括：
 

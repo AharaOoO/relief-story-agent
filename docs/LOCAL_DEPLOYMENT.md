@@ -334,6 +334,11 @@ relief-story-agent run-audit `
   --run-id "{run_id}" `
   --pretty
 
+relief-story-agent run-timeline `
+  --server "http://127.0.0.1:8891" `
+  --run-id "{run_id}" `
+  --pretty
+
 relief-story-agent run-artifacts `
   --server "http://127.0.0.1:8891" `
   --run-id "{run_id}" `
@@ -341,6 +346,7 @@ relief-story-agent run-artifacts `
 
 Invoke-RestMethod "http://127.0.0.1:8891/api/runs/{run_id}"
 Invoke-RestMethod "http://127.0.0.1:8891/api/runs/{run_id}/audit"
+Invoke-RestMethod "http://127.0.0.1:8891/api/runs/{run_id}/timeline"
 Invoke-RestMethod "http://127.0.0.1:8891/api/runs/{run_id}/artifacts"
 ```
 

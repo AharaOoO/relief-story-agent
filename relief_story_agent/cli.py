@@ -224,6 +224,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Fetch one run's artifact index through the local API server.",
     )
     _add_run_id_api_args(run_artifacts_parser)
+    run_timeline_parser = subparsers.add_parser(
+        "run-timeline",
+        help="Fetch one run's UI-friendly stage timeline through the local API server.",
+    )
+    _add_run_id_api_args(run_timeline_parser)
     run_audit_parser = subparsers.add_parser(
         "run-audit",
         help="Audit one run's event stream and state consistency.",
@@ -385,6 +390,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_events(args)
     if args.command == "run-artifacts":
         return _run_artifacts(args)
+    if args.command == "run-timeline":
+        return _run_timeline(args)
     if args.command == "run-audit":
         return _run_audit(args)
     if args.command == "batch-artifacts":
@@ -711,6 +718,10 @@ def _run_events(args: argparse.Namespace) -> int:
 
 def _run_artifacts(args: argparse.Namespace) -> int:
     return _get_json_command(args, f"/api/runs/{args.run_id}/artifacts")
+
+
+def _run_timeline(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/runs/{args.run_id}/timeline")
 
 
 def _run_audit(args: argparse.Namespace) -> int:

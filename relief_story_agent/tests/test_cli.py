@@ -47,6 +47,7 @@ def test_cli_help_lists_core_local_commands():
     assert "scheduler" in completed.stdout
     assert "run-events" in completed.stdout
     assert "run-artifacts" in completed.stdout
+    assert "run-timeline" in completed.stdout
     assert "run-audit" in completed.stdout
     assert "batch-artifacts" in completed.stdout
     assert "batch-health" in completed.stdout

@@ -431,6 +431,16 @@ adapter compatibility, and returns a `recommended` workflow when a LiteGraph LTX
 workflow can be patched automatically. Discovery only reads files; it does not
 upload images, enqueue prompts, or edit workflow files.
 
+Discovery can now recommend two automatic LiteGraph modes:
+
+- `litegraph_ltx_auto_injection`: the four-grid workflow shape with an LTX JSON
+  text node, optional `TD_LTXVAddGuideFromGrid`, seed, and filename prefix.
+- `litegraph_ltx_widget_patch`: common integrated-package LTX graphs such as
+  `ComfyUI-LTXVideo` examples. The agent patches existing positive/negative
+  prompt widgets, `RandomNoise` seed widgets, `LoadImage` filenames, and
+  `SaveVideo`/`VHS_VideoCombine` filename prefixes. It does not create nodes,
+  install custom nodes, or rewrite model/sampler settings.
+
 For launcher, desktop-shell, or future UI flows where the user fills one local ComfyUI address box first, call:
 
 ```http
@@ -454,7 +464,7 @@ ComfyUI HTTP calls bypass environment proxy settings, so localhost requests stay
 inside the user's local integrated package instead of being routed through a
 system proxy.
 
-The endpoint pings ComfyUI `/queue`, reports running and pending queue counts, and, when `workflow_api_path` is supplied, analyzes the local workflow with the same LTX/placeholder logic used by real runs. It returns `ready`, `connected`, `checks`, `suggested_actions`, `suggested_config`, and workflow details such as `adapter_mode`, `grid_shape`, and `ltx_injection_points`. It does not upload images, call models, enqueue `/prompt`, wait for rendering, or download outputs.
+The endpoint pings ComfyUI `/queue`, reports running and pending queue counts, and, when `workflow_api_path` is supplied, analyzes the local workflow with the same LTX/placeholder logic used by real runs. It returns `ready`, `connected`, `checks`, `suggested_actions`, `suggested_config`, and workflow details such as `adapter_mode`, `grid_shape`, `ltx_injection_points`, and `ltx_widget_patch_points`. It does not upload images, call models, enqueue `/prompt`, wait for rendering, or download outputs.
 
 The same check is available without starting the API:
 
@@ -471,7 +481,7 @@ relief-story-agent connect-comfyui --request "D:/relief_story_config/comfyui_con
 `workflow_api_path` accepts two workflow shapes:
 
 - ComfyUI API prompt JSON: uses `placeholder_map_path` and/or inline `placeholder_map` to fill per-shot inputs, then queues one prompt per storyboard shot. When both are provided, the file is loaded first and inline entries override entries with the same key.
-- ComfyUI frontend LiteGraph JSON: detects the LTX prompt JSON node, converts the graph to API prompt format, expands KJNodes `SetNode/GetNode` pairs into direct links, fills the LTX payload, seed, and output filename prefix, then queues one prompt for the whole short.
+- ComfyUI frontend LiteGraph JSON: first tries `litegraph_ltx_auto_injection`, which detects the LTX prompt JSON node, converts the graph to API prompt format, expands KJNodes `SetNode/GetNode` pairs into direct links, fills the LTX payload, seed, optional four-grid image, and output filename prefix, then queues one prompt for the whole short. If that JSON-node shape is not present, it tries `litegraph_ltx_widget_patch` for integrated-package LTX graphs with ordinary prompt widgets.
 
 For the supplied LTX 2.3 four-grid workflow, the detected replacement points are:
 

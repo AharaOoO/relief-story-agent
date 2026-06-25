@@ -18,7 +18,12 @@ from relief_story_agent.comfyui import (
     upload_grid_image,
 )
 from relief_story_agent.grid_image import validate_grid_image
-from relief_story_agent.ltx_workflow import find_ltx_injection_points, patch_ltx_litegraph_workflow
+from relief_story_agent.ltx_workflow import (
+    find_ltx_injection_points,
+    find_ltx_widget_patch_points,
+    patch_ltx_litegraph_workflow,
+    patch_ltx_widget_workflow,
+)
 from relief_story_agent.models import (
     ComfyUIConnectionRequest,
     ComfyUIRunConfig,
@@ -463,6 +468,59 @@ def _ltx_litegraph_workflow_file(tmp_path):
     return path
 
 
+def _ltx_widget_workflow_file(tmp_path):
+    path = tmp_path / "ltx_widget_workflow.json"
+    path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {
+                        "id": 10,
+                        "type": "LoadImage",
+                        "inputs": [],
+                        "outputs": [{"name": "IMAGE", "type": "IMAGE", "links": [100]}],
+                        "widgets_values": ["example.png", "image"],
+                    },
+                    {
+                        "id": 20,
+                        "type": "CLIPTextEncode",
+                        "title": "CLIP Text Encode (Negative Prompt)",
+                        "inputs": [{"name": "clip", "type": "CLIP", "link": 101}],
+                        "outputs": [{"name": "CONDITIONING", "type": "CONDITIONING", "links": [102]}],
+                        "widgets_values": ["old negative"],
+                    },
+                    {
+                        "id": 21,
+                        "type": "CLIPTextEncode",
+                        "title": "CLIP Text Encode (Positive Prompt)",
+                        "inputs": [{"name": "clip", "type": "CLIP", "link": 103}],
+                        "outputs": [{"name": "CONDITIONING", "type": "CONDITIONING", "links": [104]}],
+                        "widgets_values": ["old positive"],
+                    },
+                    {
+                        "id": 30,
+                        "type": "RandomNoise",
+                        "inputs": [],
+                        "outputs": [{"name": "NOISE", "type": "NOISE", "links": [105]}],
+                        "widgets_values": [42, "fixed"],
+                    },
+                    {
+                        "id": 40,
+                        "type": "SaveVideo",
+                        "inputs": [{"name": "video", "type": "VIDEO", "link": 106}],
+                        "outputs": [],
+                        "widgets_values": ["old_prefix", "auto", "auto"],
+                    },
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
 def test_submit_storyboard_loads_placeholder_map_file_and_inline_overrides(tmp_path):
     map_path = tmp_path / "placeholder_map.json"
     map_path.write_text(
@@ -721,6 +779,149 @@ def test_api_comfyui_analyze_workflow_detects_litegraph_ltx_auto_injection(tmp_p
     assert body["suggested_config"]["workflow_api_path"] == str(workflow_path)
     assert body["suggested_config"]["placeholder_map"] == {}
     assert body["warnings"] == []
+
+
+def test_ltx_widget_patch_points_detect_common_integrated_workflow(tmp_path):
+    workflow = json.loads(_ltx_widget_workflow_file(tmp_path).read_text(encoding="utf-8"))
+
+    points = find_ltx_widget_patch_points(workflow)
+
+    assert points.positive_prompt_node_ids == ("21",)
+    assert points.negative_prompt_node_ids == ("20",)
+    assert points.seed_node_ids == ("30",)
+    assert points.filename_prefix_node_ids == ("40",)
+    assert points.image_node_ids == ("10",)
+
+
+def test_ltx_widget_patch_writes_gemma_prompt_without_overwriting_api_key():
+    workflow = {
+        "version": 0.4,
+        "nodes": [
+            {
+                "id": 1,
+                "type": "PrimitiveString",
+                "outputs": [{"name": "STRING", "type": "STRING", "links": [11]}],
+                "widgets_values": ["secret-key"],
+            },
+            {
+                "id": 2,
+                "type": "GemmaAPITextEncode",
+                "title": "Gemma API Text Encode - POSITIVE",
+                "inputs": [{"name": "api_key", "type": "STRING", "widget": {"name": "api_key"}, "link": 11}],
+                "outputs": [{"name": "conditioning", "type": "CONDITIONING", "links": [12]}],
+                "widgets_values": ["", "old prompt", "legacy-model-slot", "ltx-2.3.safetensors"],
+            },
+        ],
+        "links": [[11, 1, 0, 2, 0, "STRING"]],
+    }
+
+    patched = patch_ltx_widget_workflow(
+        workflow,
+        ltx_payload={"prompt": "new prompt", "negative_prompt": "new negative"},
+    )
+
+    assert patched["2"]["inputs"]["api_key"] == ["1", 0]
+    assert patched["2"]["inputs"]["prompt"] == "new prompt"
+    assert "enhance_prompt" not in patched["2"]["inputs"]
+    assert patched["2"]["inputs"]["ckpt_name"] == "ltx-2.3.safetensors"
+    assert workflow["nodes"][1]["widgets_values"] == ["", "old prompt", "legacy-model-slot", "ltx-2.3.safetensors"]
+
+
+def test_analyze_workflow_detects_ltx_widget_patch_mode(tmp_path):
+    workflow_path = _ltx_widget_workflow_file(tmp_path)
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=InMemoryRunStore(),
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/comfyui/analyze-workflow",
+        json={
+            "comfyui": {
+                "enabled": True,
+                "workflow_api_path": str(workflow_path),
+            }
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["workflow_format"] == "litegraph"
+    assert body["adapter_mode"] == "litegraph_ltx_widget_patch"
+    assert body["placeholder_map_required"] is False
+    assert body["grid_asset_required"] is True
+    assert body["ltx_widget_patch_points"] == {
+        "positive_prompt_node_ids": ["21"],
+        "negative_prompt_node_ids": ["20"],
+        "seed_node_ids": ["30"],
+        "filename_prefix_node_ids": ["40"],
+        "image_node_ids": ["10"],
+    }
+
+
+def test_preview_widget_ltx_workflow_patches_existing_widgets(tmp_path):
+    workflow_path = _ltx_widget_workflow_file(tmp_path)
+    asset = GridImageAsset(
+        source="manual",
+        local_path=str(tmp_path / "grid.png"),
+        sha256="b" * 64,
+        mime_type="image/png",
+        width=1024,
+        height=1024,
+        byte_size=100,
+        comfyui_filename="uploaded_grid.png",
+        upload_status="accepted",
+    )
+
+    preview = preview_storyboard_submission(
+        ComfyUIRunConfig(enabled=True, workflow_api_path=str(workflow_path)),
+        [
+            {
+                "shot_id": 1,
+                "time_range": "0-4s",
+                "image_prompt": "quiet convenience store window",
+                "negative_prompt": "shouting, violence",
+                "comfyui_inputs": {"seed": 777},
+            }
+        ],
+        "widget_run",
+        duration_seconds=4,
+        include_workflow=True,
+        grid_image_asset=asset,
+    )
+
+    item = preview["items"][0]
+    workflow = item["workflow"]
+    assert item["submission_key"] == "ltx_widget"
+    assert [replacement["key"] for replacement in item["replacements"]] == [
+        "image",
+        "positive_prompt",
+        "negative_prompt",
+        "seed",
+        "filename_prefix",
+    ]
+    assert workflow["10"]["inputs"]["image"] == "uploaded_grid.png"
+    assert workflow["21"]["inputs"]["text"] == "quiet convenience store window"
+    assert workflow["20"]["inputs"]["text"] == "shouting, violence"
+    assert workflow["30"]["inputs"]["noise_seed"] == 777
+    assert workflow["40"]["inputs"]["filename_prefix"] == "widget_run"
+
+
+def test_discover_workflows_recommends_ltx_widget_candidate(tmp_path):
+    good = _ltx_widget_workflow_file(tmp_path)
+    unsupported = tmp_path / "plain.json"
+    unsupported.write_text(json.dumps({"hello": "world"}), encoding="utf-8")
+
+    report = comfyui.discover_workflows([tmp_path], endpoint="127.0.0.1:8188/queue")
+
+    assert report["recommended"]["path"] == str(good)
+    assert report["items"][0]["adapter_mode"] == "litegraph_ltx_widget_patch"
+    assert report["items"][0]["status"] == "recommended"
+    assert report["items"][1]["status"] == "unsupported"
 
 
 def test_api_comfyui_analyze_workflow_reports_api_placeholder_map_mode(tmp_path):

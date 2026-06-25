@@ -20,6 +20,19 @@ to API prompt format. For `API prompt JSON`, use `placeholder_map_path` or
 inline `placeholder_map` to tell the agent which node inputs should receive
 prompt text, negative prompt text, seed, strength, or filename prefix.
 
+LiteGraph analysis has two automatic adapter modes:
+
+- `litegraph_ltx_auto_injection` is for the four-grid workflow shape that has an
+  LTX JSON/string node. It patches the LTX payload, seed, filename prefix, and
+  optional `TD_LTXVAddGuideFromGrid` image input.
+- `litegraph_ltx_widget_patch` is for common integrated-package LTX workflows,
+  including many `ComfyUI-LTXVideo` examples. It patches existing
+  positive/negative prompt widgets, `RandomNoise` seeds, `LoadImage` filenames,
+  and `SaveVideo`/`VHS_VideoCombine` filename prefixes.
+
+Both modes preserve the user's graph topology. They do not create nodes,
+install custom nodes, change model files, or change sampler settings.
+
 ## Address Box Flow
 
 Use this before any real generation:
@@ -39,6 +52,21 @@ POST /api/comfyui/connect
 This call pings `/queue`, reports running/pending queue counts, and analyzes the
 workflow file. It does not upload images and does not enqueue video work.
 
+If the user does not know which JSON file to pick from an integrated package,
+scan the package first:
+
+```powershell
+relief-story-agent discover-comfyui-workflows `
+  --search-root "D:/AI-Comfyui-onekey-V5/ComfyUI_windows_portable_nvidia/ComfyUI_windows_portable/ComfyUI" `
+  --endpoint "127.0.0.1:8188/queue" `
+  --filename-keyword "LTX" `
+  --pretty
+```
+
+Use the `recommended.path` value as `workflow_api_path` when the returned
+`adapter_mode` is `litegraph_ltx_auto_injection` or
+`litegraph_ltx_widget_patch`.
+
 ## Four-grid Image
 
 The LTX 2.3 four-grid flow expects a 2x2 reference sheet. The agent can:
@@ -57,6 +85,10 @@ For the common four-grid LiteGraph workflow, the important parts are:
 - a video filename prefix node.
 
 The workflow analyzer reports these injection points in `ltx_injection_points`.
+For integrated-package widget workflows, it reports the patchable nodes in
+`ltx_widget_patch_points` instead. These workflows may not expose a 2x2 grid
+shape because they are ordinary LTX image/video workflows rather than the
+special `TD_LTXVAddGuideFromGrid` graph.
 
 ## Preview Before Enqueue
 
@@ -107,7 +139,7 @@ ComfyUI is not running:
 `LoadImage` is not detected:
 
 - confirm the workflow really uses a four-grid image;
-- inspect `ltx_injection_points`;
+- inspect `ltx_injection_points` or `ltx_widget_patch_points`;
 - use manual `placeholder_map` only for API prompt JSON workflows.
 
 Prompt submission fails:

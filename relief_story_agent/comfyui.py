@@ -18,8 +18,10 @@ from .ltx_workflow import (
     build_ltx_payload_from_storyboard,
     detect_workflow_format,
     find_ltx_injection_points,
+    find_ltx_widget_patch_points,
     litegraph_to_api_prompt,
     patch_ltx_litegraph_workflow,
+    patch_ltx_widget_workflow,
 )
 from .models import (
     ComfyUICancellation,
@@ -119,30 +121,61 @@ def analyze_workflow_config(config: ComfyUIRunConfig) -> dict[str, Any]:
     }
 
     if workflow_format == "litegraph":
-        points = find_ltx_injection_points(workflow)
-        api_prompt = litegraph_to_api_prompt(workflow)
-        if not points.seed_node_id:
-            warnings.append("No RandomNoise noise_seed widget was detected; seed injection will be skipped.")
-        if not points.filename_prefix_node_id:
-            warnings.append("No filename_prefix widget was detected; output prefix injection will be skipped.")
-        base.update(
-            {
-                "adapter_mode": "litegraph_ltx_auto_injection",
-                "placeholder_map_required": False,
-                "node_count": len(workflow.get("nodes") or []),
-                "link_count": len(workflow.get("links") or []),
-                "api_node_count": len(api_prompt),
-                "grid_asset_required": points.grid_image_node_id is not None,
-                "grid_shape": {
-                    "columns": points.grid_columns,
-                    "rows": points.grid_rows,
-                },
-                "ltx_injection_points": _ltx_injection_points_payload(points),
-            }
-        )
-        base["suggested_config"]["placeholder_map"] = {}
-        base["suggested_config"]["adapter_mode"] = "litegraph_ltx_auto_injection"
-        return base
+        try:
+            points = find_ltx_injection_points(workflow)
+            api_prompt = litegraph_to_api_prompt(workflow)
+            if not points.seed_node_id:
+                warnings.append("No RandomNoise noise_seed widget was detected; seed injection will be skipped.")
+            if not points.filename_prefix_node_id:
+                warnings.append("No filename_prefix widget was detected; output prefix injection will be skipped.")
+            base.update(
+                {
+                    "adapter_mode": "litegraph_ltx_auto_injection",
+                    "placeholder_map_required": False,
+                    "node_count": len(workflow.get("nodes") or []),
+                    "link_count": len(workflow.get("links") or []),
+                    "api_node_count": len(api_prompt),
+                    "grid_asset_required": points.grid_image_node_id is not None,
+                    "grid_shape": {
+                        "columns": points.grid_columns,
+                        "rows": points.grid_rows,
+                    },
+                    "ltx_injection_points": _ltx_injection_points_payload(points),
+                }
+            )
+            base["suggested_config"]["placeholder_map"] = {}
+            base["suggested_config"]["adapter_mode"] = "litegraph_ltx_auto_injection"
+            return base
+        except ValueError as auto_injection_error:
+            try:
+                widget_points = find_ltx_widget_patch_points(workflow)
+            except ValueError as widget_error:
+                raise ValueError(
+                    f"{auto_injection_error}; widget patch detection also failed: {widget_error}"
+                ) from widget_error
+            api_prompt = litegraph_to_api_prompt(workflow)
+            if not widget_points.negative_prompt_node_ids:
+                warnings.append("No negative prompt widget was detected; negative prompt injection will be skipped.")
+            if not widget_points.seed_node_ids:
+                warnings.append("No RandomNoise widget was detected; seed injection will be skipped.")
+            if not widget_points.filename_prefix_node_ids:
+                warnings.append("No SaveVideo/VHS filename prefix widget was detected; output prefix injection will be skipped.")
+            base.update(
+                {
+                    "adapter_mode": "litegraph_ltx_widget_patch",
+                    "placeholder_map_required": False,
+                    "node_count": len(workflow.get("nodes") or []),
+                    "link_count": len(workflow.get("links") or []),
+                    "api_node_count": len(api_prompt),
+                    "grid_asset_required": bool(widget_points.image_node_ids),
+                    "grid_shape": {},
+                    "ltx_injection_points": {},
+                    "ltx_widget_patch_points": _ltx_widget_points_payload(widget_points),
+                }
+            )
+            base["suggested_config"]["placeholder_map"] = {}
+            base["suggested_config"]["adapter_mode"] = "litegraph_ltx_widget_patch"
+            return base
 
     if not placeholder_map:
         warnings.append("API workflow requires a placeholder_map before prompts can be injected.")
@@ -343,6 +376,7 @@ def _discover_workflow_item(path: Path, *, endpoint: str) -> dict[str, Any]:
         "grid_shape": {},
         "placeholder_map_required": False,
         "ltx_injection_points": {},
+        "ltx_widget_patch_points": {},
         "warnings": [],
         "error": "",
         "suggested_config": {},
@@ -371,6 +405,7 @@ def _discover_workflow_item(path: Path, *, endpoint: str) -> dict[str, Any]:
         "grid_shape": analysis.get("grid_shape") or {},
         "placeholder_map_required": bool(analysis.get("placeholder_map_required")),
         "ltx_injection_points": analysis.get("ltx_injection_points") or {},
+        "ltx_widget_patch_points": analysis.get("ltx_widget_patch_points") or {},
         "warnings": analysis.get("warnings") or [],
         "suggested_config": analysis.get("suggested_config") or {},
     }
@@ -384,6 +419,20 @@ def _workflow_discovery_score(analysis: dict[str, Any]) -> int:
             score += 15
         if analysis.get("grid_asset_required"):
             score += 5
+        return score
+    if analysis.get("adapter_mode") == "litegraph_ltx_widget_patch":
+        points = analysis.get("ltx_widget_patch_points") or {}
+        score = 75
+        if points.get("positive_prompt_node_ids"):
+            score += 10
+        if points.get("negative_prompt_node_ids"):
+            score += 5
+        if points.get("seed_node_ids"):
+            score += 3
+        if points.get("filename_prefix_node_ids"):
+            score += 3
+        if points.get("image_node_ids"):
+            score += 4
         return score
     if analysis.get("adapter_mode") == "api_placeholder_map":
         return 50 if analysis.get("placeholder_map_required") else 60
@@ -457,70 +506,153 @@ def plan_storyboard_workflows(
     planned_workflows: list[PlannedComfyUIWorkflow] = []
     if workflow_format == "litegraph":
         ltx_payload = build_ltx_payload_from_storyboard(storyboard, duration_seconds=duration_seconds)
-        points = find_ltx_injection_points(workflow)
-        grid_image_filename = None
-        replacements = []
-        if points.grid_image_node_id:
-            if not grid_image_asset:
-                raise ValueError("LTX grid workflow requires a grid image asset")
-            if grid_image_asset.upload_status != "accepted" and not allow_unuploaded_grid_image:
-                raise ValueError("LTX grid workflow requires an accepted uploaded grid image asset")
-            grid_image_filename = grid_image_asset.comfyui_filename
+        try:
+            points = find_ltx_injection_points(workflow)
+            grid_image_filename = None
+            replacements = []
+            if points.grid_image_node_id:
+                if not grid_image_asset:
+                    raise ValueError("LTX grid workflow requires a grid image asset")
+                if grid_image_asset.upload_status != "accepted" and not allow_unuploaded_grid_image:
+                    raise ValueError("LTX grid workflow requires an accepted uploaded grid image asset")
+                grid_image_filename = grid_image_asset.comfyui_filename
+                replacements.append(
+                    {
+                        "key": "grid_image",
+                        "node": points.grid_image_node_id,
+                        "input": points.grid_image_input,
+                        "source": "grid_image_asset.comfyui_filename",
+                        "value_preview": grid_image_asset.comfyui_filename,
+                    }
+                )
+            patched = patch_ltx_litegraph_workflow(
+                workflow,
+                ltx_payload=ltx_payload,
+                seed=_read_storyboard_seed(storyboard),
+                filename_prefix=run_id,
+                grid_image_filename=grid_image_filename,
+            )
             replacements.append(
                 {
-                    "key": "grid_image",
-                    "node": points.grid_image_node_id,
-                    "input": points.grid_image_input,
-                    "source": "grid_image_asset.comfyui_filename",
-                    "value_preview": grid_image_asset.comfyui_filename,
+                    "key": "ltx_payload",
+                    "node": points.json_node_id,
+                    "input": "text",
+                    "source": "storyboard",
+                    "value_preview": _preview_value(ltx_payload),
                 }
             )
-        patched = patch_ltx_litegraph_workflow(
-            workflow,
-            ltx_payload=ltx_payload,
-            seed=_read_storyboard_seed(storyboard),
-            filename_prefix=run_id,
-            grid_image_filename=grid_image_filename,
-        )
-        replacements.append(
-            {
-                "key": "ltx_payload",
-                "node": points.json_node_id,
-                "input": "text",
-                "source": "storyboard",
-                "value_preview": _preview_value(ltx_payload),
-            }
-        )
-        if points.seed_node_id:
-            replacements.append(
+            if points.seed_node_id:
+                replacements.append(
+                    {
+                        "key": "seed",
+                        "node": points.seed_node_id,
+                        "input": "noise_seed",
+                        "source": "storyboard.comfyui_inputs.seed",
+                        "value_preview": _preview_value(_read_storyboard_seed(storyboard)),
+                    }
+                )
+            if points.filename_prefix_node_id:
+                replacements.append(
+                    {
+                        "key": "filename_prefix",
+                        "node": points.filename_prefix_node_id,
+                        "input": "filename_prefix",
+                        "source": "run_id",
+                        "value_preview": run_id,
+                    }
+                )
+            planned_workflows.append(
+                PlannedComfyUIWorkflow(
+                    submission_key="ltx",
+                    workflow=patched,
+                    workflow_format=workflow_format,
+                    replacements=replacements,
+                    ltx_payload=ltx_payload,
+                )
+            )
+            return planned_workflows
+        except ValueError as auto_injection_error:
+            try:
+                widget_points = find_ltx_widget_patch_points(workflow)
+            except ValueError as widget_error:
+                raise ValueError(
+                    f"{auto_injection_error}; widget patch detection also failed: {widget_error}"
+                ) from widget_error
+            image_filename = None
+            replacements = []
+            if widget_points.image_node_ids:
+                if not grid_image_asset:
+                    raise ValueError("LTX widget workflow requires a grid image asset")
+                if grid_image_asset.upload_status != "accepted" and not allow_unuploaded_grid_image:
+                    raise ValueError("LTX widget workflow requires an accepted uploaded grid image asset")
+                image_filename = grid_image_asset.comfyui_filename
+                replacements.extend(
+                    {
+                        "key": "image",
+                        "node": node_id,
+                        "input": "image",
+                        "source": "grid_image_asset.comfyui_filename",
+                        "value_preview": grid_image_asset.comfyui_filename,
+                    }
+                    for node_id in widget_points.image_node_ids
+                )
+            patched = patch_ltx_widget_workflow(
+                workflow,
+                ltx_payload=ltx_payload,
+                seed=_read_storyboard_seed(storyboard),
+                filename_prefix=run_id,
+                image_filename=image_filename,
+            )
+            replacements.extend(
+                {
+                    "key": "positive_prompt",
+                    "node": node_id,
+                    "input": "text",
+                    "source": "storyboard.prompt",
+                    "value_preview": _preview_value(ltx_payload.get("prompt", "")),
+                }
+                for node_id in widget_points.positive_prompt_node_ids
+            )
+            replacements.extend(
+                {
+                    "key": "negative_prompt",
+                    "node": node_id,
+                    "input": "text",
+                    "source": "storyboard.negative_prompt",
+                    "value_preview": _preview_value(ltx_payload.get("negative_prompt", "")),
+                }
+                for node_id in widget_points.negative_prompt_node_ids
+            )
+            replacements.extend(
                 {
                     "key": "seed",
-                    "node": points.seed_node_id,
+                    "node": node_id,
                     "input": "noise_seed",
                     "source": "storyboard.comfyui_inputs.seed",
                     "value_preview": _preview_value(_read_storyboard_seed(storyboard)),
                 }
+                for node_id in widget_points.seed_node_ids
             )
-        if points.filename_prefix_node_id:
-            replacements.append(
+            replacements.extend(
                 {
                     "key": "filename_prefix",
-                    "node": points.filename_prefix_node_id,
+                    "node": node_id,
                     "input": "filename_prefix",
                     "source": "run_id",
                     "value_preview": run_id,
                 }
+                for node_id in widget_points.filename_prefix_node_ids
             )
-        planned_workflows.append(
-            PlannedComfyUIWorkflow(
-                submission_key="ltx",
-                workflow=patched,
-                workflow_format=workflow_format,
-                replacements=replacements,
-                ltx_payload=ltx_payload,
+            planned_workflows.append(
+                PlannedComfyUIWorkflow(
+                    submission_key="ltx_widget",
+                    workflow=patched,
+                    workflow_format=workflow_format,
+                    replacements=replacements,
+                    ltx_payload=ltx_payload,
+                )
             )
-        )
-        return planned_workflows
+            return planned_workflows
 
     placeholder_map = resolve_placeholder_map(config)
     for index, shot in enumerate(storyboard, start=1):
@@ -601,7 +733,10 @@ def _workflow_requires_grid_image(config: ComfyUIRunConfig) -> bool:
     workflow = load_workflow(config.workflow_api_path)
     if detect_workflow_format(workflow) != "litegraph":
         return False
-    return find_ltx_injection_points(workflow).grid_image_node_id is not None
+    try:
+        return find_ltx_injection_points(workflow).grid_image_node_id is not None
+    except ValueError:
+        return bool(find_ltx_widget_patch_points(workflow).image_node_ids)
 
 
 def _ltx_injection_points_payload(points) -> dict[str, Any]:
@@ -620,6 +755,16 @@ def _ltx_injection_points_payload(points) -> dict[str, Any]:
             }
         )
     return payload
+
+
+def _ltx_widget_points_payload(points) -> dict[str, Any]:
+    return {
+        "positive_prompt_node_ids": list(points.positive_prompt_node_ids),
+        "negative_prompt_node_ids": list(points.negative_prompt_node_ids),
+        "seed_node_ids": list(points.seed_node_ids),
+        "filename_prefix_node_ids": list(points.filename_prefix_node_ids),
+        "image_node_ids": list(points.image_node_ids),
+    }
 
 
 def _diagnostic_check(

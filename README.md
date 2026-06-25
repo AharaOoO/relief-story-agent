@@ -80,7 +80,7 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-304 passed
+309 passed
 ```
 
 ## 下一步开发

@@ -21,6 +21,15 @@ class LTXInjectionPoints:
     grid_rows: int | None = None
 
 
+@dataclass(frozen=True)
+class LTXWidgetPatchPoints:
+    positive_prompt_node_ids: tuple[str, ...]
+    negative_prompt_node_ids: tuple[str, ...] = ()
+    seed_node_ids: tuple[str, ...] = ()
+    filename_prefix_node_ids: tuple[str, ...] = ()
+    image_node_ids: tuple[str, ...] = ()
+
+
 def detect_workflow_format(workflow: dict[str, Any]) -> str:
     if isinstance(workflow.get("nodes"), list) and isinstance(workflow.get("links"), list):
         return "litegraph"
@@ -69,6 +78,47 @@ def find_ltx_injection_points(workflow: dict[str, Any]) -> LTXInjectionPoints:
     )
 
 
+def find_ltx_widget_patch_points(workflow: dict[str, Any]) -> LTXWidgetPatchPoints:
+    if detect_workflow_format(workflow) != "litegraph":
+        raise ValueError("LTX widget patch detection requires a LiteGraph workflow")
+
+    positive: list[str] = []
+    negative: list[str] = []
+    seeds: list[str] = []
+    filename_prefixes: list[str] = []
+    images: list[str] = []
+
+    for node in workflow.get("nodes", []):
+        node_id = str(node.get("id"))
+        node_type = str(node.get("type") or "")
+        label = _node_label(node)
+
+        if _is_negative_prompt_node(node_type, label):
+            negative.append(node_id)
+        elif _is_positive_prompt_node(node_type, label):
+            positive.append(node_id)
+
+        if node_type == "RandomNoise":
+            seeds.append(node_id)
+
+        if node_type in {"SaveVideo", "VHS_VideoCombine"}:
+            filename_prefixes.append(node_id)
+
+        if node_type == "LoadImage":
+            images.append(node_id)
+
+    if not positive:
+        raise ValueError("Could not find a LiteGraph positive prompt widget node")
+
+    return LTXWidgetPatchPoints(
+        positive_prompt_node_ids=tuple(positive),
+        negative_prompt_node_ids=tuple(negative),
+        seed_node_ids=tuple(seeds),
+        filename_prefix_node_ids=tuple(filename_prefixes),
+        image_node_ids=tuple(images),
+    )
+
+
 def litegraph_to_api_prompt(workflow: dict[str, Any]) -> dict[str, Any]:
     if detect_workflow_format(workflow) != "litegraph":
         raise ValueError("Expected a LiteGraph workflow")
@@ -98,6 +148,8 @@ def litegraph_to_api_prompt(workflow: dict[str, Any]) -> dict[str, Any]:
                 value_found, value = _read_widget_value(node, name, input_index)
                 if value_found and name != "videopreview":
                     inputs[name] = value
+
+        _apply_known_widget_values(node, inputs)
 
         prompt[node_id] = {
             "class_type": node.get("type"),
@@ -169,6 +221,41 @@ def patch_ltx_litegraph_workflow(
     if filename_prefix is not None and points.filename_prefix_node_id is not None:
         prefix_node = _find_node(patched, points.filename_prefix_node_id)
         _write_widget_value(prefix_node, "filename_prefix", filename_prefix)
+
+    return litegraph_to_api_prompt(patched)
+
+
+def patch_ltx_widget_workflow(
+    workflow: dict[str, Any],
+    *,
+    ltx_payload: dict[str, Any],
+    seed: int | None = None,
+    filename_prefix: str | None = None,
+    image_filename: str | None = None,
+) -> dict[str, Any]:
+    patched = copy.deepcopy(workflow)
+    points = find_ltx_widget_patch_points(patched)
+
+    if points.image_node_ids:
+        if not image_filename:
+            raise ValueError("LTX widget workflow requires an uploaded image filename")
+        for node_id in points.image_node_ids:
+            _write_widget_value(_find_node(patched, node_id), "image", image_filename)
+
+    prompt = str(ltx_payload.get("prompt") or "")
+    negative_prompt = str(ltx_payload.get("negative_prompt") or "")
+    for node_id in points.positive_prompt_node_ids:
+        _write_prompt_widget(_find_node(patched, node_id), prompt)
+    for node_id in points.negative_prompt_node_ids:
+        _write_prompt_widget(_find_node(patched, node_id), negative_prompt)
+
+    if seed is not None:
+        for node_id in points.seed_node_ids:
+            _write_widget_value(_find_node(patched, node_id), "noise_seed", int(seed))
+
+    if filename_prefix is not None:
+        for node_id in points.filename_prefix_node_ids:
+            _write_widget_value(_find_node(patched, node_id), "filename_prefix", filename_prefix)
 
     return litegraph_to_api_prompt(patched)
 
@@ -487,6 +574,8 @@ def _write_widget_value(node: dict[str, Any], widget_name: str, value: Any) -> N
     ]
     if widget_name in widget_names:
         index = widget_names.index(widget_name)
+    elif widget_name in _KNOWN_WIDGET_INPUT_NAMES.get(str(node.get("type") or ""), ()):
+        index = _KNOWN_WIDGET_INPUT_NAMES[str(node.get("type") or "")].index(widget_name)
     else:
         index = 0
     while len(values) <= index:
@@ -528,3 +617,66 @@ def _join_unique(parts: list[str]) -> str:
         seen.add(part)
         unique.append(part)
     return "；".join(unique)
+
+
+def _node_label(node: dict[str, Any]) -> str:
+    parts = [
+        str(node.get("type") or ""),
+        str(node.get("title") or ""),
+    ]
+    properties = node.get("properties") or {}
+    if isinstance(properties, dict):
+        parts.append(str(properties.get("Node name for S&R") or ""))
+    return " ".join(parts).lower()
+
+
+def _is_positive_prompt_node(node_type: str, label: str) -> bool:
+    if "negative" in label:
+        return False
+    if node_type in {"CLIPTextEncode", "GemmaAPITextEncode"}:
+        return "positive" in label or "prompt" in label
+    if node_type in {"PrimitiveStringMultiline", "PrimitiveString"}:
+        return "prompt" in label
+    return False
+
+
+def _is_negative_prompt_node(node_type: str, label: str) -> bool:
+    return node_type in {"CLIPTextEncode", "GemmaAPITextEncode"} and "negative" in label
+
+
+def _write_prompt_widget(node: dict[str, Any], value: str) -> None:
+    widget_name = "prompt" if node.get("type") == "GemmaAPITextEncode" else "text"
+    _write_widget_value(node, widget_name, value)
+
+
+_KNOWN_WIDGET_INPUT_NAMES: dict[str, tuple[str, ...]] = {
+    "CLIPTextEncode": ("text",),
+    "GemmaAPITextEncode": ("api_key", "prompt", "_legacy_model_slot", "ckpt_name"),
+    "JWString": ("text",),
+    "PrimitiveString": ("value",),
+    "PrimitiveStringMultiline": ("value",),
+    "RandomNoise": ("noise_seed", "control_after_generate"),
+    "LoadImage": ("image", "upload"),
+    "SaveVideo": ("filename_prefix", "format", "codec"),
+    "VHS_VideoCombine": ("filename_prefix",),
+}
+
+
+def _apply_known_widget_values(node: dict[str, Any], inputs: dict[str, Any]) -> None:
+    values = _iter_widget_values(node)
+    if not values:
+        return
+    widget_names = _KNOWN_WIDGET_INPUT_NAMES.get(str(node.get("type") or ""))
+    if not widget_names:
+        return
+    linked_inputs = {
+        str(input_spec.get("name"))
+        for input_spec in node.get("inputs") or []
+        if input_spec.get("link") is not None
+    }
+    for index, name in enumerate(widget_names):
+        if index >= len(values) or name in inputs or name in linked_inputs:
+            continue
+        if name == "upload" or name.startswith("_"):
+            continue
+        inputs[name] = values[index]

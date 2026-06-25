@@ -130,6 +130,41 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
     assert checks["batch_diagnose"]["evidence"] == "exit_code=0; kind=batch; ready=true"
 
 
+def test_run_local_acceptance_fails_when_json_readiness_is_false(tmp_path):
+    model_config = tmp_path / "model_config.json"
+    model_config.write_text("{}", encoding="utf-8")
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "349 passed in 59.92s\n", "")
+        if command[2:5] == ["relief_story_agent.cli", "model-check", "--model-config"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"ready": false, "missing_environment_variables": ["OPENAI_API_KEY"]}\n',
+                "",
+            )
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        model_config=model_config,
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
+    assert checks["model_check"]["status"] == "fail"
+    assert checks["model_check"]["evidence"] == "exit_code=0; ready=false"
+
+
 def test_run_local_acceptance_can_collect_offline_local_demo(tmp_path):
     calls: list[list[str]] = []
 

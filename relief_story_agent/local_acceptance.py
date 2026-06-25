@@ -265,7 +265,12 @@ def run_local_acceptance(
         checks.append(output_check)
         video_paths.extend(refreshed_video_paths)
 
-    status = "completed" if all(item["exit_code"] == 0 for item in commands) else "failed"
+    status = (
+        "completed"
+        if all(item["exit_code"] == 0 for item in commands)
+        and _executed_checks_pass(checks)
+        else "failed"
+    )
     report_path = write_acceptance_report(
         target_dir,
         {
@@ -372,10 +377,16 @@ def _check_from_command(
         evidence_parts.extend(summary)
     if extra_evidence:
         evidence_parts.append(extra_evidence)
+    semantic_ready = _command_semantic_ready(command_result)
+    is_pass = (
+        command_result["exit_code"] == 0
+        and not extra_evidence
+        and semantic_ready
+    )
     return {
         "id": check_id,
         "required_evidence": required_evidence,
-        "status": "pass" if command_result["exit_code"] == 0 and not extra_evidence else "fail",
+        "status": "pass" if is_pass else "fail",
         "evidence": "; ".join(evidence_parts),
         "details": {
             "command": command_result["command"],
@@ -385,6 +396,23 @@ def _check_from_command(
             "stderr_path": command_result["stderr_path"],
         },
     }
+
+
+def _executed_checks_pass(checks: list[dict[str, Any]]) -> bool:
+    return all(str(check.get("status") or "") == "pass" for check in checks)
+
+
+def _command_semantic_ready(command_result: dict[str, Any]) -> bool:
+    stdout = str(command_result.get("stdout") or "")
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return True
+    if "ready" in payload and not bool(payload.get("ready")):
+        return False
+    if "valid" in payload and not bool(payload.get("valid")):
+        return False
+    return True
 
 
 def _check_from_comfyui_outputs_command(

@@ -77,6 +77,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
             "run_artifacts": "/api/runs/{run_id}/artifacts",
             "batches": "/api/batches",
             "batch_plan": "/api/batches/plan",
+            "batch_timeline": "/api/batches/{batch_id}/timeline",
             "batch_health": "/api/batches/{batch_id}/health",
             "batch_recovery_plan": "/api/batches/{batch_id}/recovery-plan",
             "comfyui_connect": "/api/comfyui/connect",

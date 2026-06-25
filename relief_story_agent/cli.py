@@ -239,6 +239,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Fetch one batch's artifact index through the local API server.",
     )
     _add_batch_id_api_args(batch_artifacts_parser)
+    batch_timeline_parser = subparsers.add_parser(
+        "batch-timeline",
+        help="Fetch one batch's UI-friendly progress timeline through the local API server.",
+    )
+    _add_batch_id_api_args(batch_timeline_parser)
     batch_health_parser = subparsers.add_parser(
         "batch-health",
         help="Fetch one batch's health report through the local API server.",
@@ -396,6 +401,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_audit(args)
     if args.command == "batch-artifacts":
         return _batch_artifacts(args)
+    if args.command == "batch-timeline":
+        return _batch_timeline(args)
     if args.command == "batch-health":
         return _batch_health(args)
     if args.command == "validate-export":
@@ -730,6 +737,10 @@ def _run_audit(args: argparse.Namespace) -> int:
 
 def _batch_artifacts(args: argparse.Namespace) -> int:
     return _get_json_command(args, f"/api/batches/{args.batch_id}/artifacts")
+
+
+def _batch_timeline(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/batches/{args.batch_id}/timeline")
 
 
 def _batch_health(args: argparse.Namespace) -> int:

@@ -12,6 +12,7 @@ from .artifacts import (
     validate_batch_export_package,
     validate_batch_export_zip,
 )
+from .batch_timeline import build_batch_timeline
 from .config_validation import (
     diagnose_batch_configuration,
     diagnose_run_configuration,
@@ -356,6 +357,15 @@ def create_app(
             batch = orchestrator.refresh_batch(batch_id)
             runs = [orchestrator.store.get(item.run_id) for item in batch.items]
             return read_batch_artifact_index(batch, runs)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="batch not found") from exc
+
+    @app.get("/api/batches/{batch_id}/timeline")
+    def get_batch_timeline(batch_id: str):
+        try:
+            batch = orchestrator.refresh_batch(batch_id)
+            runs = [orchestrator.store.get(item.run_id) for item in batch.items]
+            return build_batch_timeline(batch, runs)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="batch not found") from exc
 

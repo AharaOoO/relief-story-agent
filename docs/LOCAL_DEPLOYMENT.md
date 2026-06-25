@@ -414,11 +414,18 @@ relief-story-agent batch-health `
   --batch-id "{batch_id}" `
   --pretty
 
+relief-story-agent batch-timeline `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --pretty
+
 relief-story-agent batch-artifacts `
   --server "http://127.0.0.1:8891" `
   --batch-id "{batch_id}" `
   --pretty
 ```
+
+Use `batch-timeline` for launcher/UI progress cards: it reports total batch percent, each child run's active stage and stage percent, publish-ready video path, retryability, and recommended next action.
 
 ## 10. Recovery Drill
 

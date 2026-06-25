@@ -31,6 +31,7 @@ def test_build_local_bootstrap_exposes_ui_ports_and_core_endpoints():
     assert bootstrap["endpoints"]["pipeline_schema"] == "/api/pipeline/schema"
     assert bootstrap["endpoints"]["run_audit"] == "/api/runs/{run_id}/audit"
     assert bootstrap["endpoints"]["run_timeline"] == "/api/runs/{run_id}/timeline"
+    assert bootstrap["endpoints"]["batch_timeline"] == "/api/batches/{batch_id}/timeline"
     assert bootstrap["endpoints"]["local_setup_bundle"] == "/api/local/setup-bundle"
     assert bootstrap["endpoints"]["model_check"] == "/api/config/model-check"
     assert bootstrap["endpoints"]["comfyui_connect"] == "/api/comfyui/connect"

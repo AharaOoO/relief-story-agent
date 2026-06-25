@@ -347,3 +347,14 @@ b487761 feat: add ComfyUI check to local doctor
 3f1b70a feat: validate execution policy budgets
 8102aae feat: add execution policy guardrails
 ```
+
+## 11. 2026-06-25 Codex Update
+
+- Added batch progress timeline contract for local launchers/UI:
+  `GET /api/batches/{batch_id}/timeline`.
+- Added CLI equivalent:
+  `relief-story-agent batch-timeline --batch-id "{batch_id}" --pretty`.
+- The response aggregates child run timelines, publish-ready video paths,
+  retryability, recommended actions, and links to artifacts, health,
+  recovery-plan, recover, and export endpoints.
+- Bootstrap now exposes `batch_timeline` in `GET /api/local/bootstrap`.

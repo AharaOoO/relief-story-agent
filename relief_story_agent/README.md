@@ -337,6 +337,10 @@ relief-story-agent batch-artifacts `
   --batch-id "{batch_id}" `
   --pretty
 
+relief-story-agent batch-timeline `
+  --batch-id "{batch_id}" `
+  --pretty
+
 relief-story-agent batch-health `
   --batch-id "{batch_id}" `
   --pretty
@@ -986,10 +990,11 @@ CLI equivalent:
 ```powershell
 relief-story-agent batches --status completed --limit 20 --pretty
 relief-story-agent batch-status --batch-id "{batch_id}" --pretty
+relief-story-agent batch-timeline --batch-id "{batch_id}" --pretty
 relief-story-agent batch-health --batch-id "{batch_id}" --pretty
 ```
 
-Batch list entries include compact child `items` with each child run's `queue_priority`, status, stage, and error.
+Batch list entries include compact child `items` with each child run's `queue_priority`, status, stage, and error. For a UI progress surface, `GET /api/batches/{batch_id}/timeline` aggregates every child run's timeline into one response with batch percent, per-item active stage, stage percent, publish-ready video path, retryability, recommended action, and links to artifacts, health, and recovery-plan endpoints.
 
 Events are persisted with each run and include ordered `sequence` numbers. Current event types include `run_queued`, `run_claimed`, `stage_started`, `stage_completed`, `approval_queued`, `retry_queued`, `cancel_requested`, `comfyui_cancellation_requested`, `run_completed`, `run_failed`, and `run_cancelled`.
 
@@ -1299,6 +1304,7 @@ A run may select another registered profile without changing the server configur
 - `POST /api/batches`
 - `GET /api/batches`
 - `GET /api/batches/{batch_id}`
+- `GET /api/batches/{batch_id}/timeline`
 - `GET /api/batches/{batch_id}/artifacts`
 - `GET /api/batches/{batch_id}/recovery-plan`
 - `POST /api/batches/{batch_id}/recover`

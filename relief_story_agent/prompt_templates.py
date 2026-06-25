@@ -2,10 +2,24 @@ from __future__ import annotations
 
 import json
 import re
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
 from .models import RunRequest
+
+
+PLACEHOLDER_PATTERN = re.compile(r"{{\s*([^{}]+?)\s*}}")
+PROMPT_TEMPLATE_SPECS: dict[str, dict[str, tuple[str, ...]]] = {
+    "writer": {
+        "required": ("script_json",),
+        "optional": ("duration_seconds", "preferred_style", "workflow_context"),
+    },
+    "audit": {
+        "required": ("script_json", "storyboard_json"),
+        "optional": ("duration_seconds", "preferred_style", "workflow_context"),
+    },
+}
 
 
 DEFAULT_PROMPT_WRITER_TEMPLATE = """
@@ -166,7 +180,7 @@ def build_prompt_audit_prompt(
             "audit_json": "",
             "duration_seconds": str(script.get("duration_seconds") or request.duration_seconds),
             "preferred_style": request.preferred_style or "由模型根据剧本选择",
-            "workflow_context": workflow_context or "鏈厤缃?ComfyUI workflow",
+            "workflow_context": workflow_context or "未配置 ComfyUI workflow",
         },
         required_placeholders=("script_json", "storyboard_json"),
     )
@@ -188,10 +202,52 @@ def build_prompt_reviser_prompt(
             "audit_json": _json(audit),
             "duration_seconds": str(script.get("duration_seconds") or request.duration_seconds),
             "preferred_style": request.preferred_style or "由模型根据剧本选择",
-            "workflow_context": workflow_context or "鏈厤缃?ComfyUI workflow",
+            "workflow_context": workflow_context or "未配置 ComfyUI workflow",
         },
         required_placeholders=("script_json", "storyboard_json", "audit_json"),
     )
+
+
+def validate_prompt_template_file(path: str | Path, kind: str) -> dict[str, Any]:
+    normalized_kind = kind.strip().lower()
+    if normalized_kind not in PROMPT_TEMPLATE_SPECS:
+        raise ValueError(f"Unsupported template kind: {kind}")
+
+    template_path = Path(path)
+    if not template_path.exists():
+        return {
+            "kind": normalized_kind,
+            "path": str(template_path),
+            "exists": False,
+            "status": "fail",
+            "missing_required_placeholders": list(PROMPT_TEMPLATE_SPECS[normalized_kind]["required"]),
+            "unsupported_placeholders": [],
+            "optional_placeholders_present": [],
+            "sha256": "",
+            "size_bytes": 0,
+        }
+
+    content = template_path.read_text(encoding="utf-8")
+    found = _template_placeholders(content)
+    spec = PROMPT_TEMPLATE_SPECS[normalized_kind]
+    required = spec["required"]
+    optional = spec["optional"]
+    supported = set(required) | set(optional)
+    missing = [name for name in required if name not in found]
+    unsupported = sorted(name for name in found if name not in supported)
+    optional_present = [name for name in optional if name in found]
+    stat = template_path.stat()
+    return {
+        "kind": normalized_kind,
+        "path": str(template_path),
+        "exists": True,
+        "status": "pass" if not missing and not unsupported else "fail",
+        "missing_required_placeholders": missing,
+        "unsupported_placeholders": unsupported,
+        "optional_placeholders_present": optional_present,
+        "sha256": sha256(content.encode("utf-8")).hexdigest(),
+        "size_bytes": stat.st_size,
+    }
 
 
 def _load_template(path: str | None, default_template: str) -> str:
@@ -215,7 +271,7 @@ def _render_template(
     rendered = template
     for key, value in values.items():
         rendered = rendered.replace("{{" + key + "}}", value)
-    unresolved = sorted(set(re.findall(r"{{\s*([^{}]+?)\s*}}", rendered)))
+    unresolved = sorted(_template_placeholders(rendered))
     if unresolved:
         raise ValueError(f"Unsupported template placeholder(s): {', '.join(unresolved)}")
     return rendered
@@ -223,3 +279,7 @@ def _render_template(
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def _template_placeholders(template: str) -> set[str]:
+    return {match.strip() for match in PLACEHOLDER_PATTERN.findall(template)}

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
+
+from relief_story_agent import cli
 from relief_story_agent.models import RunRequest, TemplatePaths
 from relief_story_agent.prompt_templates import (
     build_prompt_audit_prompt,
     build_prompt_reviser_prompt,
     build_prompt_writer_prompt,
+    validate_prompt_template_file,
 )
 import pytest
 
@@ -89,3 +93,52 @@ def test_user_writer_template_must_include_script_placeholder(tmp_path):
 
     with pytest.raises(ValueError, match="script_json"):
         build_prompt_writer_prompt(request=request, script={"title": "script"})
+
+
+def test_validate_prompt_template_file_reports_placeholders_and_fingerprint(tmp_path):
+    writer = tmp_path / "writer.md"
+    writer.write_text("SCRIPT {{script_json}}\nSTYLE {{preferred_style}}", encoding="utf-8")
+
+    result = validate_prompt_template_file(writer, "writer")
+
+    assert result["status"] == "pass"
+    assert result["kind"] == "writer"
+    assert result["missing_required_placeholders"] == []
+    assert result["unsupported_placeholders"] == []
+    assert result["optional_placeholders_present"] == ["preferred_style"]
+    assert len(result["sha256"]) == 64
+
+
+def test_validate_prompt_template_file_rejects_missing_and_unsupported_placeholders(tmp_path):
+    audit = tmp_path / "audit.md"
+    audit.write_text("SCRIPT {{script_json}}\nBAD {{shots_json}}", encoding="utf-8")
+
+    result = validate_prompt_template_file(audit, "audit")
+
+    assert result["status"] == "fail"
+    assert result["missing_required_placeholders"] == ["storyboard_json"]
+    assert result["unsupported_placeholders"] == ["shots_json"]
+
+
+def test_cli_template_check_reports_template_readiness(tmp_path, capsys):
+    writer = tmp_path / "writer.md"
+    audit = tmp_path / "audit.md"
+    writer.write_text("SCRIPT {{script_json}}\nSTYLE {{preferred_style}}", encoding="utf-8")
+    audit.write_text("SCRIPT {{script_json}}\nSTORY {{storyboard_json}}", encoding="utf-8")
+
+    exit_code = cli.main(
+        [
+            "template-check",
+            "--writer-template",
+            str(writer),
+            "--audit-template",
+            str(audit),
+            "--pretty",
+        ]
+    )
+
+    assert exit_code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["ready"] is True
+    assert [check["kind"] for check in output["checks"]] == ["writer", "audit"]
+    assert output["checks"][0]["status"] == "pass"

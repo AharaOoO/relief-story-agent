@@ -126,6 +126,10 @@ project to another operator:
 
 ```powershell
 relief-story-agent pipeline-schema --pretty
+relief-story-agent template-check `
+  --writer-template "D:/relief_story_config/templates/prompt_writer.default.md" `
+  --audit-template "D:/relief_story_config/templates/prompt_audit.default.md" `
+  --pretty
 relief-story-agent local-bootstrap --pretty
 relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```

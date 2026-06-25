@@ -107,6 +107,11 @@ When `passed=false`, the system calls `gpt_prompt_reviser` for one revision.
 2. Run:
 
 ```powershell
+relief-story-agent template-check `
+  --writer-template "D:/relief_story_config/templates/prompt_writer.default.md" `
+  --audit-template "D:/relief_story_config/templates/prompt_audit.default.md" `
+  --pretty
+
 relief-story-agent diagnose `
   --request "D:/relief_story_config/run_request.full-ltx.json" `
   --model-config "D:/relief_story_config/model_config.local.json" `

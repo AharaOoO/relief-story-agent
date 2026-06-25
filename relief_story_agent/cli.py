@@ -15,6 +15,7 @@ from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, ComfyUIConnectionRequest, ComfyUIWorkflowDiscoveryRequest, RunRequest
 from .pipeline import build_pipeline_schema
+from .prompt_templates import validate_prompt_template_file
 from .server import main as server_main
 from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import main as smoke_main
@@ -67,6 +68,13 @@ def main(argv: list[str] | None = None) -> int:
         help="Print the fixed stage contract used by runs, recovery, and diagnostics.",
     )
     pipeline_schema_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    template_check_parser = subparsers.add_parser(
+        "template-check",
+        help="Validate editable prompt templates before a real run spends model quota.",
+    )
+    template_check_parser.add_argument("--writer-template", default="", help="Prompt writer Markdown template.")
+    template_check_parser.add_argument("--audit-template", default="", help="Prompt audit Markdown template.")
+    template_check_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     local_bootstrap_parser = subparsers.add_parser(
         "local-bootstrap",
         help="Print local API/UI/ComfyUI ports and endpoint paths for UI integration.",
@@ -276,6 +284,8 @@ def main(argv: list[str] | None = None) -> int:
         return _diagnose(args)
     if args.command == "pipeline-schema":
         return _pipeline_schema(args)
+    if args.command == "template-check":
+        return _template_check(args)
     if args.command == "local-bootstrap":
         return _local_bootstrap(args)
     if args.command == "local-doctor":
@@ -443,6 +453,20 @@ def _diagnose_kind(payload: dict, requested_kind: str) -> str:
 def _pipeline_schema(args: argparse.Namespace) -> int:
     print(json.dumps(build_pipeline_schema(), ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
+
+
+def _template_check(args: argparse.Namespace) -> int:
+    checks = []
+    if args.writer_template:
+        checks.append(validate_prompt_template_file(args.writer_template, "writer"))
+    if args.audit_template:
+        checks.append(validate_prompt_template_file(args.audit_template, "audit"))
+    result = {
+        "ready": bool(checks) and all(check["status"] == "pass" for check in checks),
+        "checks": checks,
+    }
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result["ready"] else 1
 
 
 def _local_bootstrap(args: argparse.Namespace) -> int:

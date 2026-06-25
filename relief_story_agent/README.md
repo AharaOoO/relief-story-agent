@@ -72,6 +72,16 @@ available from the CLI:
 relief-story-agent pipeline-schema --pretty
 ```
 
+Before spending model quota on a changed writer/audit template, validate its
+required placeholders and fingerprint:
+
+```powershell
+relief-story-agent template-check `
+  --writer-template "D:/relief_story_config/templates/prompt_writer.default.md" `
+  --audit-template "D:/relief_story_config/templates/prompt_audit.default.md" `
+  --pretty
+```
+
 For UI integration, `GET /api/local/bootstrap` returns the local API base URL,
 recommended UI origin, allowed CORS origins, default ComfyUI endpoint, and core
 endpoint paths. The default API port is `8891`; the recommended local UI dev
@@ -420,7 +430,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:321 passed" `
+  --check "full_tests=pass:324 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `

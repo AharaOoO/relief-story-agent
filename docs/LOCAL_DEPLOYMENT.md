@@ -71,7 +71,8 @@ store environment variable names such as `GEMINI_API_KEY`. The response also
 includes machine-readable `files`, `checks`, `next_commands`, and
 `next_endpoints` fields so a launcher can show exactly which files were written
 and which validation action should run next. `next_commands.doctor` uses the
-normalized ComfyUI endpoint from the user's address box.
+normalized ComfyUI endpoint from the user's address box and the selected
+workflow path.
 
 Generated run and batch request files include an `execution_policy` safety
 valve. It limits stage starts before they happen, which protects unattended

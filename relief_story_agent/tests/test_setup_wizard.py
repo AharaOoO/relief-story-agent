@@ -123,6 +123,10 @@ def test_setup_wizard_next_commands_use_the_normalized_comfyui_endpoint(tmp_path
 
     assert result["checks"]["comfyui_endpoint"]["normalized"] == "http://192.168.31.8:8189"
     assert '--comfyui-endpoint "http://192.168.31.8:8189"' in result["next_commands"]["doctor"]
+    assert (
+        '--comfyui-workflow-path "C:/ComfyUI/workflows/ltx23_four_grid.json"'
+        in result["next_commands"]["doctor"]
+    )
 
 
 def test_api_local_setup_bundle_writes_config_files_for_ui(tmp_path):

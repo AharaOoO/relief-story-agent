@@ -174,6 +174,7 @@ def write_local_config_bundle(
         "next_commands": _next_commands(
             target_dir,
             comfyui_endpoint=comfyui_endpoint,
+            workflow_path=workflow_path,
         ),
         "next_endpoints": _next_endpoints(),
     }
@@ -390,14 +391,20 @@ def _bundle_checks(
     }
 
 
-def _next_commands(target_dir: Path, *, comfyui_endpoint: str) -> dict[str, str]:
+def _next_commands(
+    target_dir: Path,
+    *,
+    comfyui_endpoint: str,
+    workflow_path: str,
+) -> dict[str, str]:
     model_config = target_dir / "model_config.local.json"
     run_request = target_dir / "run_request.full-ltx.json"
     batch_request = target_dir / "batch_request.full-ltx.json"
     return {
         "doctor": (
             "relief-story-agent local-doctor --check-comfyui-connection "
-            f'--comfyui-endpoint "{comfyui_endpoint}" --pretty'
+            f'--comfyui-endpoint "{comfyui_endpoint}" '
+            f'--comfyui-workflow-path "{workflow_path}" --pretty'
         ),
         "model_check": f'relief-story-agent model-check --model-config "{model_config}" --pretty',
         "run_preflight": (

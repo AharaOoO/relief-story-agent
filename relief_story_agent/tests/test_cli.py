@@ -34,6 +34,12 @@ def test_cli_help_lists_core_local_commands():
     assert "export-batch" in completed.stdout
     assert "recovery-plan" in completed.stdout
     assert "recover-batch" in completed.stdout
+    assert "run-status" in completed.stdout
+    assert "batch-status" in completed.stdout
+    assert "scheduler" in completed.stdout
+    assert "run-artifacts" in completed.stdout
+    assert "batch-artifacts" in completed.stdout
+    assert "batch-health" in completed.stdout
     assert "validate-export" in completed.stdout
     assert "validate-export-zip" in completed.stdout
 
@@ -342,6 +348,167 @@ def test_cli_recovery_plan_gets_batch_recovery_plan():
     recorded = server.requests[0]
     assert recorded["method"] == "GET"
     assert recorded["path"] == "/api/batches/batch_cli/recovery-plan"
+
+
+def test_cli_run_status_gets_run_detail():
+    server = _CliApiServer({"run_id": "run_cli", "status": "completed"})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "run-status",
+                "--server",
+                server.url,
+                "--run-id",
+                "run_cli",
+                "--pretty",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["run_id"] == "run_cli"
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/runs/run_cli"
+
+
+def test_cli_batch_status_gets_batch_detail():
+    server = _CliApiServer({"batch_id": "batch_cli", "status": "running"})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "batch-status",
+                "--server",
+                server.url,
+                "--batch-id",
+                "batch_cli",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["batch_id"] == "batch_cli"
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/batches/batch_cli"
+
+
+def test_cli_scheduler_gets_scheduler_status():
+    server = _CliApiServer({"queue_depth": 1, "active_items": []})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "scheduler",
+                "--server",
+                server.url,
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["queue_depth"] == 1
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/scheduler"
+
+
+def test_cli_run_artifacts_gets_run_artifact_index():
+    server = _CliApiServer({"run_id": "run_cli", "manifest": "00_manifest.json"})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "run-artifacts",
+                "--server",
+                server.url,
+                "--run-id",
+                "run_cli",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["manifest"] == "00_manifest.json"
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/runs/run_cli/artifacts"
+
+
+def test_cli_batch_artifacts_gets_batch_artifact_index():
+    server = _CliApiServer({"batch_id": "batch_cli", "publish_ready": 2})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "batch-artifacts",
+                "--server",
+                server.url,
+                "--batch-id",
+                "batch_cli",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["publish_ready"] == 2
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/batches/batch_cli/artifacts"
+
+
+def test_cli_batch_health_gets_health_report():
+    server = _CliApiServer({"batch_id": "batch_cli", "summary": {"failed": 0}})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "batch-health",
+                "--server",
+                server.url,
+                "--batch-id",
+                "batch_cli",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["summary"]["failed"] == 0
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/batches/batch_cli/health"
 
 
 def test_cli_recover_batch_posts_dry_run_and_action_codes():

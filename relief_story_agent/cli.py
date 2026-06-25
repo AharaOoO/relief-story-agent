@@ -98,6 +98,36 @@ def main(argv: list[str] | None = None) -> int:
         default=[],
         help="Restrict recovery to one action code. Repeat for multiple codes.",
     )
+    run_status_parser = subparsers.add_parser(
+        "run-status",
+        help="Fetch one run's current state through the local API server.",
+    )
+    _add_run_id_api_args(run_status_parser)
+    batch_status_parser = subparsers.add_parser(
+        "batch-status",
+        help="Fetch one batch's current state through the local API server.",
+    )
+    _add_batch_id_api_args(batch_status_parser)
+    scheduler_parser = subparsers.add_parser(
+        "scheduler",
+        help="Fetch local scheduler queue and worker status.",
+    )
+    _add_api_base_args(scheduler_parser)
+    run_artifacts_parser = subparsers.add_parser(
+        "run-artifacts",
+        help="Fetch one run's artifact index through the local API server.",
+    )
+    _add_run_id_api_args(run_artifacts_parser)
+    batch_artifacts_parser = subparsers.add_parser(
+        "batch-artifacts",
+        help="Fetch one batch's artifact index through the local API server.",
+    )
+    _add_batch_id_api_args(batch_artifacts_parser)
+    batch_health_parser = subparsers.add_parser(
+        "batch-health",
+        help="Fetch one batch's health report through the local API server.",
+    )
+    _add_batch_id_api_args(batch_health_parser)
     validate_export_parser = subparsers.add_parser(
         "validate-export",
         help="Validate a batch export directory through the local API server.",
@@ -169,6 +199,18 @@ def main(argv: list[str] | None = None) -> int:
         return _recovery_plan(args)
     if args.command == "recover-batch":
         return _recover_batch(args)
+    if args.command == "run-status":
+        return _run_status(args)
+    if args.command == "batch-status":
+        return _batch_status(args)
+    if args.command == "scheduler":
+        return _scheduler_status(args)
+    if args.command == "run-artifacts":
+        return _run_artifacts(args)
+    if args.command == "batch-artifacts":
+        return _batch_artifacts(args)
+    if args.command == "batch-health":
+        return _batch_health(args)
     if args.command == "validate-export":
         return _validate_export(args)
     if args.command == "validate-export-zip":
@@ -200,8 +242,17 @@ def _add_preflight_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _add_batch_id_api_args(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--server", default="http://127.0.0.1:8891", help="Relief Story Agent API base URL.")
+    _add_api_base_args(parser)
     parser.add_argument("--batch-id", required=True, help="Batch id.")
+
+
+def _add_run_id_api_args(parser: argparse.ArgumentParser) -> None:
+    _add_api_base_args(parser)
+    parser.add_argument("--run-id", required=True, help="Run id.")
+
+
+def _add_api_base_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--server", default="http://127.0.0.1:8891", help="Relief Story Agent API base URL.")
     parser.add_argument("--timeout-seconds", type=float, default=60, help="HTTP timeout.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
 
@@ -321,6 +372,30 @@ def _recover_batch(args: argparse.Namespace) -> int:
         f"/api/batches/{args.batch_id}/recover",
         payload,
     )
+
+
+def _run_status(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/runs/{args.run_id}")
+
+
+def _batch_status(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/batches/{args.batch_id}")
+
+
+def _scheduler_status(args: argparse.Namespace) -> int:
+    return _get_json_command(args, "/api/scheduler")
+
+
+def _run_artifacts(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/runs/{args.run_id}/artifacts")
+
+
+def _batch_artifacts(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/batches/{args.batch_id}/artifacts")
+
+
+def _batch_health(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/batches/{args.batch_id}/health")
 
 
 def _validate_export(args: argparse.Namespace) -> int:

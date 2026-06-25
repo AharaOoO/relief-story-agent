@@ -175,6 +175,14 @@ relief-story-agent run `
   --check-comfyui-connection `
   --pretty
 
+relief-story-agent run-status `
+  --run-id "{run_id}" `
+  --pretty
+
+relief-story-agent run-artifacts `
+  --run-id "{run_id}" `
+  --pretty
+
 relief-story-agent batch-plan `
   --request "D:/relief_story_config/batch_request.full-ltx.json" `
   --server "http://127.0.0.1:8891" `
@@ -187,6 +195,20 @@ relief-story-agent batch `
   --preflight `
   --check-comfyui-connection `
   --pretty
+
+relief-story-agent batch-status `
+  --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent batch-artifacts `
+  --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent batch-health `
+  --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent scheduler --pretty
 
 relief-story-agent export-batch `
   --batch-id "{batch_id}" `
@@ -640,6 +662,7 @@ CLI equivalent:
 ```powershell
 relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty
 relief-story-agent recover-batch --batch-id "{batch_id}" --dry-run --pretty
+relief-story-agent batch-health --batch-id "{batch_id}" --pretty
 ```
 
 Use `dry_run` before a one-click launcher action:
@@ -691,6 +714,12 @@ Scheduler health:
 GET /api/scheduler
 ```
 
+CLI equivalent:
+
+```powershell
+relief-story-agent scheduler --pretty
+```
+
 The scheduler response includes queue counts plus `active_items`, `queued_items`, `lease_seconds`, and `recovery_poll_seconds`. `queued_items` is already sorted by the real execution order: higher `queue_priority` first, original enqueue order second. Each item includes `run_id`, idea, status, stage, priority, parent batch id, and `position`.
 
 Run event polling:
@@ -703,6 +732,12 @@ GET /api/runs/{run_id}/events
 GET /api/runs/{run_id}/events?after=12
 ```
 
+CLI equivalent:
+
+```powershell
+relief-story-agent run-status --run-id "{run_id}" --pretty
+```
+
 Run list entries include `queue_priority`, so launchers can show why one item is waiting behind another.
 
 Batch listing:
@@ -710,6 +745,13 @@ Batch listing:
 ```http
 GET /api/batches
 GET /api/batches?status=completed&limit=20
+```
+
+CLI equivalent:
+
+```powershell
+relief-story-agent batch-status --batch-id "{batch_id}" --pretty
+relief-story-agent batch-health --batch-id "{batch_id}" --pretty
 ```
 
 Batch list entries include compact child `items` with each child run's `queue_priority`, status, stage, and error.
@@ -722,6 +764,13 @@ Artifact discovery:
 GET /api/runs/{run_id}/artifacts
 GET /api/batches/{batch_id}/artifacts
 POST /api/batches/{batch_id}/export
+```
+
+CLI equivalent:
+
+```powershell
+relief-story-agent run-artifacts --run-id "{run_id}" --pretty
+relief-story-agent batch-artifacts --batch-id "{batch_id}" --pretty
 ```
 
 Completed runs with `output_root` write `00_manifest.json` plus:

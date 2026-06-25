@@ -106,6 +106,12 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "relief-story-agent export-batch",
         "relief-story-agent recovery-plan",
         "relief-story-agent recover-batch",
+        "relief-story-agent run-status",
+        "relief-story-agent batch-status",
+        "relief-story-agent scheduler",
+        "relief-story-agent run-artifacts",
+        "relief-story-agent batch-artifacts",
+        "relief-story-agent batch-health",
         "relief-story-agent validate-export",
         "relief-story-agent validate-export-zip",
     ):
@@ -181,4 +187,7 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "relief-story-agent batch-plan" in text
     assert "relief-story-agent export-batch" in text
     assert "relief-story-agent recovery-plan" in text
+    assert "relief-story-agent run-status" in text
+    assert "relief-story-agent batch-health" in text
+    assert "relief-story-agent scheduler" in text
     assert "relief-story-agent validate-export" in text

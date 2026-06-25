@@ -155,6 +155,16 @@ Invoke-RestMethod `
 Poll:
 
 ```powershell
+relief-story-agent run-status `
+  --server "http://127.0.0.1:8891" `
+  --run-id "{run_id}" `
+  --pretty
+
+relief-story-agent run-artifacts `
+  --server "http://127.0.0.1:8891" `
+  --run-id "{run_id}" `
+  --pretty
+
 Invoke-RestMethod "http://127.0.0.1:8891/api/runs/{run_id}"
 Invoke-RestMethod "http://127.0.0.1:8891/api/runs/{run_id}/artifacts"
 ```
@@ -204,6 +214,25 @@ Invoke-RestMethod `
 
 HTTP endpoint summary: `POST /api/batches`.
 
+Track the batch:
+
+```powershell
+relief-story-agent batch-status `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent batch-health `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent batch-artifacts `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --pretty
+```
+
 ## 10. Recovery Drill
 
 Stop the API while a batch is queued or running. Start it again with the same
@@ -211,6 +240,15 @@ Stop the API while a batch is queued or running. Start it again with the same
 
 ```powershell
 relief-story-agent recovery-plan `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent scheduler `
+  --server "http://127.0.0.1:8891" `
+  --pretty
+
+relief-story-agent batch-status `
   --server "http://127.0.0.1:8891" `
   --batch-id "{batch_id}" `
   --pretty

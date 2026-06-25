@@ -206,3 +206,14 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "execution_policy" in text
     assert "fix_execution_policy" in text
     assert "127.0.0.1:8188/queue" in text
+
+
+def test_handoff_docs_do_not_keep_obsolete_local_baseline():
+    for path in (
+        PROJECT_ROOT / "README.md",
+        PROJECT_ROOT / "PROJECT_HANDOFF.md",
+        PROJECT_ROOT / "NEXT_SESSION_PROMPT.md",
+    ):
+        text = path.read_text(encoding="utf-8")
+        assert "229 passed" not in text
+        assert "80da952 feat: add local ComfyUI smoke runner" not in text

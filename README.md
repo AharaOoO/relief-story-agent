@@ -80,20 +80,22 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-229 passed
+279 passed
 ```
 
 ## 下一步开发
 
-`local_comfyui_smoke` 已在本地实现，最新本地提交：
+`local_comfyui_smoke` 已实现并推送。最近核心功能提交包括：
 
 ```text
-80da952 feat: add local ComfyUI smoke runner
+522cd85 feat: validate execution policy stage names
+96e3e82 feat: normalize ComfyUI endpoint inputs
+3f1b70a feat: validate execution policy budgets
+8102aae feat: add execution policy guardrails
 ```
 
 下一步从真实本机联调开始：
 
-- 把 smoke runner 提交和这份总计划推到 GitHub。
 - 用用户真实 LTX 2.3 workflow 和手动四宫格图跑 dry-run。
 - 启动本地 ComfyUI 后跑 real-run，确认 `/prompt` 返回 prompt id。
 - 再接真实 Gemini / DeepSeek / GPT 模型配置，跑单条端到端。

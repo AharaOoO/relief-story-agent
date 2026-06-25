@@ -105,6 +105,8 @@ grid shape: 2x2
 - batch recovery plan。
 - artifacts 和 manifest。
 - ComfyUI 输出等待、取消、下载相关基础能力。
+- `execution_policy` 运行时护栏，以及 preflight/diagnose 对总阶段预算和未知阶段名的提前校验。
+- ComfyUI endpoint 地址框归一化：可接受 `127.0.0.1:8188`、尾斜杠和 `/queue` 粘贴输入，再统一连接本地 ComfyUI 根地址。
 
 ### 3.4 本地 ComfyUI smoke runner
 
@@ -293,11 +295,14 @@ git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-229 passed
+279 passed
 ```
 
-最近本地已知提交：
+最近已推送的核心功能提交：
 
 ```text
-80da952 feat: add local ComfyUI smoke runner
+522cd85 feat: validate execution policy stage names
+96e3e82 feat: normalize ComfyUI endpoint inputs
+3f1b70a feat: validate execution policy budgets
+8102aae feat: add execution policy guardrails
 ```

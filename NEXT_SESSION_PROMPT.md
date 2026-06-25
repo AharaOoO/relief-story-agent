@@ -28,11 +28,14 @@ git status --short --branch
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 
-注意：local_comfyui_smoke 已在本地实现，最新本地提交是：
+注意：local_comfyui_smoke 已实现并已推送；最近核心功能提交包括：
 
-80da952 feat: add local ComfyUI smoke runner
+522cd85 feat: validate execution policy stage names
+96e3e82 feat: normalize ComfyUI endpoint inputs
+3f1b70a feat: validate execution policy budgets
+8102aae feat: add execution policy guardrails
 
-如果 GitHub 还没包含这个提交，先确认本地状态并推送。不要重复实现 smoke runner。
+不要重复实现 smoke runner。优先从真实 ComfyUI smoke 验收继续；如果本地分支落后远端，先 `git pull --ff-only`。
 
 接下来按总计划推进真实验收：
 

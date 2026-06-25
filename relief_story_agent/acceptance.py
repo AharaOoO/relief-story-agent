@@ -1,0 +1,213 @@
+from __future__ import annotations
+
+import json
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+
+PASS_STATUSES = {"pass", "passed", "ok", "completed"}
+
+
+DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
+    {
+        "id": "full_tests",
+        "required_evidence": "python -m pytest relief_story_agent/tests -q output",
+    },
+    {
+        "id": "comfyui_dry_smoke",
+        "required_evidence": "smoke_result.json, no prompt id",
+    },
+    {
+        "id": "comfyui_real_smoke",
+        "required_evidence": "smoke_result.json, prompt id",
+    },
+    {
+        "id": "single_run",
+        "required_evidence": "run artifact dir, downloaded video path",
+    },
+    {
+        "id": "batch_run",
+        "required_evidence": "batch id, item summaries",
+    },
+    {
+        "id": "restart_recovery",
+        "required_evidence": "recovery-plan before/after restart",
+    },
+    {
+        "id": "export",
+        "required_evidence": "publish index, zip, sha256",
+    },
+    {
+        "id": "fresh_setup",
+        "required_evidence": "commands from docs run on clean env",
+    },
+)
+
+
+def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> str:
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    checks = [_normalize_check(check) for check in payload.get("checks") or []]
+    checks.extend(_checks_from_sources(payload.get("sources") or {}))
+    if payload.get("include_default_matrix"):
+        checks = _merge_default_matrix(checks)
+
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "run_id": str(payload.get("run_id") or ""),
+        "batch_id": str(payload.get("batch_id") or ""),
+        "mode": str(payload.get("mode") or "manual"),
+        "status": str(payload.get("status") or "manual_pending"),
+        "video_paths": _string_list(payload.get("video_paths") or []),
+        "checks": checks,
+        "notes": str(payload.get("notes") or ""),
+    }
+    report["summary"] = _build_summary(report)
+
+    json_path = target_dir / "acceptance_report.json"
+    json_path.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    (target_dir / "ACCEPTANCE_REPORT.md").write_text(_render_markdown(report), encoding="utf-8")
+    return str(json_path)
+
+
+def _normalize_check(raw_check: Any) -> dict[str, Any]:
+    if not isinstance(raw_check, dict):
+        return {
+            "id": str(raw_check),
+            "required_evidence": "",
+            "status": "manual_pending",
+            "evidence": "",
+        }
+    return {
+        "id": str(raw_check.get("id") or ""),
+        "required_evidence": str(raw_check.get("required_evidence") or ""),
+        "status": str(raw_check.get("status") or "manual_pending"),
+        "evidence": str(raw_check.get("evidence") or ""),
+        "details": raw_check.get("details") or {},
+    }
+
+
+def _checks_from_sources(sources: dict[str, Any]) -> list[dict[str, Any]]:
+    checks: list[dict[str, Any]] = []
+    smoke_result = sources.get("smoke_result")
+    if smoke_result:
+        checks.append(_check_from_smoke_result(Path(str(smoke_result))))
+    return checks
+
+
+def _merge_default_matrix(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    existing_ids = {str(check.get("id") or "") for check in checks}
+    merged = list(checks)
+    for default_check in DEFAULT_ACCEPTANCE_MATRIX:
+        if default_check["id"] in existing_ids:
+            continue
+        merged.append(
+            {
+                "id": default_check["id"],
+                "required_evidence": default_check["required_evidence"],
+                "status": "manual_pending",
+                "evidence": "",
+                "details": {},
+            }
+        )
+    return merged
+
+
+def _check_from_smoke_result(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "id": "comfyui_real_smoke",
+            "required_evidence": "smoke_result.json, prompt id",
+            "status": "fail",
+            "evidence": f"missing smoke_result={path}",
+        }
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    prompt_id = str(payload.get("prompt_id") or "")
+    ready = bool(payload.get("ready"))
+    status = str(payload.get("status") or "")
+    artifact_dir = str(payload.get("artifact_dir") or "")
+    is_pass = ready and status in {"passed", "pass", "completed"}
+    check_id = "comfyui_real_smoke" if prompt_id else "comfyui_dry_smoke"
+    evidence_parts = []
+    if prompt_id:
+        evidence_parts.append(f"prompt_id={prompt_id}")
+    evidence_parts.append(f"artifact_dir={artifact_dir}")
+    return {
+        "id": check_id,
+        "required_evidence": "smoke_result.json, prompt id" if prompt_id else "smoke_result.json, no prompt id",
+        "status": "pass" if is_pass else "fail",
+        "evidence": "; ".join(evidence_parts),
+        "details": {
+            "source": str(path),
+            "ready": ready,
+            "status": status,
+        },
+    }
+
+
+def _build_summary(report: dict[str, Any]) -> dict[str, Any]:
+    by_status = Counter(str(check.get("status") or "manual_pending") for check in report["checks"])
+    checks_ready = bool(report["checks"]) and all(
+        str(check.get("status") or "").lower() in PASS_STATUSES for check in report["checks"]
+    )
+    overall_ready = str(report["status"]).lower() in PASS_STATUSES
+    return {
+        "check_count": len(report["checks"]),
+        "by_status": dict(sorted(by_status.items())),
+        "ready_for_release": checks_ready and overall_ready,
+    }
+
+
+def _render_markdown(report: dict[str, Any]) -> str:
+    lines = [
+        "# Acceptance Report",
+        "",
+        f"- Generated at: `{report['generated_at']}`",
+        f"- Mode: `{_markdown_inline(report['mode'])}`",
+        f"- Status: `{_markdown_inline(report['status'])}`",
+        f"- Run ID: `{_markdown_inline(report['run_id'])}`",
+        f"- Batch ID: `{_markdown_inline(report['batch_id'])}`",
+        "",
+        "## Checks",
+        "",
+        "| Check | Required Evidence | Status | Evidence |",
+        "| --- | --- | --- | --- |",
+    ]
+    for check in report["checks"]:
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    _markdown_cell(check.get("id")),
+                    _markdown_cell(check.get("required_evidence")),
+                    _markdown_cell(check.get("status")),
+                    _markdown_cell(check.get("evidence")),
+                ]
+            )
+            + " |"
+        )
+    lines.extend(["", "## Video Paths", ""])
+    if report["video_paths"]:
+        lines.extend(f"- `{_markdown_inline(path)}`" for path in report["video_paths"])
+    else:
+        lines.append("-")
+    lines.extend(["", "## Notes", "", str(report["notes"] or ""), ""])
+    return "\n".join(lines)
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, (str, bytes)):
+        return [str(value)]
+    return [str(item) for item in value]
+
+
+def _markdown_cell(value: Any) -> str:
+    return str(value or "").replace("|", "\\|").replace("\r\n", "<br>").replace("\n", "<br>")
+
+
+def _markdown_inline(value: Any) -> str:
+    return str(value or "").replace("`", "'")

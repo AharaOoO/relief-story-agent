@@ -22,6 +22,7 @@ def test_cli_help_lists_core_local_commands():
     assert "smoke-comfyui" in completed.stdout
     assert "connect-comfyui" in completed.stdout
     assert "setup" in completed.stdout
+    assert "acceptance" in completed.stdout
 
 
 def test_console_script_points_to_unified_cli():

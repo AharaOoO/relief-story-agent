@@ -193,6 +193,40 @@ and records the returned `prompt_id`.
 This tool does not call text models, does not generate the four-grid image,
 does not wait for render completion, and does not download final videos.
 
+## Acceptance Evidence
+
+Use the acceptance writer after real local checks to produce a stable report
+that another reviewer or agent can inspect:
+
+```powershell
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "local_e2e" `
+  --status "manual_pending" `
+  --check "full_tests=pass:238 passed" `
+  --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
+  --check "comfyui_real_smoke=manual_pending:" `
+  --include-default-matrix `
+  --notes "Add exact run ids, artifact dirs, video paths, and batch ids."
+```
+
+To import a completed smoke runner result directly:
+
+```powershell
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "smoke" `
+  --status "completed" `
+  --smoke-result "D:/relief_story_smoke/smoke_relief_story/smoke_result.json"
+```
+
+The command writes `acceptance_report.json` and `ACCEPTANCE_REPORT.md`.
+`summary.ready_for_release` is true only when the overall status and every
+recorded check are passing. The static checklist lives in
+`docs/ACCEPTANCE_REPORT_TEMPLATE.md`; it should not be treated as complete until
+real ComfyUI smoke, single-run, batch, restart-recovery, export, and clean-setup
+evidence has been recorded.
+
 ## ComfyUI / LTX 2.3 Workflows
 
 For launcher, desktop-shell, or future UI flows where the user fills one local ComfyUI address box first, call:

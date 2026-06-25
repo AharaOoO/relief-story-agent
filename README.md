@@ -80,8 +80,21 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-318 passed
+321 passed
 ```
+
+可交给另一个 AI 或操作者核查的本地证据包命令：
+
+```powershell
+relief-story-agent local-acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --repo-root "D:/codex工作区" `
+  --pretty
+```
+
+该命令会跑 `compileall` 和全量测试，可选加 `--smoke-request ...`
+收集 ComfyUI smoke 证据，并写出 `local_acceptance_summary.json`、
+`acceptance_report.json`、`ACCEPTANCE_REPORT.md` 和原始 stdout/stderr。
 
 ## 下一步开发
 

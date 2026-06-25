@@ -73,6 +73,7 @@ GitHub 仓库：`https://github.com/AharaOoO/relief-story-agent`
 - artifact manifest、batch export、zip/checksum/export validation。
 - metrics、health、config validate/diagnose。
 - 本地 ComfyUI smoke runner：`relief_story_agent/smoke_comfyui.py`、`POST /api/smoke/comfyui`、CLI dry-run/real-run、artifact 写出、mock ComfyUI 测试。
+- 本地验收证据收集器：`relief-story-agent local-acceptance` 会运行 `compileall`、全量 pytest，并可选收集 `smoke-comfyui` 结果，生成可交给另一个 AI 核查的 JSON/Markdown 报告。
 - 真实本机 smoke 证据：
 
 ```text
@@ -90,7 +91,7 @@ python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 ```
 
-当前已验证：`318 passed`。
+当前已验证：`321 passed`。
 
 尚未完成或尚未真实证明：
 

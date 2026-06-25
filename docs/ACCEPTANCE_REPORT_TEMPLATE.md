@@ -17,6 +17,15 @@ the referenced artifact exists on the machine that ran the check.
 Suggested generated report command:
 
 ```powershell
+relief-story-agent local-acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --repo-root "D:/codex工作区" `
+  --pretty
+```
+
+Manual report command:
+
+```powershell
 relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `

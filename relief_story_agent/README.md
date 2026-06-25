@@ -94,6 +94,21 @@ relief-story-agent local-doctor `
   --pretty
 ```
 
+For a machine-readable local acceptance snapshot that another reviewer can
+inspect later, run:
+
+```powershell
+relief-story-agent local-acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --repo-root "D:/codex工作区" `
+  --smoke-request "D:/relief_story_config/smoke_request.json" `
+  --smoke-dry-run `
+  --pretty
+```
+
+This writes command stdout/stderr files, `local_acceptance_summary.json`,
+`acceptance_report.json`, and `ACCEPTANCE_REPORT.md`.
+
 Preflight validation for a run request:
 
 ```http
@@ -405,7 +420,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:318 passed" `
+  --check "full_tests=pass:321 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `
@@ -428,6 +443,10 @@ recorded check are passing. The static checklist lives in
 `docs/ACCEPTANCE_REPORT_TEMPLATE.md`; it should not be treated as complete until
 real ComfyUI smoke, single-run, batch, restart-recovery, export, and clean-setup
 evidence has been recorded.
+
+To collect compile/test output and optional smoke evidence automatically, use
+`relief-story-agent local-acceptance`. It preserves raw command output under
+`command_outputs/` and then renders the same acceptance report format.
 
 ## ComfyUI / LTX 2.3 Workflows
 

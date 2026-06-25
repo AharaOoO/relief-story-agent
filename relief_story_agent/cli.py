@@ -10,6 +10,7 @@ import httpx
 from .acceptance import write_acceptance_report
 from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
 from .comfyui import connect_comfyui, discover_workflows
+from .local_acceptance import run_local_acceptance
 from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, ComfyUIConnectionRequest, ComfyUIWorkflowDiscoveryRequest, RunRequest
@@ -242,6 +243,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     acceptance_parser.add_argument("--notes", default="", help="Free-form acceptance notes.")
     acceptance_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    local_acceptance_parser = subparsers.add_parser(
+        "local-acceptance",
+        help="Run compile/tests and optional ComfyUI smoke, then write acceptance artifacts.",
+    )
+    local_acceptance_parser.add_argument("--output-dir", required=True, help="Directory to write acceptance artifacts.")
+    local_acceptance_parser.add_argument("--repo-root", default=".", help="Repository root for verification commands.")
+    local_acceptance_parser.add_argument("--smoke-request", default="", help="Optional smoke_request.json to run.")
+    local_acceptance_parser.add_argument(
+        "--smoke-dry-run",
+        action="store_true",
+        help="Force smoke-comfyui dry-run when --smoke-request is supplied.",
+    )
+    local_acceptance_parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=600,
+        help="Timeout for each local verification command.",
+    )
+    local_acceptance_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
 
     args, rest = parser.parse_known_args(argv)
     if args.command == "serve":
@@ -300,6 +320,8 @@ def main(argv: list[str] | None = None) -> int:
         return _setup(args)
     if args.command == "acceptance":
         return _acceptance(args)
+    if args.command == "local-acceptance":
+        return _local_acceptance(args)
     if rest and rest[0].startswith("-"):
         return server_main(rest)
     parser.print_help()
@@ -668,6 +690,18 @@ def _acceptance(args: argparse.Namespace) -> int:
     }
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
+
+
+def _local_acceptance(args: argparse.Namespace) -> int:
+    result = run_local_acceptance(
+        args.output_dir,
+        repo_root=args.repo_root,
+        smoke_request=args.smoke_request,
+        force_smoke_dry_run=args.smoke_dry_run,
+        command_timeout_seconds=args.timeout_seconds,
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("status") == "completed" else 1
 
 
 def _parse_check_arg(value: str) -> dict[str, str]:

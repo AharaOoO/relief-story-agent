@@ -130,6 +130,22 @@ relief-story-agent local-bootstrap --pretty
 relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
 
+When handing the install to another operator or another AI reviewer, collect a
+single evidence bundle:
+
+```powershell
+relief-story-agent local-acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --repo-root "D:/codex工作区" `
+  --smoke-request "D:/relief_story_config/smoke_request.json" `
+  --smoke-dry-run `
+  --pretty
+```
+
+This runs `compileall`, full tests, optional `smoke-comfyui`, stores raw
+stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
+acceptance reports.
+
 To check the same local ComfyUI address a future UI box would collect, keep the
 API server running and ask local doctor to ping `/queue`:
 
@@ -430,6 +446,22 @@ The CLI uses direct local HTTP for these API calls and ignores environment proxy
 settings, which avoids accidental proxy failures for `127.0.0.1`.
 
 ## 12. Record Acceptance
+
+For the repeatable local evidence bundle:
+
+```powershell
+relief-story-agent local-acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --repo-root "D:/codex工作区" `
+  --smoke-request "D:/relief_story_config/smoke_request.json" `
+  --smoke-dry-run `
+  --pretty
+```
+
+The command writes `local_acceptance_summary.json`, raw command output files,
+`acceptance_report.json`, and `ACCEPTANCE_REPORT.md`.
+
+For manual evidence entry:
 
 ```powershell
 relief-story-agent acceptance `

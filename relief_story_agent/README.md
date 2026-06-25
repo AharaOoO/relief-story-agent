@@ -136,6 +136,7 @@ relief-story-agent local-acceptance `
   --model-config "D:/relief_story_config/model_config.local.json" `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --local-demo `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
   --pretty
@@ -145,6 +146,20 @@ This writes command stdout/stderr files, `local_acceptance_summary.json`,
 `acceptance_report.json`, and `ACCEPTANCE_REPORT.md`. Optional config/request
 arguments add `model-check`, run diagnose, and batch diagnose evidence to the
 same report.
+
+You can also run the offline skeleton demo by itself:
+
+```powershell
+relief-story-agent local-demo `
+  --output-dir "D:/relief_story_demo" `
+  --batch-size 2 `
+  --pretty
+```
+
+`local-demo` uses the built-in fake model provider and disables ComfyUI/image
+generation. It proves the local orchestration skeleton can create run artifacts
+and a completed batch summary without API keys or GPU, but it is not a real
+model/video acceptance run.
 
 Preflight validation for a run request:
 

@@ -130,6 +130,66 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
     assert checks["batch_diagnose"]["evidence"] == "exit_code=0; kind=batch; ready=true"
 
 
+def test_run_local_acceptance_can_collect_offline_local_demo(tmp_path):
+    calls: list[list[str]] = []
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "331 passed in 54.94s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "local-demo"]:
+            output_dir = Path(command[command.index("--output-dir") + 1])
+            output_dir.mkdir(parents=True, exist_ok=True)
+            summary_path = output_dir / "local_demo_summary.json"
+            summary_path.write_text(
+                json.dumps(
+                    {
+                        "status": "completed",
+                        "single_run": {"status": "completed", "artifact_dir": str(output_dir / "runs" / "run_demo")},
+                        "batch": {
+                            "status": "completed",
+                            "summary": {"total": 2, "completed": 2},
+                        },
+                        "external_calls": {
+                            "model_provider": "fake",
+                            "comfyui": False,
+                            "image_generation": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps({"status": "completed", "summary_path": str(summary_path)}) + "\n",
+                "",
+            )
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        include_local_demo=True,
+        local_demo_batch_size=2,
+        command_runner=runner,
+    )
+
+    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.cli"]
+    assert calls[2][3] == "local-demo"
+    assert calls[2][calls[2].index("--batch-size") + 1] == "2"
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "completed"
+    assert checks["local_demo"]["status"] == "pass"
+    assert checks["local_demo"]["evidence"] == "single_run=completed; batch=completed; batch_completed=2/2; no_external_calls=true"
+
+
 def test_run_local_acceptance_marks_failed_commands(tmp_path):
     def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         if command[2] == "compileall":
@@ -166,6 +226,8 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         model_config: str,
         run_request: str,
         batch_request: str,
+        include_local_demo: bool,
+        local_demo_batch_size: int,
         force_smoke_dry_run: bool,
         command_timeout_seconds: float,
     ) -> dict[str, str]:
@@ -177,6 +239,8 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
                 "model_config": model_config,
                 "run_request": run_request,
                 "batch_request": batch_request,
+                "include_local_demo": include_local_demo,
+                "local_demo_batch_size": local_demo_batch_size,
                 "force_smoke_dry_run": force_smoke_dry_run,
                 "command_timeout_seconds": command_timeout_seconds,
             }
@@ -206,6 +270,9 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
             "D:/run_request.json",
             "--batch-request",
             "D:/batch_request.json",
+            "--local-demo",
+            "--local-demo-batch-size",
+            "3",
             "--smoke-dry-run",
             "--timeout-seconds",
             "12.5",
@@ -221,6 +288,8 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         "model_config": "D:/model_config.json",
         "run_request": "D:/run_request.json",
         "batch_request": "D:/batch_request.json",
+        "include_local_demo": True,
+        "local_demo_batch_size": 3,
         "force_smoke_dry_run": True,
         "command_timeout_seconds": 12.5,
     }

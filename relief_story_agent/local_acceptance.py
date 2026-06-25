@@ -23,6 +23,8 @@ def run_local_acceptance(
     model_config: str | Path | None = None,
     run_request: str | Path | None = None,
     batch_request: str | Path | None = None,
+    include_local_demo: bool = False,
+    local_demo_batch_size: int = 2,
     force_smoke_dry_run: bool = False,
     command_timeout_seconds: float = 600,
     command_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
@@ -67,6 +69,41 @@ def run_local_acceptance(
             required_evidence="python -m pytest relief_story_agent/tests -q output",
         )
     )
+
+    if include_local_demo:
+        demo_output_dir = target_dir / "local_demo"
+        demo_result = _execute_and_record(
+            "local_demo",
+            [
+                python,
+                "-m",
+                "relief_story_agent.cli",
+                "local-demo",
+                "--output-dir",
+                str(demo_output_dir),
+                "--batch-size",
+                str(local_demo_batch_size),
+            ],
+            cwd=cwd,
+            output_root=output_root,
+            runner=runner,
+            timeout_seconds=command_timeout_seconds,
+        )
+        commands.append(demo_result)
+        local_demo_summary = _local_demo_summary_path_from_stdout(demo_result["stdout"])
+        if not local_demo_summary:
+            local_demo_summary = demo_output_dir / "local_demo_summary.json"
+        if local_demo_summary.exists():
+            sources["local_demo_summary"] = str(local_demo_summary)
+        else:
+            checks.append(
+                _check_from_command(
+                    demo_result,
+                    check_id="local_demo",
+                    required_evidence="local_demo_summary.json, fake model run and batch artifacts",
+                    extra_evidence="missing local_demo_summary.json",
+                )
+            )
 
     if model_config:
         model_result = _execute_and_record(
@@ -323,6 +360,8 @@ def _command_output_summary(command_result: dict[str, Any]) -> list[str]:
         parts.append(f"ready={str(bool(payload['ready'])).lower()}")
     if "valid" in payload:
         parts.append(f"valid={str(bool(payload['valid'])).lower()}")
+    if "status" in payload:
+        parts.append(f"status={payload['status']}")
     if not parts:
         line = _last_nonempty_line(stdout)
         return [line] if line else []
@@ -337,3 +376,12 @@ def _smoke_result_path_from_stdout(stdout: str) -> Path | None:
     if not artifact_dir:
         return None
     return Path(artifact_dir) / "smoke_result.json"
+
+
+def _local_demo_summary_path_from_stdout(stdout: str) -> Path | None:
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        return None
+    summary_path = str(payload.get("summary_path") or "")
+    return Path(summary_path) if summary_path else None

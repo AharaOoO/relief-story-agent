@@ -152,14 +152,30 @@ relief-story-agent local-acceptance `
   --model-config "D:/relief_story_config/model_config.local.json" `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --local-demo `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
   --pretty
 ```
 
 This runs `compileall`, full tests, optional `model-check`, run/batch
-`diagnose`, and optional `smoke-comfyui`, stores raw stdout/stderr under
-`command_outputs/`, and writes both JSON and Markdown acceptance reports.
+`diagnose`, optional offline `local-demo`, and optional `smoke-comfyui`, stores
+raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
+acceptance reports.
+
+For a quick no-key/no-GPU confidence check before touching real services, run:
+
+```powershell
+relief-story-agent local-demo `
+  --output-dir "D:/relief_story_demo" `
+  --batch-size 2 `
+  --pretty
+```
+
+This writes `local_demo_summary.json`, a single completed fake-model run, and a
+completed fake-model batch under the chosen output directory. It deliberately
+keeps ComfyUI and image generation disabled, so treat it as an orchestration and
+artifact smoke check, not as proof that real videos render.
 
 To check the same local ComfyUI address a future UI box would collect, keep the
 API server running and ask local doctor to ping `/queue`:

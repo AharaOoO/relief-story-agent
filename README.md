@@ -92,12 +92,23 @@ relief-story-agent local-acceptance `
   --model-config "D:/relief_story_config/model_config.local.json" `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --local-demo `
   --pretty
 ```
 
-该命令会跑 `compileall`、全量测试、模型检查和 run/batch 诊断，可选加
+该命令会跑 `compileall`、全量测试、离线 fake-model 本地演练、模型检查和 run/batch 诊断，可选加
 `--smoke-request ...` 收集 ComfyUI smoke 证据，并写出 `local_acceptance_summary.json`、
 `acceptance_report.json`、`ACCEPTANCE_REPORT.md` 和原始 stdout/stderr。
+离线演练也可以单独运行：
+
+```powershell
+relief-story-agent local-demo `
+  --output-dir "D:/relief_story_demo" `
+  --batch-size 2 `
+  --pretty
+```
+
+`local-demo` 只使用内置 fake model，且关闭 ComfyUI 和图片生成；它用于确认流水线、artifacts、batch 摘要可以本地跑通，不代表真实模型或真实视频已验收完成。
 
 模板迭代前可单独检查占位符和 sha256：
 

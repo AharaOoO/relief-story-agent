@@ -83,6 +83,43 @@ def test_write_acceptance_report_can_collect_smoke_result(tmp_path):
     assert report["summary"]["ready_for_release"] is True
 
 
+def test_write_acceptance_report_can_collect_local_demo_summary(tmp_path):
+    summary_path = tmp_path / "local_demo_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "single_run": {"status": "completed", "artifact_dir": "D:/demo/run_demo"},
+                "batch": {
+                    "status": "completed",
+                    "summary": {"total": 2, "completed": 2},
+                },
+                "external_calls": {
+                    "model_provider": "fake",
+                    "comfyui": False,
+                    "image_generation": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_path = write_acceptance_report(
+        tmp_path / "report",
+        {
+            "mode": "offline_demo",
+            "status": "completed",
+            "sources": {"local_demo_summary": str(summary_path)},
+        },
+    )
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+
+    demo_check = next(check for check in report["checks"] if check["id"] == "local_demo")
+    assert demo_check["status"] == "pass"
+    assert demo_check["evidence"] == "single_run=completed; batch=completed; batch_completed=2/2; no_external_calls=true"
+    assert demo_check["details"]["source"] == str(summary_path)
+
+
 def test_write_acceptance_report_can_include_default_matrix(tmp_path):
     report_path = write_acceptance_report(
         tmp_path,
@@ -97,6 +134,7 @@ def test_write_acceptance_report_can_include_default_matrix(tmp_path):
     check_ids = [check["id"] for check in report["checks"]]
 
     assert "full_tests" in check_ids
+    assert "local_demo" in check_ids
     assert "model_check" in check_ids
     assert "run_diagnose" in check_ids
     assert "batch_diagnose" in check_ids

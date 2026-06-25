@@ -16,6 +16,10 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
         "required_evidence": "python -m pytest relief_story_agent/tests -q output",
     },
     {
+        "id": "local_demo",
+        "required_evidence": "local_demo_summary.json, fake model run and batch artifacts",
+    },
+    {
         "id": "comfyui_dry_smoke",
         "required_evidence": "smoke_result.json, no prompt id",
     },
@@ -107,6 +111,9 @@ def _checks_from_sources(sources: dict[str, Any]) -> list[dict[str, Any]]:
     smoke_result = sources.get("smoke_result")
     if smoke_result:
         checks.append(_check_from_smoke_result(Path(str(smoke_result))))
+    local_demo_summary = sources.get("local_demo_summary")
+    if local_demo_summary:
+        checks.append(_check_from_local_demo_summary(Path(str(local_demo_summary))))
     return checks
 
 
@@ -157,6 +164,58 @@ def _check_from_smoke_result(path: Path) -> dict[str, Any]:
             "source": str(path),
             "ready": ready,
             "status": status,
+        },
+    }
+
+
+def _check_from_local_demo_summary(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {
+            "id": "local_demo",
+            "required_evidence": "local_demo_summary.json, fake model run and batch artifacts",
+            "status": "fail",
+            "evidence": f"missing local_demo_summary={path}",
+            "details": {"source": str(path)},
+        }
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    single_status = str((payload.get("single_run") or {}).get("status") or "")
+    batch = payload.get("batch") or {}
+    batch_status = str(batch.get("status") or "")
+    batch_summary = batch.get("summary") or {}
+    batch_total = int(batch_summary.get("total") or 0)
+    batch_completed = int(batch_summary.get("completed") or 0)
+    external_calls = payload.get("external_calls") or {}
+    no_external_calls = (
+        str(external_calls.get("model_provider") or "") == "fake"
+        and external_calls.get("comfyui") is False
+        and external_calls.get("image_generation") is False
+    )
+    is_pass = (
+        str(payload.get("status") or "") == "completed"
+        and single_status == "completed"
+        and batch_status == "completed"
+        and batch_total > 0
+        and batch_completed == batch_total
+        and no_external_calls
+    )
+    return {
+        "id": "local_demo",
+        "required_evidence": "local_demo_summary.json, fake model run and batch artifacts",
+        "status": "pass" if is_pass else "fail",
+        "evidence": (
+            f"single_run={single_status}; "
+            f"batch={batch_status}; "
+            f"batch_completed={batch_completed}/{batch_total}; "
+            f"no_external_calls={str(no_external_calls).lower()}"
+        ),
+        "details": {
+            "source": str(path),
+            "status": str(payload.get("status") or ""),
+            "single_run_status": single_status,
+            "batch_status": batch_status,
+            "batch_summary": batch_summary,
+            "external_calls": external_calls,
         },
     }
 

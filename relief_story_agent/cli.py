@@ -11,6 +11,7 @@ from .acceptance import write_acceptance_report
 from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
 from .comfyui import connect_comfyui, discover_workflows
 from .local_acceptance import run_local_acceptance
+from .local_demo import run_local_demo
 from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .model_config import ModelConfigRegistry
 from .model_probe import run_model_probe
@@ -106,6 +107,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     local_doctor_parser.add_argument("--comfyui-endpoint", default="", help="Optional ComfyUI endpoint override.")
     local_doctor_parser.add_argument("--comfyui-timeout-seconds", type=float, default=5.0, help="ComfyUI ping timeout.")
+    local_demo_parser = subparsers.add_parser(
+        "local-demo",
+        help="Run an offline fake-model demo that writes run and batch artifacts.",
+    )
+    local_demo_parser.add_argument("--output-dir", required=True, help="Directory to write local demo artifacts.")
+    local_demo_parser.add_argument("--batch-size", type=int, default=2, help="Number of batch items to simulate.")
+    local_demo_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     run_parser = subparsers.add_parser(
         "run",
         help="Create a run through a running local API server.",
@@ -271,6 +279,17 @@ def main(argv: list[str] | None = None) -> int:
     local_acceptance_parser.add_argument("--run-request", default="", help="Optional run request JSON to diagnose.")
     local_acceptance_parser.add_argument("--batch-request", default="", help="Optional batch request JSON to diagnose.")
     local_acceptance_parser.add_argument(
+        "--local-demo",
+        action="store_true",
+        help="Run the offline fake-model local demo and include its artifact summary.",
+    )
+    local_acceptance_parser.add_argument(
+        "--local-demo-batch-size",
+        type=int,
+        default=2,
+        help="Number of batch items to simulate when --local-demo is used.",
+    )
+    local_acceptance_parser.add_argument(
         "--smoke-dry-run",
         action="store_true",
         help="Force smoke-comfyui dry-run when --smoke-request is supplied.",
@@ -304,6 +323,8 @@ def main(argv: list[str] | None = None) -> int:
         return _local_bootstrap(args)
     if args.command == "local-doctor":
         return _local_doctor(args)
+    if args.command == "local-demo":
+        return _local_demo(args)
     if args.command == "run":
         return _create_run(args)
     if args.command == "batch-plan":
@@ -516,6 +537,12 @@ def _local_doctor(args: argparse.Namespace) -> int:
             query["comfyui_endpoint"] = args.comfyui_endpoint
         query["comfyui_timeout_seconds"] = args.comfyui_timeout_seconds
     return _get_json_command(args, "/api/local/doctor", query=query)
+
+
+def _local_demo(args: argparse.Namespace) -> int:
+    result = run_local_demo(args.output_dir, batch_size=args.batch_size)
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result["status"] == "completed" else 1
 
 
 def _create_run(args: argparse.Namespace) -> int:
@@ -749,6 +776,8 @@ def _local_acceptance(args: argparse.Namespace) -> int:
         model_config=args.model_config,
         run_request=args.run_request,
         batch_request=args.batch_request,
+        include_local_demo=args.local_demo,
+        local_demo_batch_size=args.local_demo_batch_size,
         force_smoke_dry_run=args.smoke_dry_run,
         command_timeout_seconds=args.timeout_seconds,
     )

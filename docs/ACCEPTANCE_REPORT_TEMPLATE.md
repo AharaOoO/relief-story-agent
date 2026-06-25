@@ -6,6 +6,7 @@ the referenced artifact exists on the machine that ran the check.
 | Check | Required Evidence | Status |
 | --- | --- | --- |
 | Full tests | `python -m pytest relief_story_agent/tests -q` output | |
+| Local demo | `local_demo_summary.json`, fake model run artifacts, fake model batch summary | |
 | ComfyUI dry smoke | `smoke_result.json`, no prompt id | |
 | ComfyUI real smoke | `smoke_result.json`, prompt id | |
 | Model check | `model-check` JSON, `ready=true` | |
@@ -26,6 +27,7 @@ relief-story-agent local-acceptance `
   --model-config "D:/relief_story_config/model_config.local.json" `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --local-demo `
   --pretty
 ```
 

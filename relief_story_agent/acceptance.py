@@ -28,6 +28,10 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
         "required_evidence": "smoke_result.json, prompt id",
     },
     {
+        "id": "comfyui_outputs",
+        "required_evidence": "comfyui-outputs JSON, ready=true, video_count>0, downloaded video path",
+    },
+    {
         "id": "model_check",
         "required_evidence": "model-check JSON, ready=true",
     },

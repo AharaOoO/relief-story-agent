@@ -80,7 +80,7 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-341 passed
+342 passed
 ```
 
 可交给另一个 AI 或操作者核查的本地证据包命令：
@@ -93,6 +93,8 @@ relief-story-agent local-acceptance `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --local-demo `
+  --comfyui-output-prompt-id "{prompt_id}" `
+  --comfyui-output-artifact-dir "D:/relief_story_acceptance/comfyui_outputs" `
   --pretty
 ```
 

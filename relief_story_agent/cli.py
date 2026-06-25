@@ -314,6 +314,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Force smoke-comfyui dry-run when --smoke-request is supplied.",
     )
+    local_acceptance_parser.add_argument("--comfyui-output-prompt-id", default="", help="Optional ComfyUI prompt id to inspect with comfyui-outputs.")
+    local_acceptance_parser.add_argument("--comfyui-output-endpoint", default="http://127.0.0.1:8188", help="ComfyUI endpoint for output inspection.")
+    local_acceptance_parser.add_argument("--comfyui-output-artifact-dir", default="", help="Directory for downloaded ComfyUI output evidence.")
+    local_acceptance_parser.add_argument("--comfyui-output-wait", action="store_true", help="Wait for ComfyUI output evidence before recording the check.")
+    local_acceptance_parser.add_argument(
+        "--no-comfyui-output-download",
+        action="store_false",
+        dest="comfyui_output_download",
+        default=True,
+        help="Record ComfyUI output readiness without downloading files.",
+    )
+    local_acceptance_parser.add_argument("--comfyui-output-timeout-seconds", type=float, default=600, help="Timeout for comfyui-outputs wait mode.")
     local_acceptance_parser.add_argument(
         "--timeout-seconds",
         type=float,
@@ -837,6 +849,12 @@ def _local_acceptance(args: argparse.Namespace) -> int:
         include_local_demo=args.local_demo,
         local_demo_batch_size=args.local_demo_batch_size,
         force_smoke_dry_run=args.smoke_dry_run,
+        comfyui_output_prompt_id=args.comfyui_output_prompt_id,
+        comfyui_output_endpoint=args.comfyui_output_endpoint,
+        comfyui_output_artifact_dir=args.comfyui_output_artifact_dir,
+        comfyui_output_wait=args.comfyui_output_wait,
+        comfyui_output_download=args.comfyui_output_download,
+        comfyui_output_timeout_seconds=args.comfyui_output_timeout_seconds,
         command_timeout_seconds=args.timeout_seconds,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))

@@ -193,6 +193,69 @@ def test_run_local_acceptance_can_collect_offline_local_demo(tmp_path):
     assert checks["local_demo"]["evidence"] == "single_run=completed; batch=completed; batch_completed=2/2; restart_recovery=completed; no_external_calls=true"
 
 
+def test_run_local_acceptance_can_collect_comfyui_output_refresh(tmp_path):
+    calls: list[list[str]] = []
+    downloaded = tmp_path / "outputs" / "render.mp4"
+    downloaded.parent.mkdir(parents=True)
+    downloaded.write_bytes(b"video")
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "ready": True,
+                        "prompt_ids": ["prompt_video"],
+                        "video_count": 1,
+                        "image_count": 0,
+                        "downloaded_count": 1,
+                        "actual_outputs": [
+                            {
+                                "prompt_id": "prompt_video",
+                                "filename": "render.mp4",
+                                "media_type": "video",
+                                "local_path": str(downloaded),
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                "",
+            )
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        comfyui_output_prompt_id="prompt_video",
+        comfyui_output_endpoint="http://127.0.0.1:8188",
+        command_runner=runner,
+    )
+
+    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.cli"]
+    assert calls[2][3] == "comfyui-outputs"
+    assert "--prompt-id" in calls[2]
+    assert calls[2][calls[2].index("--prompt-id") + 1] == "prompt_video"
+    assert "--download" in calls[2]
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "completed"
+    assert checks["comfyui_outputs"]["status"] == "pass"
+    assert checks["comfyui_outputs"]["evidence"] == "ready=true; video_count=1; downloaded_count=1; prompt_ids=prompt_video"
+    assert report["video_paths"] == [str(downloaded)]
+
+
 def test_run_local_acceptance_marks_failed_commands(tmp_path):
     def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         if command[2] == "compileall":
@@ -232,6 +295,12 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         include_local_demo: bool,
         local_demo_batch_size: int,
         force_smoke_dry_run: bool,
+        comfyui_output_prompt_id: str,
+        comfyui_output_endpoint: str,
+        comfyui_output_artifact_dir: str,
+        comfyui_output_wait: bool,
+        comfyui_output_download: bool,
+        comfyui_output_timeout_seconds: float,
         command_timeout_seconds: float,
     ) -> dict[str, str]:
         captured.update(
@@ -245,6 +314,12 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
                 "include_local_demo": include_local_demo,
                 "local_demo_batch_size": local_demo_batch_size,
                 "force_smoke_dry_run": force_smoke_dry_run,
+                "comfyui_output_prompt_id": comfyui_output_prompt_id,
+                "comfyui_output_endpoint": comfyui_output_endpoint,
+                "comfyui_output_artifact_dir": comfyui_output_artifact_dir,
+                "comfyui_output_wait": comfyui_output_wait,
+                "comfyui_output_download": comfyui_output_download,
+                "comfyui_output_timeout_seconds": comfyui_output_timeout_seconds,
                 "command_timeout_seconds": command_timeout_seconds,
             }
         )
@@ -277,6 +352,16 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
             "--local-demo-batch-size",
             "3",
             "--smoke-dry-run",
+            "--comfyui-output-prompt-id",
+            "prompt_video",
+            "--comfyui-output-endpoint",
+            "127.0.0.1:8188",
+            "--comfyui-output-artifact-dir",
+            "D:/outputs",
+            "--comfyui-output-wait",
+            "--no-comfyui-output-download",
+            "--comfyui-output-timeout-seconds",
+            "44",
             "--timeout-seconds",
             "12.5",
             "--pretty",
@@ -294,6 +379,12 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         "include_local_demo": True,
         "local_demo_batch_size": 3,
         "force_smoke_dry_run": True,
+        "comfyui_output_prompt_id": "prompt_video",
+        "comfyui_output_endpoint": "127.0.0.1:8188",
+        "comfyui_output_artifact_dir": "D:/outputs",
+        "comfyui_output_wait": True,
+        "comfyui_output_download": False,
+        "comfyui_output_timeout_seconds": 44.0,
         "command_timeout_seconds": 12.5,
     }
     output = json.loads(capsys.readouterr().out)

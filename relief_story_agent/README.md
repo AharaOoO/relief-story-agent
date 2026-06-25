@@ -145,13 +145,15 @@ relief-story-agent local-acceptance `
   --local-demo `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
+  --comfyui-output-prompt-id "{prompt_id}" `
+  --comfyui-output-artifact-dir "D:/relief_story_acceptance/comfyui_outputs" `
   --pretty
 ```
 
 This writes command stdout/stderr files, `local_acceptance_summary.json`,
 `acceptance_report.json`, and `ACCEPTANCE_REPORT.md`. Optional config/request
-arguments add `model-check`, run diagnose, and batch diagnose evidence to the
-same report.
+arguments add `model-check`, run diagnose, batch diagnose, smoke, and
+standalone ComfyUI output-download evidence to the same report.
 
 You can also run the offline skeleton demo by itself:
 
@@ -482,7 +484,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:341 passed" `
+  --check "full_tests=pass:342 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `

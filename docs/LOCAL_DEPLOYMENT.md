@@ -171,11 +171,14 @@ relief-story-agent local-acceptance `
   --local-demo `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
+  --comfyui-output-prompt-id "{prompt_id}" `
+  --comfyui-output-artifact-dir "D:/relief_story_acceptance/comfyui_outputs" `
   --pretty
 ```
 
 This runs `compileall`, full tests, optional `model-check`, run/batch
-`diagnose`, optional offline `local-demo`, and optional `smoke-comfyui`, stores
+`diagnose`, optional offline `local-demo`, optional `smoke-comfyui`, and
+optional standalone ComfyUI output refresh/download evidence, stores
 raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
 acceptance reports.
 
@@ -523,6 +526,8 @@ relief-story-agent local-acceptance `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
+  --comfyui-output-prompt-id "{prompt_id}" `
+  --comfyui-output-artifact-dir "D:/relief_story_acceptance/comfyui_outputs" `
   --pretty
 ```
 

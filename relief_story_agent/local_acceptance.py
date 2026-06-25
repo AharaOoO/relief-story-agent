@@ -26,6 +26,12 @@ def run_local_acceptance(
     include_local_demo: bool = False,
     local_demo_batch_size: int = 2,
     force_smoke_dry_run: bool = False,
+    comfyui_output_prompt_id: str | None = None,
+    comfyui_output_endpoint: str = "http://127.0.0.1:8188",
+    comfyui_output_artifact_dir: str | Path | None = None,
+    comfyui_output_wait: bool = False,
+    comfyui_output_download: bool = True,
+    comfyui_output_timeout_seconds: float = 600,
     command_timeout_seconds: float = 600,
     command_runner: Callable[..., subprocess.CompletedProcess[str]] | None = None,
 ) -> dict[str, Any]:
@@ -41,6 +47,7 @@ def run_local_acceptance(
     commands: list[dict[str, Any]] = []
     checks: list[dict[str, Any]] = []
     sources: dict[str, str] = {}
+    video_paths: list[str] = []
 
     compile_result = _execute_and_record(
         "compileall",
@@ -218,12 +225,53 @@ def run_local_acceptance(
                 )
             )
 
+    if comfyui_output_prompt_id:
+        output_artifact_dir = (
+            Path(comfyui_output_artifact_dir)
+            if comfyui_output_artifact_dir
+            else target_dir / "comfyui_output_refresh"
+        )
+        output_command = [
+            python,
+            "-m",
+            "relief_story_agent.cli",
+            "comfyui-outputs",
+            "--endpoint",
+            str(comfyui_output_endpoint),
+            "--prompt-id",
+            str(comfyui_output_prompt_id),
+            "--timeout-seconds",
+            str(comfyui_output_timeout_seconds),
+            "--artifact-dir",
+            str(output_artifact_dir),
+        ]
+        if comfyui_output_wait:
+            output_command.append("--wait")
+        if comfyui_output_download:
+            output_command.append("--download")
+        output_result = _execute_and_record(
+            "comfyui_outputs",
+            output_command,
+            cwd=cwd,
+            output_root=output_root,
+            runner=runner,
+            timeout_seconds=command_timeout_seconds,
+        )
+        commands.append(output_result)
+        output_check, refreshed_video_paths = _check_from_comfyui_outputs_command(
+            output_result,
+            require_download=comfyui_output_download,
+        )
+        checks.append(output_check)
+        video_paths.extend(refreshed_video_paths)
+
     status = "completed" if all(item["exit_code"] == 0 for item in commands) else "failed"
     report_path = write_acceptance_report(
         target_dir,
         {
             "mode": "local_acceptance",
             "status": status,
+            "video_paths": video_paths,
             "checks": checks,
             "sources": sources,
             "include_default_matrix": True,
@@ -239,6 +287,7 @@ def run_local_acceptance(
         "command_output_dir": str(output_root),
         "commands": commands,
         "sources": sources,
+        "video_paths": video_paths,
     }
     summary_path = target_dir / "local_acceptance_summary.json"
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -336,6 +385,64 @@ def _check_from_command(
             "stderr_path": command_result["stderr_path"],
         },
     }
+
+
+def _check_from_comfyui_outputs_command(
+    command_result: dict[str, Any],
+    *,
+    require_download: bool,
+) -> tuple[dict[str, Any], list[str]]:
+    required_evidence = "comfyui-outputs JSON, ready=true, video_count>0"
+    try:
+        payload = json.loads(str(command_result.get("stdout") or ""))
+    except json.JSONDecodeError:
+        return (
+            _check_from_command(
+                command_result,
+                check_id="comfyui_outputs",
+                required_evidence=required_evidence,
+                extra_evidence="invalid comfyui-outputs JSON stdout",
+            ),
+            [],
+        )
+
+    prompt_ids = [str(item) for item in payload.get("prompt_ids") or []]
+    ready = bool(payload.get("ready"))
+    video_count = int(payload.get("video_count") or 0)
+    downloaded_count = int(payload.get("downloaded_count") or 0)
+    actual_outputs = payload.get("actual_outputs") or []
+    video_paths = [
+        str(output.get("local_path") or "")
+        for output in actual_outputs
+        if isinstance(output, dict)
+        and str(output.get("media_type") or "") == "video"
+        and str(output.get("local_path") or "")
+    ]
+    download_ready = not require_download or (downloaded_count > 0 and bool(video_paths))
+    is_pass = command_result["exit_code"] == 0 and ready and video_count > 0 and download_ready
+    return (
+        {
+            "id": "comfyui_outputs",
+            "required_evidence": required_evidence,
+            "status": "pass" if is_pass else "fail",
+            "evidence": (
+                f"ready={str(ready).lower()}; "
+                f"video_count={video_count}; "
+                f"downloaded_count={downloaded_count}; "
+                f"prompt_ids={','.join(prompt_ids)}"
+            ),
+            "details": {
+                "command": command_result["command"],
+                "cwd": command_result["cwd"],
+                "exit_code": command_result["exit_code"],
+                "stdout_path": command_result["stdout_path"],
+                "stderr_path": command_result["stderr_path"],
+                "status": str(payload.get("status") or ""),
+                "actual_outputs": actual_outputs,
+            },
+        },
+        video_paths,
+    )
 
 
 def _last_nonempty_line(text: str) -> str:

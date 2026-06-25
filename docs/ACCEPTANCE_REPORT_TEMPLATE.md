@@ -9,6 +9,7 @@ the referenced artifact exists on the machine that ran the check.
 | Local demo | `local_demo_summary.json`, fake model run artifacts, fake model batch summary, restart recovery drill | |
 | ComfyUI dry smoke | `smoke_result.json`, no prompt id | |
 | ComfyUI real smoke | `smoke_result.json`, prompt id | |
+| ComfyUI outputs | `comfyui-outputs` JSON, `ready=true`, `video_count>0`, downloaded video path | |
 | Model check | `model-check` JSON, `ready=true` | |
 | Run diagnose | `diagnose` run JSON, `ready=true` | |
 | Batch diagnose | `diagnose --kind batch` JSON, `ready=true` | |
@@ -28,6 +29,8 @@ relief-story-agent local-acceptance `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --local-demo `
+  --comfyui-output-prompt-id "{prompt_id}" `
+  --comfyui-output-artifact-dir "D:/relief_story_acceptance/comfyui_outputs" `
   --pretty
 ```
 

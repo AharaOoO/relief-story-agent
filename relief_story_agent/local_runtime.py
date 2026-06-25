@@ -51,6 +51,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
         },
         "comfyui": {
             "default_endpoint": normalize_comfyui_endpoint(runtime.comfyui_endpoint),
+            "doctor_endpoint": "/api/local/doctor",
             "connect_endpoint": "/api/comfyui/connect",
             "discover_workflows_endpoint": "/api/comfyui/discover-workflows",
             "outputs_endpoint": "/api/comfyui/outputs",
@@ -62,6 +63,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
         },
         "endpoints": {
             "health": "/api/health",
+            "local_doctor": "/api/local/doctor",
             "local_setup_bundle": "/api/local/setup-bundle",
             "metrics": "/api/metrics",
             "pipeline_schema": "/api/pipeline/schema",

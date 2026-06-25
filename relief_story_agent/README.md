@@ -106,9 +106,11 @@ The server exposes the same contract for launchers and future UI shells:
 
 For UI integration, `GET /api/local/bootstrap` returns the local API base URL,
 recommended UI origin, allowed CORS origins, default ComfyUI endpoint, and core
-endpoint paths. The default API port is `8891`; the recommended local UI dev
-origin is `http://127.0.0.1:5173`. The CLI can print the same contract before
-the server starts:
+endpoint paths. The bootstrap contract includes `local_doctor` and
+`comfyui.doctor_endpoint`, so a launcher can ping the user's pasted ComfyUI
+address before enqueueing work. The default API port is `8891`; the recommended
+local UI dev origin is `http://127.0.0.1:5173`. The CLI can print the same
+contract before the server starts:
 
 ```powershell
 relief-story-agent local-bootstrap --pretty

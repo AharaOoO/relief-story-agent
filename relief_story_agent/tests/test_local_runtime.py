@@ -27,7 +27,9 @@ def test_build_local_bootstrap_exposes_ui_ports_and_core_endpoints():
     assert bootstrap["ui"]["recommended_dev_origin"] == "http://127.0.0.1:5173"
     assert "http://localhost:5173" in bootstrap["ui"]["allowed_origins"]
     assert bootstrap["comfyui"]["default_endpoint"] == "http://127.0.0.1:8188"
+    assert bootstrap["comfyui"]["doctor_endpoint"] == "/api/local/doctor"
     assert bootstrap["endpoints"]["health"] == "/api/health"
+    assert bootstrap["endpoints"]["local_doctor"] == "/api/local/doctor"
     assert bootstrap["endpoints"]["pipeline_schema"] == "/api/pipeline/schema"
     assert bootstrap["endpoints"]["run_audit"] == "/api/runs/{run_id}/audit"
     assert bootstrap["endpoints"]["run_timeline"] == "/api/runs/{run_id}/timeline"

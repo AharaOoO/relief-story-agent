@@ -169,6 +169,11 @@ names, and environment variables. Once the keys are set, run the same command
 with `--real-run` to send one tiny JSON probe per profile before spending quota
 on a full short-video run.
 
+`local-bootstrap` exposes both `endpoints.local_doctor` and
+`comfyui.doctor_endpoint` for launcher/UI address-box flows. Use that doctor
+endpoint with `check_comfyui_connection=true`, the pasted ComfyUI address, and
+the selected workflow path before running smoke or batch work.
+
 When handing the install to another operator or another AI reviewer, collect a
 single evidence bundle:
 

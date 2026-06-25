@@ -126,6 +126,68 @@ def get_stage_spec(stage_id: str) -> StageSpec:
     return STAGE_SPECS[stage_id]
 
 
+def build_pipeline_schema() -> dict:
+    return {
+        "schema_version": "1",
+        "canonical_stage_order": list(CANONICAL_STAGE_ORDER),
+        "runtime_variants": {
+            "base": list(BASE_RUNTIME_STAGE_ORDER),
+            "recoverable": list(RECOVERABLE_STAGE_ORDER),
+            "model": list(MODEL_STAGE_IDS),
+            "maximal": list(CANONICAL_STAGE_ORDER),
+        },
+        "invariants": {
+            "fixed_order": True,
+            "prompt_reviser_max_auto_attempts": 1,
+            "quality_gate_after": "deepseek_polish",
+            "comfyui_workflow_generation": "never",
+            "comfyui_enqueue_boundary": "/prompt",
+        },
+        "stages": [
+            _stage_schema(stage_id, index)
+            for index, stage_id in enumerate(CANONICAL_STAGE_ORDER)
+        ],
+    }
+
+
+def _stage_schema(stage_id: str, index: int) -> dict:
+    spec = STAGE_SPECS[stage_id]
+    return {
+        "stage_id": spec.stage_id,
+        "index": index,
+        "category": spec.category,
+        "retryable": spec.retryable,
+        "automatic": _automatic_policy(stage_id),
+        "runtime_presence": _runtime_presence(stage_id),
+        "side_effects": list(spec.side_effects),
+        "outputs": list(spec.outputs),
+        "previous_stage": CANONICAL_STAGE_ORDER[index - 1] if index else "",
+        "next_stage": (
+            CANONICAL_STAGE_ORDER[index + 1]
+            if index < len(CANONICAL_STAGE_ORDER) - 1
+            else ""
+        ),
+    }
+
+
+def _automatic_policy(stage_id: str) -> str:
+    if stage_id == "gpt_prompt_reviser":
+        return "conditional_once"
+    return "always_when_present"
+
+
+def _runtime_presence(stage_id: str) -> str:
+    if stage_id == "gpt_prompt_reviser":
+        return "when_prompt_audit_fails_first_pass"
+    if stage_id == "four_grid_asset":
+        return "when_ltx_grid_asset_required"
+    if stage_id == "artifacts":
+        return "when_output_root_or_grid_asset_present"
+    if stage_id == "comfyui":
+        return "when_comfyui_enabled"
+    return "base"
+
+
 def stage_ids_for_run(
     *,
     requires_grid_asset: bool,

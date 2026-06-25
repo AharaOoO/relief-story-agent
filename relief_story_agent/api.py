@@ -35,6 +35,7 @@ from .models import (
     RunState,
 )
 from .orchestrator import StoryRunOrchestrator
+from .pipeline import build_pipeline_schema
 from .planning import build_batch_plan
 from .recovery import build_batch_recovery_plan
 from .scheduler import PersistentRunScheduler
@@ -81,6 +82,10 @@ def create_app(
     @app.get("/api/config/models")
     def get_model_config_status():
         return orchestrator.model_registry.status()
+
+    @app.get("/api/pipeline/schema")
+    def get_pipeline_schema():
+        return build_pipeline_schema()
 
     @app.post("/api/config/validate")
     def validate_config(request: RunRequest, check_comfyui_connection: bool = False):

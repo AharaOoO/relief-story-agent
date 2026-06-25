@@ -103,6 +103,13 @@ models, enqueue `/prompt`, wait for video, or download outputs.
 
 ## 5. Diagnose Before Spending Quota
 
+Print the fixed stage contract when checking a local install or handing the
+project to another operator:
+
+```powershell
+relief-story-agent pipeline-schema --pretty
+```
+
 Run local diagnostics before creating a real run:
 
 ```powershell

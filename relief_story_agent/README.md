@@ -64,6 +64,14 @@ The response reports service status, scheduler status, state backend, model prof
 
 `GET /api/metrics` returns dashboard-level counters: run status distribution, failed-stage distribution, success rate, average duration, model token/cost totals, batch status distribution, and publish-ready video counts.
 
+`GET /api/pipeline/schema` returns the machine-readable stage contract used by
+runs, retries, recovery, diagnostics, and future UI shells. The same contract is
+available from the CLI:
+
+```powershell
+relief-story-agent pipeline-schema --pretty
+```
+
 Preflight validation for a run request:
 
 ```http

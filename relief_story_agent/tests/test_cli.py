@@ -28,6 +28,7 @@ def test_cli_help_lists_core_local_commands():
     assert "setup" in completed.stdout
     assert "acceptance" in completed.stdout
     assert "diagnose" in completed.stdout
+    assert "pipeline-schema" in completed.stdout
     assert "run" in completed.stdout
     assert "batch-plan" in completed.stdout
     assert "batch" in completed.stdout

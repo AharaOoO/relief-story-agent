@@ -12,6 +12,7 @@ from .config_validation import diagnose_batch_configuration, diagnose_run_config
 from .comfyui import connect_comfyui
 from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, ComfyUIConnectionRequest, RunRequest
+from .pipeline import build_pipeline_schema
 from .server import main as server_main
 from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import main as smoke_main
@@ -49,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Also ping the configured ComfyUI /queue endpoint.",
     )
     diagnose_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    pipeline_schema_parser = subparsers.add_parser(
+        "pipeline-schema",
+        help="Print the fixed stage contract used by runs, recovery, and diagnostics.",
+    )
+    pipeline_schema_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     run_parser = subparsers.add_parser(
         "run",
         help="Create a run through a running local API server.",
@@ -208,6 +214,8 @@ def main(argv: list[str] | None = None) -> int:
         return _connect_comfyui(args)
     if args.command == "diagnose":
         return _diagnose(args)
+    if args.command == "pipeline-schema":
+        return _pipeline_schema(args)
     if args.command == "run":
         return _create_run(args)
     if args.command == "batch-plan":
@@ -337,6 +345,11 @@ def _diagnose_kind(payload: dict, requested_kind: str) -> str:
     if requested_kind in {"run", "batch"}:
         return requested_kind
     return "batch" if isinstance(payload.get("items"), list) else "run"
+
+
+def _pipeline_schema(args: argparse.Namespace) -> int:
+    print(json.dumps(build_pipeline_schema(), ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0
 
 
 def _create_run(args: argparse.Namespace) -> int:

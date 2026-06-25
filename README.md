@@ -80,7 +80,7 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-300 passed
+304 passed
 ```
 
 ## 下一步开发
@@ -88,6 +88,9 @@ python -m pytest relief_story_agent/tests -q
 `local_comfyui_smoke` 已实现并推送。最近核心功能提交包括：
 
 ```text
+a13a909 fix: bypass proxy for local ComfyUI calls
+b487761 feat: add ComfyUI check to local doctor
+5d7cb4c feat: add local doctor readiness report
 522cd85 feat: validate execution policy stage names
 96e3e82 feat: normalize ComfyUI endpoint inputs
 3f1b70a feat: validate execution policy budgets

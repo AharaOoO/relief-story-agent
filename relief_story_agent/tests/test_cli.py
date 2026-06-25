@@ -25,6 +25,7 @@ def test_cli_help_lists_core_local_commands():
     assert "serve" in completed.stdout
     assert "smoke-comfyui" in completed.stdout
     assert "connect-comfyui" in completed.stdout
+    assert "discover-comfyui-workflows" in completed.stdout
     assert "setup" in completed.stdout
     assert "acceptance" in completed.stdout
     assert "diagnose" in completed.stdout
@@ -55,6 +56,95 @@ def test_console_script_points_to_unified_cli():
     pyproject = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert pyproject["project"]["scripts"]["relief-story-agent"] == "relief_story_agent.cli:main"
+
+
+def test_cli_discover_comfyui_workflows_scans_local_directory(tmp_path):
+    workflow_path = tmp_path / "ltx_litegraph.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {
+                        "id": 202,
+                        "type": "JWString",
+                        "inputs": [{"name": "text", "type": "STRING", "widget": {"name": "text"}}],
+                        "outputs": [{"name": "STRING", "type": "STRING", "links": [1]}],
+                        "widgets_values": [
+                            json.dumps(
+                                {
+                                    "prompt": "old prompt",
+                                    "negative_prompt": "old negative",
+                                    "frame_indices": "0,24,48,72",
+                                    "strengths": "0.7,0.7,0.8,0.8",
+                                    "duration_seconds": 4,
+                                    "fps": 24,
+                                    "shots": [],
+                                },
+                                ensure_ascii=False,
+                            )
+                        ],
+                    },
+                    {
+                        "id": 37,
+                        "type": "RandomNoise",
+                        "inputs": [{"name": "noise_seed", "type": "INT", "widget": {"name": "noise_seed"}}],
+                        "widgets_values": [123],
+                    },
+                    {
+                        "id": 79,
+                        "type": "VHS_VideoCombine",
+                        "widgets_values": ["old_prefix"],
+                    },
+                ],
+                "links": [[1, 202, 0, 999, 0, "STRING"]],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "discover-comfyui-workflows",
+            "--search-root",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    body = json.loads(completed.stdout)
+    assert completed.returncode == 0
+    assert body["recommended"]["path"] == str(workflow_path)
+    assert body["items"][0]["status"] == "recommended"
+
+
+def test_cli_discover_comfyui_workflows_returns_zero_when_no_recommendation(tmp_path):
+    unsupported = tmp_path / "plain.json"
+    unsupported.write_text('{"hello": "world"}', encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "discover-comfyui-workflows",
+            "--search-root",
+            str(tmp_path),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    body = json.loads(completed.stdout)
+    assert completed.returncode == 0
+    assert body["recommended"] == {}
+    assert body["items"][0]["status"] == "unsupported"
 
 
 def test_cli_diagnose_run_reports_ready_configuration(tmp_path):

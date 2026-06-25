@@ -275,6 +275,121 @@ def connect_comfyui(
     }
 
 
+def discover_workflows(
+    search_roots: list[str | Path],
+    *,
+    endpoint: str = "http://127.0.0.1:8188",
+    max_results: int = 25,
+    filename_keywords: list[str] | None = None,
+    include_unsupported: bool = True,
+) -> dict[str, Any]:
+    normalized_endpoint = ComfyUIConnectionRequest(endpoint=endpoint).endpoint
+    roots = [Path(root) for root in search_roots]
+    candidates = _workflow_candidate_paths(roots, filename_keywords or [])
+    items = [
+        _discover_workflow_item(path, endpoint=normalized_endpoint)
+        for path in candidates
+    ]
+    if not include_unsupported:
+        items = [item for item in items if item["status"] != "unsupported"]
+    items = sorted(items, key=lambda item: (-int(item["score"]), item["path"]))
+    limited_items = items[:max_results]
+    recommended = next(
+        (item for item in limited_items if item["status"] == "recommended"),
+        {},
+    )
+    return {
+        "endpoint": normalized_endpoint,
+        "searched_roots": [str(root) for root in roots],
+        "total_candidates": len(candidates),
+        "returned": len(limited_items),
+        "recommended": recommended,
+        "items": limited_items,
+    }
+
+
+def _workflow_candidate_paths(roots: list[Path], filename_keywords: list[str]) -> list[Path]:
+    normalized_keywords = [keyword.lower() for keyword in filename_keywords if keyword]
+    paths: list[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        if root.is_file() and root.suffix.lower() == ".json":
+            candidates = [root]
+        elif root.is_dir():
+            candidates = root.rglob("*.json")
+        else:
+            continue
+        for candidate in candidates:
+            name = candidate.name.lower()
+            if normalized_keywords and not any(keyword in name for keyword in normalized_keywords):
+                continue
+            key = str(candidate.resolve())
+            if key in seen:
+                continue
+            seen.add(key)
+            paths.append(candidate)
+    return paths
+
+
+def _discover_workflow_item(path: Path, *, endpoint: str) -> dict[str, Any]:
+    base = {
+        "path": str(path),
+        "filename": path.name,
+        "status": "unsupported",
+        "score": 0,
+        "adapter_mode": "",
+        "workflow_format": "",
+        "grid_asset_required": False,
+        "grid_shape": {},
+        "placeholder_map_required": False,
+        "ltx_injection_points": {},
+        "warnings": [],
+        "error": "",
+        "suggested_config": {},
+    }
+    try:
+        analysis = analyze_workflow_config(
+            ComfyUIRunConfig(
+                enabled=True,
+                endpoint=endpoint,
+                workflow_api_path=str(path),
+            )
+        )
+    except Exception as exc:
+        base["error"] = str(exc)
+        return base
+
+    score = _workflow_discovery_score(analysis)
+    status = "recommended" if score >= 80 else "needs_placeholder_map"
+    return {
+        **base,
+        "status": status,
+        "score": score,
+        "adapter_mode": str(analysis.get("adapter_mode") or ""),
+        "workflow_format": str(analysis.get("workflow_format") or ""),
+        "grid_asset_required": bool(analysis.get("grid_asset_required")),
+        "grid_shape": analysis.get("grid_shape") or {},
+        "placeholder_map_required": bool(analysis.get("placeholder_map_required")),
+        "ltx_injection_points": analysis.get("ltx_injection_points") or {},
+        "warnings": analysis.get("warnings") or [],
+        "suggested_config": analysis.get("suggested_config") or {},
+    }
+
+
+def _workflow_discovery_score(analysis: dict[str, Any]) -> int:
+    if analysis.get("adapter_mode") == "litegraph_ltx_auto_injection":
+        score = 80
+        grid_shape = analysis.get("grid_shape") or {}
+        if grid_shape.get("columns") == 2 and grid_shape.get("rows") == 2:
+            score += 15
+        if analysis.get("grid_asset_required"):
+            score += 5
+        return score
+    if analysis.get("adapter_mode") == "api_placeholder_map":
+        return 50 if analysis.get("placeholder_map_required") else 60
+    return 0
+
+
 def apply_placeholder_map(
     workflow: dict[str, Any],
     shot: dict[str, Any],

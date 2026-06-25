@@ -18,7 +18,7 @@ from .config_validation import (
     validate_batch_configuration,
     validate_run_configuration,
 )
-from .comfyui import analyze_workflow_config, connect_comfyui, preview_storyboard_submission
+from .comfyui import analyze_workflow_config, connect_comfyui, discover_workflows, preview_storyboard_submission
 from .metrics import build_batch_health_report, build_system_metrics
 from .models import (
     BatchExportRequest,
@@ -31,6 +31,7 @@ from .models import (
     ComfyUIConnectionRequest,
     ComfyUIPreviewRequest,
     ComfyUIWorkflowAnalysisRequest,
+    ComfyUIWorkflowDiscoveryRequest,
     RunRequest,
     RunRetryRequest,
     RunState,
@@ -272,6 +273,16 @@ def create_app(
     @app.post("/api/comfyui/connect")
     def connect_comfyui_endpoint(request: ComfyUIConnectionRequest):
         return connect_comfyui(request)
+
+    @app.post("/api/comfyui/discover-workflows")
+    def discover_comfyui_workflows(request: ComfyUIWorkflowDiscoveryRequest):
+        return discover_workflows(
+            request.search_roots,
+            endpoint=request.endpoint,
+            max_results=request.max_results,
+            filename_keywords=request.filename_keywords,
+            include_unsupported=request.include_unsupported,
+        )
 
     @app.post("/api/smoke/comfyui")
     def smoke_comfyui(request: ComfyUISmokeRequest):

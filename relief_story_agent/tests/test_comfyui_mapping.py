@@ -6,6 +6,7 @@ import json
 import httpx
 import pytest
 
+import relief_story_agent.comfyui as comfyui
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
 
@@ -754,3 +755,46 @@ def test_api_comfyui_analyze_workflow_reports_api_placeholder_map_mode(tmp_path)
     assert body["placeholder_map_keys"] == ["positive"]
     assert body["node_count"] == 2
     assert body["suggested_config"]["placeholder_map"]["positive"]["source"] == "image_prompt"
+
+
+def test_discover_workflows_ranks_ltx_grid_candidate(tmp_path):
+    good = _write_sanitized_workflow(tmp_path)
+    unsupported = tmp_path / "plain.json"
+    unsupported.write_text(json.dumps({"hello": "world"}), encoding="utf-8")
+
+    report = comfyui.discover_workflows([tmp_path], endpoint="127.0.0.1:8188/queue")
+
+    assert report["endpoint"] == "http://127.0.0.1:8188"
+    assert report["total_candidates"] == 2
+    assert report["recommended"]["path"] == str(good)
+    assert report["recommended"]["status"] == "recommended"
+    assert report["items"][0]["path"] == str(good)
+    assert report["items"][0]["adapter_mode"] == "litegraph_ltx_auto_injection"
+    assert report["items"][0]["grid_shape"] == {"columns": 2, "rows": 2}
+    assert report["items"][1]["status"] == "unsupported"
+
+
+def test_api_comfyui_discover_workflows_returns_candidates(tmp_path):
+    good = _ltx_litegraph_workflow_file(tmp_path)
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=InMemoryRunStore(),
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/comfyui/discover-workflows",
+        json={
+            "endpoint": "127.0.0.1:8188/queue",
+            "search_roots": [str(tmp_path)],
+            "max_results": 5,
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["recommended"]["path"] == str(good)
+    assert body["items"][0]["status"] == "recommended"

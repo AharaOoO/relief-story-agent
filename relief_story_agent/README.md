@@ -414,6 +414,23 @@ evidence has been recorded.
 
 ## ComfyUI / LTX 2.3 Workflows
 
+To scan a user's existing ComfyUI integrated package or workflow folder before
+they know the exact JSON path, use:
+
+```powershell
+relief-story-agent discover-comfyui-workflows `
+  --search-root "D:/AI-Comfyui-onekey-V5/ComfyUI_windows_portable_nvidia/ComfyUI_windows_portable/ComfyUI" `
+  --endpoint "127.0.0.1:8188/queue" `
+  --filename-keyword "LTX" `
+  --pretty
+```
+
+Launchers and future UI shells can call `POST /api/comfyui/discover-workflows`
+with `search_roots[]`. The response ranks local workflow JSON files, reports
+adapter compatibility, and returns a `recommended` workflow when a LiteGraph LTX
+workflow can be patched automatically. Discovery only reads files; it does not
+upload images, enqueue prompts, or edit workflow files.
+
 For launcher, desktop-shell, or future UI flows where the user fills one local ComfyUI address box first, call:
 
 ```http
@@ -1084,6 +1101,7 @@ A run may select another registered profile without changing the server configur
 - `GET /api/scheduler`
 - `POST /api/batches/plan`
 - `POST /api/comfyui/connect`
+- `POST /api/comfyui/discover-workflows`
 - `POST /api/comfyui/preview`
 - `POST /api/smoke/comfyui`
 - `POST /api/runs`

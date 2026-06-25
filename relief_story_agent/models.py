@@ -171,6 +171,19 @@ class ComfyUIWorkflowAnalysisRequest(BaseModel):
     comfyui: ComfyUIRunConfig
 
 
+class ComfyUIWorkflowDiscoveryRequest(BaseModel):
+    endpoint: str = "http://127.0.0.1:8188"
+    search_roots: list[str] = Field(default_factory=list)
+    max_results: int = Field(default=25, ge=1, le=500)
+    filename_keywords: list[str] = Field(default_factory=list)
+    include_unsupported: bool = True
+
+    @field_validator("endpoint")
+    @classmethod
+    def _normalize_endpoint(cls, value: str) -> str:
+        return normalize_comfyui_endpoint(value)
+
+
 class ComfyUISubmission(BaseModel):
     submission_key: str
     content_fingerprint: str

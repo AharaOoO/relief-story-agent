@@ -85,7 +85,23 @@ budget first.
 
 ## 4. Check ComfyUI
 
-Start ComfyUI, then test the local address box flow:
+Start ComfyUI, then scan the local integrated package or workflow folder for
+usable workflow JSON candidates:
+
+```powershell
+relief-story-agent discover-comfyui-workflows `
+  --search-root "D:/AI-Comfyui-onekey-V5/ComfyUI_windows_portable_nvidia/ComfyUI_windows_portable/ComfyUI" `
+  --endpoint "127.0.0.1:8188/queue" `
+  --filename-keyword "LTX" `
+  --pretty
+```
+
+The HTTP equivalent for launchers and future UI shells is
+`POST /api/comfyui/discover-workflows`. It reads local JSON files, classifies
+adapter compatibility, and returns a `recommended` workflow when one can be
+patched automatically. It does not upload, enqueue, or edit workflow files.
+
+After choosing a candidate, test the local address box flow:
 
 ```powershell
 relief-story-agent connect-comfyui `

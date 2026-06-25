@@ -9,10 +9,10 @@ import httpx
 
 from .acceptance import write_acceptance_report
 from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
-from .comfyui import connect_comfyui
+from .comfyui import connect_comfyui, discover_workflows
 from .local_runtime import LocalRuntimeConfig, build_local_bootstrap
 from .model_config import ModelConfigRegistry
-from .models import BatchRunRequest, ComfyUIConnectionRequest, RunRequest
+from .models import BatchRunRequest, ComfyUIConnectionRequest, ComfyUIWorkflowDiscoveryRequest, RunRequest
 from .pipeline import build_pipeline_schema
 from .server import main as server_main
 from .setup_wizard import write_local_config_bundle
@@ -33,6 +33,16 @@ def main(argv: list[str] | None = None) -> int:
     connect_parser.add_argument("--workflow-api-path", default="", help="Optional workflow JSON path.")
     connect_parser.add_argument("--timeout-seconds", type=float, default=0, help="Network timeout.")
     connect_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    discover_parser = subparsers.add_parser(
+        "discover-comfyui-workflows",
+        help="Scan local directories for ComfyUI workflow JSON candidates.",
+    )
+    discover_parser.add_argument("--search-root", action="append", default=[], help="Directory or JSON file to scan.")
+    discover_parser.add_argument("--endpoint", default="http://127.0.0.1:8188", help="ComfyUI base URL.")
+    discover_parser.add_argument("--max-results", type=int, default=25, help="Maximum workflow candidates to return.")
+    discover_parser.add_argument("--filename-keyword", action="append", default=[], help="Only include JSON filenames containing this text.")
+    discover_parser.add_argument("--hide-unsupported", action="store_true", help="Omit workflows that cannot be analyzed.")
+    discover_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     diagnose_parser = subparsers.add_parser(
         "diagnose",
         help="Diagnose a local run or batch request without enqueueing work.",
@@ -240,6 +250,8 @@ def main(argv: list[str] | None = None) -> int:
         return smoke_main(rest)
     if args.command == "connect-comfyui":
         return _connect_comfyui(args)
+    if args.command == "discover-comfyui-workflows":
+        return _discover_comfyui_workflows(args)
     if args.command == "diagnose":
         return _diagnose(args)
     if args.command == "pipeline-schema":
@@ -346,6 +358,31 @@ def _connect_comfyui(args: argparse.Namespace) -> int:
         )
     )
     return 0 if result.get("ready") else 1
+
+
+def _discover_comfyui_workflows(args: argparse.Namespace) -> int:
+    request = ComfyUIWorkflowDiscoveryRequest(
+        endpoint=args.endpoint,
+        search_roots=args.search_root,
+        max_results=args.max_results,
+        filename_keywords=args.filename_keyword,
+        include_unsupported=not args.hide_unsupported,
+    )
+    result = discover_workflows(
+        request.search_roots,
+        endpoint=request.endpoint,
+        max_results=request.max_results,
+        filename_keywords=request.filename_keywords,
+        include_unsupported=request.include_unsupported,
+    )
+    print(
+        json.dumps(
+            result,
+            ensure_ascii=False,
+            indent=2 if args.pretty else None,
+        )
+    )
+    return 0
 
 
 def _diagnose(args: argparse.Namespace) -> int:

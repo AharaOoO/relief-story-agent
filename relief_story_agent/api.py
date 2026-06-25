@@ -37,6 +37,7 @@ from .orchestrator import StoryRunOrchestrator
 from .planning import build_batch_plan
 from .recovery import build_batch_recovery_plan
 from .scheduler import PersistentRunScheduler
+from .smoke_comfyui import ComfyUISmokeRequest, run_comfyui_smoke
 
 
 def create_app(
@@ -208,6 +209,14 @@ def create_app(
             return analyze_workflow_config(request.comfyui)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/smoke/comfyui")
+    def smoke_comfyui(request: ComfyUISmokeRequest):
+        result = run_comfyui_smoke(
+            request,
+            resource_limits=orchestrator.resource_limits,
+        )
+        return result.model_dump()
 
     @app.get("/api/batches")
     def list_batches(status: str | None = None, limit: int = 50):

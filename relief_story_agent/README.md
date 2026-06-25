@@ -138,6 +138,41 @@ Copyable deployment examples live in `relief_story_agent/examples/`:
 
 For both single runs and batches, set `idempotency_key` when calling from a launcher or script. Re-sending the same key with the same payload returns the existing job; re-sending the same key with different payload returns `409 Conflict`.
 
+## Local ComfyUI Smoke Test
+
+Use the smoke runner before batch generation to verify that a finalized LTX
+storyboard and four-grid image can be accepted by your local ComfyUI workflow.
+
+Dry-run:
+
+```powershell
+python -m relief_story_agent.smoke_comfyui --request .\smoke_request.json --dry-run
+```
+
+Real enqueue:
+
+```powershell
+python -m relief_story_agent.smoke_comfyui --request .\smoke_request.json
+```
+
+The same runner is available through:
+
+```http
+POST /api/smoke/comfyui
+```
+
+The request JSON accepts `workflow_path`, `comfyui_base_url`,
+`final_storyboard` or `final_prompts`, `manual_grid_image_path`, `output_root`,
+and optional `run_id`, `seed`, and `filename_prefix`.
+
+Dry-run writes preflight and patched-workflow artifacts without uploading or
+enqueueing. Real mode uploads the four-grid image to `/upload/image`, injects
+the returned filename into the detected `LoadImage` node, submits `/prompt`,
+and records the returned `prompt_id`.
+
+This tool does not call text models, does not generate the four-grid image,
+does not wait for render completion, and does not download final videos.
+
 ## ComfyUI / LTX 2.3 Workflows
 
 `workflow_api_path` accepts two workflow shapes:
@@ -691,6 +726,7 @@ A run may select another registered profile without changing the server configur
 - `GET /api/scheduler`
 - `POST /api/batches/plan`
 - `POST /api/comfyui/preview`
+- `POST /api/smoke/comfyui`
 - `POST /api/runs`
 - `GET /api/runs`
 - `GET /api/runs/{run_id}`

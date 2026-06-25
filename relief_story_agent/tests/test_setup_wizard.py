@@ -5,8 +5,13 @@ import subprocess
 import sys
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
+from relief_story_agent.api import create_app
 from relief_story_agent.model_config import ModelConfigRegistry
 from relief_story_agent.models import BatchRunRequest, ComfyUIConnectionRequest, RunRequest
+from relief_story_agent.orchestrator import StoryRunOrchestrator
+from relief_story_agent.providers import FakeModelProvider
 from relief_story_agent.setup_wizard import write_local_config_bundle
 
 
@@ -96,4 +101,32 @@ def test_setup_wizard_normalizes_comfyui_endpoint_for_generated_files(tmp_path):
 
     assert run_payload["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
     assert batch_payload["defaults"]["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
+    assert connect_payload["endpoint"] == "http://127.0.0.1:8188"
+
+
+def test_api_local_setup_bundle_writes_config_files_for_ui(tmp_path):
+    app = create_app(StoryRunOrchestrator(provider=FakeModelProvider.minimal_success()))
+    client = TestClient(app)
+    output_dir = tmp_path / "relief_story_config"
+
+    response = client.post(
+        "/api/local/setup-bundle",
+        json={
+            "output_dir": str(output_dir),
+            "workflow_path": "C:/ComfyUI/workflows/ltx23_four_grid.json",
+            "comfyui_endpoint": "127.0.0.1:8188/queue",
+            "output_root": "D:/relief_story_runs",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert Path(body["model_config"]).exists()
+    assert Path(body["run_request"]).exists()
+    assert Path(body["batch_request"]).exists()
+    assert Path(body["comfyui_connect"]).exists()
+    run_payload = json.loads(Path(body["run_request"]).read_text(encoding="utf-8"))
+    connect_payload = json.loads(Path(body["comfyui_connect"]).read_text(encoding="utf-8"))
+    assert run_payload["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
+    assert run_payload["comfyui"]["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert connect_payload["endpoint"] == "http://127.0.0.1:8188"

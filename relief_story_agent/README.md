@@ -115,6 +115,12 @@ relief-story-agent local-bootstrap --pretty
 relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
 
+For a local launcher or future UI setup screen, call
+`POST /api/local/setup-bundle` with `output_dir`, `workflow_path`,
+`comfyui_endpoint`, and `output_root`. It generates the same config files as
+`relief-story-agent setup`, normalizes ComfyUI address-box inputs, and writes no
+API keys.
+
 When the API server is running, `local-doctor` can also ping the exact ComfyUI
 address a local launcher or future UI collects:
 

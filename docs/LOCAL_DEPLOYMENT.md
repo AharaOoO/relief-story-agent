@@ -53,6 +53,22 @@ The setup command writes:
 
 Editable examples are also available under `relief_story_agent/examples/`.
 
+The HTTP equivalent for a local launcher or future UI is
+`POST /api/local/setup-bundle`:
+
+```json
+{
+  "output_dir": "D:/relief_story_config",
+  "workflow_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+  "comfyui_endpoint": "127.0.0.1:8188/queue",
+  "output_root": "D:/relief_story_runs"
+}
+```
+
+It writes the same file bundle as `relief-story-agent setup`, normalizes common
+ComfyUI address-box inputs, and never writes API keys. Model JSON files only
+store environment variable names such as `GEMINI_API_KEY`.
+
 Generated run and batch request files include an `execution_policy` safety
 valve. It limits stage starts before they happen, which protects unattended
 batches from spending model quota or GPU time in a runaway retry pattern. The

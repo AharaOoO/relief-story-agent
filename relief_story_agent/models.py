@@ -43,6 +43,13 @@ class ModelProbeRequest(BaseModel):
     profiles: list[str] = Field(default_factory=list)
 
 
+class LocalSetupBundleRequest(BaseModel):
+    output_dir: str
+    workflow_path: str
+    comfyui_endpoint: str = "http://127.0.0.1:8188"
+    output_root: str = "D:/relief_story_runs"
+
+
 class ModelAttempt(BaseModel):
     attempt_id: str
     stage: str

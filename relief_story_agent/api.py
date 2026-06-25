@@ -33,6 +33,7 @@ from .models import (
     ComfyUIPreviewRequest,
     ComfyUIWorkflowAnalysisRequest,
     ComfyUIWorkflowDiscoveryRequest,
+    LocalSetupBundleRequest,
     ModelProbeRequest,
     RunRequest,
     RunRetryRequest,
@@ -45,6 +46,7 @@ from .planning import build_batch_plan
 from .recovery import build_batch_recovery_plan
 from .run_audit import audit_run_state
 from .scheduler import PersistentRunScheduler
+from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import ComfyUISmokeRequest, run_comfyui_smoke
 
 
@@ -90,6 +92,15 @@ def create_app(
     @app.get("/api/local/bootstrap")
     def get_local_bootstrap():
         return build_local_bootstrap(runtime)
+
+    @app.post("/api/local/setup-bundle")
+    def write_local_setup_bundle(request: LocalSetupBundleRequest):
+        return write_local_config_bundle(
+            request.output_dir,
+            workflow_path=request.workflow_path,
+            comfyui_endpoint=request.comfyui_endpoint,
+            output_root=request.output_root,
+        )
 
     @app.get("/api/local/doctor")
     def get_local_doctor(

@@ -61,6 +61,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
         },
         "endpoints": {
             "health": "/api/health",
+            "local_setup_bundle": "/api/local/setup-bundle",
             "metrics": "/api/metrics",
             "pipeline_schema": "/api/pipeline/schema",
             "model_config": "/api/config/models",

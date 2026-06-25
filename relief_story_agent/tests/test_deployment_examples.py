@@ -106,6 +106,7 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "relief-story-agent local-bootstrap",
         "relief-story-agent local-doctor",
         "relief-story-agent local-acceptance",
+        "POST /api/local/setup-bundle",
         "relief-story-agent discover-comfyui-workflows",
         "POST /api/comfyui/discover-workflows",
         "--check-comfyui-connection",

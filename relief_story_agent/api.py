@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 
+from .acceptance import build_acceptance_status
 from .artifacts import (
     export_batch_artifact_package,
     read_batch_artifact_index,
@@ -152,6 +153,10 @@ def create_app(
             state_persistent=orchestrator.store.__class__.__name__ == "JsonFileRunStore",
             comfyui_status=comfyui_status,
         )
+
+    @app.get("/api/local/acceptance-status")
+    def get_local_acceptance_status(report_path: str):
+        return build_acceptance_status(report_path)
 
     @app.get("/api/metrics")
     def get_metrics():

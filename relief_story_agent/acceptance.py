@@ -93,6 +93,44 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
     return str(json_path)
 
 
+def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
+    path = Path(report_path)
+    if path.exists():
+        report = json.loads(path.read_text(encoding="utf-8"))
+        checks = [_normalize_check(check) for check in report.get("checks") or []]
+        summary = report.get("summary") or _build_summary({**report, "checks": checks})
+        ready_for_release = bool(summary.get("ready_for_release"))
+    else:
+        checks = _merge_default_matrix([])
+        report = {
+            "mode": "",
+            "status": "missing",
+            "checks": checks,
+            "video_paths": [],
+        }
+        summary = _build_summary(report)
+        ready_for_release = False
+
+    blocking_checks = [
+        check
+        for check in checks
+        if str(check.get("status") or "").lower() not in PASS_STATUSES
+    ]
+    ready_for_release = ready_for_release and not blocking_checks
+    return {
+        "report_path": str(path),
+        "exists": path.exists(),
+        "ready_for_release": ready_for_release,
+        "summary": {
+            **summary,
+            "check_count": len(checks),
+            "blocking_count": len(blocking_checks),
+        },
+        "blocking_checks": blocking_checks,
+        "suggested_actions": _acceptance_status_actions(path, blocking_checks),
+    }
+
+
 def _normalize_check(raw_check: Any) -> dict[str, Any]:
     if not isinstance(raw_check, dict):
         return {
@@ -137,6 +175,35 @@ def _merge_default_matrix(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return merged
+
+
+def _acceptance_status_actions(
+    report_path: Path,
+    blocking_checks: list[dict[str, Any]],
+) -> list[str]:
+    actions: list[str] = []
+    if not report_path.exists():
+        actions.append("run_local_acceptance")
+    action_by_check = {
+        "full_tests": "run_full_tests",
+        "local_demo": "run_local_demo",
+        "comfyui_dry_smoke": "run_smoke_dry_run",
+        "comfyui_real_smoke": "run_real_comfyui_smoke",
+        "comfyui_outputs": "check_comfyui_outputs",
+        "model_check": "configure_and_check_models",
+        "run_diagnose": "fix_run_preflight",
+        "batch_diagnose": "fix_batch_preflight",
+        "single_run": "run_single_end_to_end",
+        "batch_run": "run_batch_end_to_end",
+        "restart_recovery": "run_restart_recovery_drill",
+        "export": "export_and_validate_batch",
+        "fresh_setup": "run_fresh_setup_acceptance",
+    }
+    for check in blocking_checks:
+        action = action_by_check.get(str(check.get("id") or ""))
+        if action:
+            actions.append(action)
+    return _dedupe(actions)
 
 
 def _check_from_smoke_result(path: Path) -> dict[str, Any]:
@@ -283,6 +350,17 @@ def _string_list(value: Any) -> list[str]:
     if isinstance(value, (str, bytes)):
         return [str(value)]
     return [str(item) for item in value]
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _markdown_cell(value: Any) -> str:

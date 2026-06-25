@@ -404,7 +404,7 @@ such as `127.0.0.1:8188`, `http://127.0.0.1:8188/`, and
 inside generated config files.
 
 The setup command writes `model_config.local.json`, `comfyui_connect.json`, `run_request.full-ltx.json`, `batch_request.full-ltx.json`, `smoke_request.json`, and editable prompt templates under `templates/`. It never writes API keys; generated model config files reference `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, and `OPENAI_API_KEY` environment variables.
-Its JSON response keeps the legacy top-level file path keys and also includes `files`, `checks`, `next_commands`, and `next_endpoints` for local launchers and future UI shells. `checks.smoke_grid_image` reports whether the manual smoke image is in place. `next_commands.smoke_dry_run` and `next_commands.smoke_real_run` use the generated smoke request, while `next_commands.local_acceptance` collects a repeatable local evidence bundle.
+Its JSON response keeps the legacy top-level file path keys and also includes `files`, `checks`, `next_commands`, and `next_endpoints` for local launchers and future UI shells. `checks.smoke_grid_image` reports whether the manual smoke image is in place. `next_commands.smoke_dry_run` and `next_commands.smoke_real_run` use the generated smoke request, while `next_commands.local_acceptance` collects a repeatable local evidence bundle and `next_commands.acceptance_status` lists the remaining blocking evidence.
 
 Copyable deployment examples live in `relief_story_agent/examples/`:
 
@@ -530,6 +530,18 @@ To collect compile/test output and optional smoke evidence automatically, use
 For JSON-producing checks such as `model-check` and `diagnose`, a zero exit code
 is not enough: `ready=false` or `valid=false` marks the check and generated
 acceptance status as failed.
+
+To inspect an existing report from scripts, another AI reviewer, or a future UI,
+use:
+
+```powershell
+relief-story-agent acceptance-status `
+  --report "D:/relief_story_acceptance/acceptance_report.json" `
+  --pretty
+```
+
+The local API exposes the same read-only status at
+`GET /api/local/acceptance-status?report_path=...`.
 
 ## ComfyUI / LTX 2.3 Workflows
 

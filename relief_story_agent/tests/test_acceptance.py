@@ -5,7 +5,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from relief_story_agent.acceptance import write_acceptance_report
+from relief_story_agent.acceptance import build_acceptance_status, write_acceptance_report
 
 
 def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
@@ -146,6 +146,81 @@ def test_write_acceptance_report_can_include_default_matrix(tmp_path):
     assert all(check["status"] == "manual_pending" for check in report["checks"])
 
 
+def test_build_acceptance_status_reports_missing_report_with_default_matrix(tmp_path):
+    report_path = tmp_path / "missing" / "acceptance_report.json"
+
+    status = build_acceptance_status(report_path)
+
+    assert status["exists"] is False
+    assert status["ready_for_release"] is False
+    assert status["summary"]["check_count"] == 13
+    assert status["blocking_checks"][0]["id"] == "full_tests"
+    assert status["suggested_actions"][0] == "run_local_acceptance"
+
+
+def test_build_acceptance_status_lists_blocking_checks_from_existing_report(tmp_path):
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "local_e2e",
+            "status": "completed",
+            "checks": [
+                {
+                    "id": "full_tests",
+                    "status": "pass",
+                    "required_evidence": "pytest output",
+                    "evidence": "353 passed",
+                },
+                {
+                    "id": "comfyui_real_smoke",
+                    "status": "manual_pending",
+                    "required_evidence": "smoke_result.json, prompt id",
+                    "evidence": "",
+                },
+                {
+                    "id": "single_run",
+                    "status": "fail",
+                    "required_evidence": "downloaded video path",
+                    "evidence": "missing video",
+                },
+            ],
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    assert status["exists"] is True
+    assert status["ready_for_release"] is False
+    assert [check["id"] for check in status["blocking_checks"]] == [
+        "comfyui_real_smoke",
+        "single_run",
+    ]
+    assert "run_real_comfyui_smoke" in status["suggested_actions"]
+    assert "run_single_end_to_end" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
+    report_path = tmp_path / "acceptance_report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "checks": [
+                    {"id": "full_tests", "status": "pass"},
+                    {"id": "export", "status": "manual_pending"},
+                ],
+                "summary": {"ready_for_release": True, "check_count": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = build_acceptance_status(report_path)
+
+    assert status["ready_for_release"] is False
+    assert status["summary"]["blocking_count"] == 1
+
+
 def test_cli_acceptance_writes_report(tmp_path):
     completed = subprocess.run(
         [
@@ -180,3 +255,46 @@ def test_cli_acceptance_writes_report(tmp_path):
     assert report["run_id"] == "run_demo"
     assert report["checks"][0]["id"] == "full_tests"
     assert any(check["id"] == "restart_recovery" for check in report["checks"])
+
+
+def test_cli_acceptance_status_reports_blockers(tmp_path):
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "local_e2e",
+            "status": "completed",
+            "checks": [
+                {
+                    "id": "full_tests",
+                    "status": "pass",
+                    "evidence": "353 passed",
+                },
+                {
+                    "id": "batch_run",
+                    "status": "manual_pending",
+                    "required_evidence": "batch id, item summaries",
+                },
+            ],
+        },
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "acceptance-status",
+            "--report",
+            report_path,
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    body = json.loads(completed.stdout)
+    assert body["ready_for_release"] is False
+    assert body["blocking_checks"][0]["id"] == "batch_run"
+    assert "run_batch_end_to_end" in body["suggested_actions"]

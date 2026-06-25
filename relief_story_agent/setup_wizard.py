@@ -468,6 +468,7 @@ def _next_commands(
     batch_request = target_dir / "batch_request.full-ltx.json"
     smoke_request = target_dir / "smoke_request.json"
     acceptance_dir = target_dir / "acceptance"
+    acceptance_report = acceptance_dir / "acceptance_report.json"
     repo_root = Path.cwd()
     return {
         "doctor": (
@@ -492,6 +493,9 @@ def _next_commands(
             f'--smoke-request "{smoke_request}" '
             "--smoke-dry-run --pretty"
         ),
+        "acceptance_status": (
+            f'relief-story-agent acceptance-status --report "{acceptance_report}" --pretty'
+        ),
         "batch_plan": (
             f'relief-story-agent batch-plan --request "{batch_request}" '
             "--check-comfyui-connection --pretty"
@@ -503,6 +507,7 @@ def _next_endpoints() -> dict[str, str]:
     return {
         "local_bootstrap": "/api/local/bootstrap",
         "local_doctor": "/api/local/doctor",
+        "local_acceptance_status": "/api/local/acceptance-status",
         "comfyui_connect": "/api/comfyui/connect",
         "model_check": "/api/config/model-check",
         "diagnose_run": "/api/config/diagnose",

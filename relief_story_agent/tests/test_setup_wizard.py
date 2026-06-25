@@ -81,7 +81,10 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     assert f'--smoke-request "{result["smoke_request"]}"' in result["next_commands"]["local_acceptance"]
     assert "--local-demo" in result["next_commands"]["local_acceptance"]
     assert "--smoke-dry-run" in result["next_commands"]["local_acceptance"]
+    assert "acceptance-status" in result["next_commands"]["acceptance_status"]
+    assert 'acceptance_report.json"' in result["next_commands"]["acceptance_status"]
     assert result["next_endpoints"]["smoke_comfyui"] == "/api/smoke/comfyui"
+    assert result["next_endpoints"]["local_acceptance_status"] == "/api/local/acceptance-status"
     assert connect_payload["workflow_api_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert "{{script_json}}" in writer
     assert "{{duration_seconds}}" in writer

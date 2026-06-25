@@ -7,7 +7,7 @@ from urllib.parse import urlencode
 
 import httpx
 
-from .acceptance import write_acceptance_report
+from .acceptance import build_acceptance_status, write_acceptance_report
 from .config_validation import diagnose_batch_configuration, diagnose_run_configuration
 from .comfyui import connect_comfyui, discover_workflows
 from .comfyui_outputs import refresh_comfyui_prompt_outputs
@@ -299,6 +299,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     acceptance_parser.add_argument("--notes", default="", help="Free-form acceptance notes.")
     acceptance_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    acceptance_status_parser = subparsers.add_parser(
+        "acceptance-status",
+        help="Read an acceptance_report.json and list missing release evidence.",
+    )
+    acceptance_status_parser.add_argument("--report", required=True, help="Path to acceptance_report.json.")
+    acceptance_status_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     local_acceptance_parser = subparsers.add_parser(
         "local-acceptance",
         help="Run compile/tests and optional ComfyUI smoke, then write acceptance artifacts.",
@@ -414,6 +420,8 @@ def main(argv: list[str] | None = None) -> int:
         return _setup(args)
     if args.command == "acceptance":
         return _acceptance(args)
+    if args.command == "acceptance-status":
+        return _acceptance_status(args)
     if args.command == "local-acceptance":
         return _local_acceptance(args)
     if rest and rest[0].startswith("-"):
@@ -861,6 +869,12 @@ def _acceptance(args: argparse.Namespace) -> int:
     }
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0
+
+
+def _acceptance_status(args: argparse.Namespace) -> int:
+    result = build_acceptance_status(args.report)
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("ready_for_release") else 1
 
 
 def _local_acceptance(args: argparse.Namespace) -> int:

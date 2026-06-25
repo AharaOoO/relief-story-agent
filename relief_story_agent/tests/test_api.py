@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
 from relief_story_agent.api import create_app
+from relief_story_agent.acceptance import write_acceptance_report
 from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
 
@@ -151,3 +152,36 @@ def test_api_health_reports_model_and_scheduler_status():
     assert body["status"] == "ok"
     assert body["scheduler"]["enabled"] is False
     assert body["model_config"]["missing_environment_variables"] == []
+
+
+def test_api_local_acceptance_status_reads_report(tmp_path):
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "local_e2e",
+            "status": "completed",
+            "checks": [
+                {"id": "full_tests", "status": "pass", "evidence": "353 passed"},
+                {"id": "export", "status": "manual_pending"},
+            ],
+        },
+    )
+    app = create_app(
+        StoryRunOrchestrator(
+            provider=FakeModelProvider.minimal_success(),
+            store=InMemoryRunStore(),
+        )
+    )
+    client = TestClient(app)
+
+    response = client.get(
+        "/api/local/acceptance-status",
+        params={"report_path": report_path},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["exists"] is True
+    assert body["ready_for_release"] is False
+    assert body["blocking_checks"][0]["id"] == "export"
+    assert "export_and_validate_batch" in body["suggested_actions"]

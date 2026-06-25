@@ -79,6 +79,8 @@ workflow and endpoint; use `next_commands.smoke_dry_run` before
 generated model config, run request, batch request, smoke request, and local
 demo into one evidence-collection command. `checks.smoke_grid_image` tells a
 launcher whether the manual smoke four-grid image is already present.
+`next_commands.acceptance_status` reads the generated acceptance report and
+lists the remaining blocking evidence.
 
 Generated run and batch request files include an `execution_policy` safety
 valve. It limits stage starts before they happen, which protects unattended
@@ -197,6 +199,17 @@ This runs `compileall`, full tests, optional `model-check`, run/batch
 optional standalone ComfyUI output refresh/download evidence, stores
 raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
 acceptance reports.
+
+To query a generated report without reading Markdown manually:
+
+```powershell
+relief-story-agent acceptance-status `
+  --report "D:/relief_story_acceptance/acceptance_report.json" `
+  --pretty
+```
+
+HTTP equivalent for launchers and future UI shells:
+`GET /api/local/acceptance-status?report_path=...`.
 
 For a quick no-key/no-GPU confidence check before touching real services, run:
 

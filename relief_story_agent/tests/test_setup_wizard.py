@@ -113,6 +113,18 @@ def test_setup_wizard_normalizes_comfyui_endpoint_for_generated_files(tmp_path):
     assert connect_payload["endpoint"] == "http://127.0.0.1:8188"
 
 
+def test_setup_wizard_next_commands_use_the_normalized_comfyui_endpoint(tmp_path):
+    result = write_local_config_bundle(
+        tmp_path,
+        workflow_path="C:/ComfyUI/workflows/ltx23_four_grid.json",
+        comfyui_endpoint="192.168.31.8:8189/queue",
+        output_root="D:/relief_story_runs",
+    )
+
+    assert result["checks"]["comfyui_endpoint"]["normalized"] == "http://192.168.31.8:8189"
+    assert '--comfyui-endpoint "http://192.168.31.8:8189"' in result["next_commands"]["doctor"]
+
+
 def test_api_local_setup_bundle_writes_config_files_for_ui(tmp_path):
     app = create_app(StoryRunOrchestrator(provider=FakeModelProvider.minimal_success()))
     client = TestClient(app)

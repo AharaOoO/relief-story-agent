@@ -42,6 +42,7 @@ def test_cli_help_lists_core_local_commands():
     assert "scheduler" in completed.stdout
     assert "run-events" in completed.stdout
     assert "run-artifacts" in completed.stdout
+    assert "run-audit" in completed.stdout
     assert "batch-artifacts" in completed.stdout
     assert "batch-health" in completed.stdout
     assert "validate-export" in completed.stdout
@@ -555,6 +556,33 @@ def test_cli_run_artifacts_gets_run_artifact_index():
     recorded = server.requests[0]
     assert recorded["method"] == "GET"
     assert recorded["path"] == "/api/runs/run_cli/artifacts"
+
+
+def test_cli_run_audit_gets_run_audit_report():
+    server = _CliApiServer({"run_id": "run_cli", "valid": True})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "run-audit",
+                "--server",
+                server.url,
+                "--run-id",
+                "run_cli",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["valid"] is True
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/runs/run_cli/audit"
 
 
 def test_cli_batch_artifacts_gets_batch_artifact_index():

@@ -38,6 +38,7 @@ from .orchestrator import StoryRunOrchestrator
 from .pipeline import build_pipeline_schema
 from .planning import build_batch_plan
 from .recovery import build_batch_recovery_plan
+from .run_audit import audit_run_state
 from .scheduler import PersistentRunScheduler
 from .smoke_comfyui import ComfyUISmokeRequest, run_comfyui_smoke
 
@@ -416,6 +417,13 @@ def create_app(
                 "after": after,
                 "events": [event.model_dump() for event in events],
             }
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+
+    @app.get("/api/runs/{run_id}/audit")
+    def get_run_audit(run_id: str):
+        try:
+            return audit_run_state(orchestrator.store.get(run_id))
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 

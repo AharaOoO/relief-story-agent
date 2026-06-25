@@ -198,6 +198,10 @@ relief-story-agent run-events `
   --after 0 `
   --pretty
 
+relief-story-agent run-audit `
+  --run-id "{run_id}" `
+  --pretty
+
 relief-story-agent run-artifacts `
   --run-id "{run_id}" `
   --pretty

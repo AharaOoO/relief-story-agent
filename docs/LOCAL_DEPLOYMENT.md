@@ -80,7 +80,9 @@ generated model config, run request, batch request, smoke request, and local
 demo into one evidence-collection command. `checks.smoke_grid_image` tells a
 launcher whether the manual smoke four-grid image is already present.
 `next_commands.acceptance_status` reads the generated acceptance report and
-lists the remaining blocking evidence.
+lists the remaining blocking evidence. `next_commands.local_readiness` combines
+local doctor, the ComfyUI address/workflow check, and the acceptance report into
+one JSON status for a launcher or future UI.
 
 Generated run and batch request files include an `execution_policy` safety
 valve. It limits stage starts before they happen, which protects unattended
@@ -210,6 +212,26 @@ relief-story-agent acceptance-status `
 
 HTTP equivalent for launchers and future UI shells:
 `GET /api/local/acceptance-status?report_path=...`.
+
+To query the whole local deployment state in one call, including the ComfyUI
+address box value, selected workflow path, and acceptance evidence blockers:
+
+```powershell
+relief-story-agent local-readiness `
+  --server "http://127.0.0.1:8891" `
+  --acceptance-report "D:/relief_story_acceptance/acceptance_report.json" `
+  --check-comfyui-connection `
+  --comfyui-endpoint "127.0.0.1:8188/queue" `
+  --comfyui-workflow-path "D:/ComfyUI/workflows/ltx23_four_grid.json" `
+  --pretty
+```
+
+HTTP equivalent for launchers and future UI shells:
+`GET /api/local/readiness?acceptance_report_path=...&check_comfyui_connection=true&comfyui_endpoint=...&comfyui_workflow_path=...`.
+
+The response includes `ready_for_real_runs`, `ready_for_release`, a phase,
+blocking checks, deduped `suggested_actions`, and a `ui_contract` that names the
+ComfyUI address field and related endpoints.
 
 For a quick no-key/no-GPU confidence check before touching real services, run:
 

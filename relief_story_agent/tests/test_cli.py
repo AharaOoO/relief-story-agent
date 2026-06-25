@@ -33,6 +33,7 @@ def test_cli_help_lists_core_local_commands():
     assert "pipeline-schema" in completed.stdout
     assert "local-bootstrap" in completed.stdout
     assert "local-doctor" in completed.stdout
+    assert "local-readiness" in completed.stdout
     assert "local-demo" in completed.stdout
     assert "comfyui-outputs" in completed.stdout
     assert "run" in completed.stdout
@@ -685,6 +686,47 @@ def test_cli_local_doctor_can_request_comfyui_check():
     recorded = server.requests[0]
     assert recorded["path"] == "/api/local/doctor"
     assert recorded["query"] == {
+        "check_comfyui_connection": ["true"],
+        "comfyui_endpoint": ["127.0.0.1:8188/queue"],
+        "comfyui_timeout_seconds": ["3.0"],
+        "comfyui_workflow_path": ["D:/ComfyUI/workflows/ltx23.json"],
+    }
+
+
+def test_cli_local_readiness_gets_combined_setup_report():
+    server = _CliApiServer({"ready_for_release": False, "suggested_actions": ["run_local_acceptance"]})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "local-readiness",
+                "--server",
+                server.url,
+                "--acceptance-report",
+                "D:/relief_story_config/acceptance/acceptance_report.json",
+                "--check-comfyui-connection",
+                "--comfyui-endpoint",
+                "127.0.0.1:8188/queue",
+                "--comfyui-timeout-seconds",
+                "3",
+                "--comfyui-workflow-path",
+                "D:/ComfyUI/workflows/ltx23.json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["suggested_actions"] == ["run_local_acceptance"]
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/local/readiness"
+    assert recorded["query"] == {
+        "acceptance_report_path": ["D:/relief_story_config/acceptance/acceptance_report.json"],
         "check_comfyui_connection": ["true"],
         "comfyui_endpoint": ["127.0.0.1:8188/queue"],
         "comfyui_timeout_seconds": ["3.0"],

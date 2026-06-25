@@ -117,6 +117,12 @@ relief-story-agent local-bootstrap --pretty
 relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
 
+When the API server is running, `GET /api/local/readiness` and
+`relief-story-agent local-readiness` combine bootstrap, local doctor, the
+user-entered ComfyUI address, the selected workflow path, and optional
+acceptance-report blockers into one machine-readable setup status. Use it for a
+future UI "check my local setup" button before real runs.
+
 For a local launcher or future UI setup screen, call
 `POST /api/local/setup-bundle` with `output_dir`, `workflow_path`,
 `comfyui_endpoint`, and `output_root`. It generates the same config files as
@@ -406,6 +412,8 @@ inside generated config files.
 
 The setup command writes `model_config.local.json`, `comfyui_connect.json`, `run_request.full-ltx.json`, `batch_request.full-ltx.json`, `smoke_request.json`, and editable prompt templates under `templates/`. It never writes API keys; generated model config files reference `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, and `OPENAI_API_KEY` environment variables.
 Its JSON response keeps the legacy top-level file path keys and also includes `files`, `checks`, `next_commands`, and `next_endpoints` for local launchers and future UI shells. `checks.smoke_grid_image` reports whether the manual smoke image is in place. `next_commands.smoke_dry_run` and `next_commands.smoke_real_run` use the generated smoke request, while `next_commands.local_acceptance` collects a repeatable local evidence bundle and `next_commands.acceptance_status` lists the remaining blocking evidence.
+`next_commands.local_readiness` runs the combined setup status query with the
+generated acceptance report path, ComfyUI endpoint, and workflow path.
 
 Copyable deployment examples live in `relief_story_agent/examples/`:
 
@@ -501,7 +509,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:345 passed" `
+  --check "full_tests=pass:361 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `
@@ -1307,6 +1315,11 @@ A run may select another registered profile without changing the server configur
 
 - `GET /api/health`
 - `GET /api/metrics`
+- `GET /api/local/bootstrap`
+- `GET /api/local/doctor`
+- `GET /api/local/readiness`
+- `GET /api/local/acceptance-status`
+- `POST /api/local/setup-bundle`
 - `GET /api/config/models`
 - `POST /api/config/validate`
 - `POST /api/config/validate-batch`

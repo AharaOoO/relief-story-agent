@@ -496,6 +496,13 @@ def _next_commands(
         "acceptance_status": (
             f'relief-story-agent acceptance-status --report "{acceptance_report}" --pretty'
         ),
+        "local_readiness": (
+            "relief-story-agent local-readiness "
+            f'--acceptance-report "{acceptance_report}" '
+            "--check-comfyui-connection "
+            f'--comfyui-endpoint "{comfyui_endpoint}" '
+            f'--comfyui-workflow-path "{workflow_path}" --pretty'
+        ),
         "batch_plan": (
             f'relief-story-agent batch-plan --request "{batch_request}" '
             "--check-comfyui-connection --pretty"
@@ -507,6 +514,7 @@ def _next_endpoints() -> dict[str, str]:
     return {
         "local_bootstrap": "/api/local/bootstrap",
         "local_doctor": "/api/local/doctor",
+        "local_readiness": "/api/local/readiness",
         "local_acceptance_status": "/api/local/acceptance-status",
         "comfyui_connect": "/api/comfyui/connect",
         "model_check": "/api/config/model-check",

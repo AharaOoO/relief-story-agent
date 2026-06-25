@@ -43,7 +43,12 @@ from .models import (
     RunRetryRequest,
     RunState,
 )
-from .local_runtime import LocalRuntimeConfig, build_local_bootstrap, build_local_doctor
+from .local_runtime import (
+    LocalRuntimeConfig,
+    build_local_bootstrap,
+    build_local_doctor,
+    build_local_readiness,
+)
 from .orchestrator import StoryRunOrchestrator
 from .pipeline import build_pipeline_schema
 from .planning import build_batch_plan
@@ -152,6 +157,31 @@ def create_app(
             scheduler_enabled=scheduler is not None,
             state_persistent=orchestrator.store.__class__.__name__ == "JsonFileRunStore",
             comfyui_status=comfyui_status,
+        )
+
+    @app.get("/api/local/readiness")
+    def get_local_readiness(
+        acceptance_report_path: str = "",
+        check_comfyui_connection: bool = False,
+        comfyui_endpoint: str = "",
+        comfyui_workflow_path: str = "",
+        comfyui_timeout_seconds: float = 5.0,
+    ):
+        doctor = get_local_doctor(
+            check_comfyui_connection=check_comfyui_connection,
+            comfyui_endpoint=comfyui_endpoint,
+            comfyui_workflow_path=comfyui_workflow_path,
+            comfyui_timeout_seconds=comfyui_timeout_seconds,
+        )
+        acceptance_status = (
+            build_acceptance_status(acceptance_report_path)
+            if acceptance_report_path
+            else None
+        )
+        return build_local_readiness(
+            bootstrap=doctor["bootstrap"],
+            doctor=doctor,
+            acceptance_status=acceptance_status,
         )
 
     @app.get("/api/local/acceptance-status")

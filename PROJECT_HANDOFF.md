@@ -1,27 +1,21 @@
-# Relief Story Agent 项目交接说明
+# Relief Story Agent 统一交接文件
 
-更新时间：2026-06-25
-GitHub：<https://github.com/AharaOoO/relief-story-agent>
+更新日期：2026-06-26
 本地路径：`D:\codex工作区`
+GitHub 仓库：`https://github.com/AharaOoO/relief-story-agent`
+当前分支：`master`
 
-这份文档给下一个开发会话看。目标是让新会话不用翻聊天记录，也能知道项目做到哪、为什么这么设计、下一步怎么写代码。
+这份文件是给下一个 Codex/AI 会话看的单一交接入口。新会话先读这一份，再按里面列出的验证命令核对当前状态。不要依赖历史聊天记录。
 
 ## 1. 项目目标
 
-做一个本地部署优先的批量全自动短片生成 agent。短期不急着做 UI，先把核心能力做扎实：
+做一个本地部署优先的批量全自动短片生成 agent。UI 不是当前优先级，核心是把后端链路打磨到粉丝可以在自己的 Windows 机器、自己的 ComfyUI 整合包、自己的模型 API key 上跑起来。
 
-- 多模型编剧链路稳定；
-- 提示词模板可迭代；
-- 提示词漏洞检查可靠；
-- LTX 2.3 四宫格图和 ComfyUI 工作流能跑通；
-- 批量任务可恢复、可诊断；
-- 后续能包装成粉丝也能本地部署的软件。
+内容定位是 60-120 秒的“压力人群低刺激情绪缓冲短片”。不是泛泛的治愈鸡汤，也不是强刺激剧情。目标观感是：被理解、可以慢一点、今天没那么糟、世界还有一点柔软。
 
-内容方向是 60-120 秒“压力人群低刺激情绪缓冲短片”。它不是泛泛“治愈短片”，也不是鸡汤励志，而是在很短时间里让观众感觉：被理解、能慢一点、今天没那么糟、世界还有一点柔软。
+## 2. 固定工序，不能改顺序
 
-## 2. 固定工序
-
-工序语义保持不变。后续可以升级执行框架，但不要随手改顺序。
+工序顺序必须保持：
 
 ```text
 chief_screenwriter
@@ -36,327 +30,508 @@ chief_screenwriter
 -> comfyui
 ```
 
-各阶段职责：
+阶段职责：
 
-- `chief_screenwriter`：Gemini 总编剧。负责选择内核、风格、系列方向、情绪曲线和完整剧本初稿。它不是“治愈模板生成器”。
-- `deepseek_polish`：DeepSeek 改稿。增强戏剧性、动作、台词、细节和可看性，但不能增加强刺激、大吵大闹或压迫式冲突。
-- `quality_gate`：剧本质量门禁。只放在 DeepSeek 改稿之后。
-- `gpt_prompt_writer`：GPT 按用户可配置 Markdown 模板生成分镜、图像提示词、负面提示词和 LTX/ComfyUI 填充值。
-- `gpt_prompt_audit`：GPT 按用户可配置 Markdown 模板检查提示词漏洞。
-- `gpt_prompt_reviser`：如果 audit 发现问题，最多自动修正一次。
-- `final_prompts`：最终可交给图像/视频链路的提示词产物。
-- `four_grid_asset`：为 LTX 2.3 四宫格工作流准备四宫格参考图。
-- `comfyui`：只替换声明字段，调用 ComfyUI `/prompt`。
+- `chief_screenwriter`：Gemini 总编剧。负责故事内核、系列方向、风格、情绪曲线和剧本初稿。它不是单一“治愈模板生成器”。
+- `deepseek_polish`：DeepSeek 改稿。增强戏剧性、细节、动作和可看性，但不能把内容推向高刺激、争吵、压迫或恐怖。
+- `quality_gate`：剧本质量门禁。只放在 DeepSeek 后面。
+- `gpt_prompt_writer`：GPT 按用户可替换 Markdown 模板生成分镜、图像提示词、负面提示词和 LTX/ComfyUI 输入。
+- `gpt_prompt_audit`：GPT 按用户可替换 Markdown 模板检查角色站位、空间关系、越轴、动态画面逻辑、静态画面逻辑、镜头语言与剧情对应、每个镜头的叙事含义。
+- `gpt_prompt_reviser`：如果 audit 不通过，最多自动修正一次。
+- `final_prompts`：整理最终可进入图像/视频链路的提示词产物。
+- `four_grid_asset`：为 LTX 2.3 四宫格工作流准备参考图。可手动覆盖，也可由图像模型生成。
+- `artifacts`：记录脚本、分镜、提示词、模型调用、workflow patch、ComfyUI prompt id、输出文件和导出索引。
+- `comfyui`：使用用户本地已有 ComfyUI 整合包及其节点，只 patch 用户提供的 workflow，不自动生成节点图。
 
-## 3. 当前已完成能力
+## 3. 当前进度总览
 
-### 3.1 创作与提示词链路
+整体后端进度约 65%。API-first 骨架、诊断、持久化、批量、ComfyUI 入队、部署辅助已经比较厚实；但真实模型端到端、真实视频下载、3-5 条批量验收、重启恢复演练和最终导出验收还没有用真实证据跑完。
+
+可以说：
+
+- 后端核心 alpha 已成型。
+- 本地 ComfyUI `/prompt` 入队 smoke 已跑通。
+- 还不能说“除 UI 外完整完成”。
+- 真实端到端验收需要用户提供 Gemini / DeepSeek / GPT / 图像模型 API，并保证本地 ComfyUI + LTX 2.3 节点可用。
+
+## 4. 已完成能力
+
+### 4.1 多模型与提示词链路
+
+- 多模型 profile / stage 绑定。
+- 环境变量密钥检查，不把 API key 写入配置文件。
+- OpenAI-compatible 文本模型调用层。
+- 模型 retry、timeout、rate limit、attempt 记录和成本统计。
+- `model-check` dry-run / `--real-run` 小探针。
+- `chief_screenwriter -> deepseek_polish -> quality_gate` 创作链。
+- `gpt_prompt_writer -> gpt_prompt_audit -> gpt_prompt_reviser` 提示词链。
+- writer/audit Markdown 模板可由用户替换。
+- `template-check` 可检查模板占位符和 sha256。
+- 自动提示词修正最多一次。
+- GPT Image 2 四宫格提示词做了长度约束，避免超长堆词。
+
+### 4.2 LTX 2.3 / ComfyUI
+
+- 支持用户提供的 workflow API JSON 或 LiteGraph JSON。
+- 不自动生成 ComfyUI 节点图。
+- LiteGraph LTX 注入点识别与 patch。
+- 已覆盖常见 LTX 2.3 四宫格节点语义：
+  - LTX JSON 文本输入
+  - RandomNoise seed
+  - filename prefix
+  - LoadImage 四宫格图
+  - TD_LTXVAddGuideFromGrid
+  - 2x2 grid
+- real-run 会读取 ComfyUI `/object_info`，补齐前端 workflow 隐藏的 runtime-required widget 字段。
+- 动态 combo 子字段、PrimitiveInt/Float、loader 默认值、模型/LoRA COMBO 文件名兼容有处理。
+- 本地 ComfyUI 请求绕过环境代理，避免 `127.0.0.1` 被代理成 502。
+- `POST /api/comfyui/connect` 和 `relief-story-agent connect-comfyui` 可测 ComfyUI 地址。
+- `POST /api/comfyui/discover-workflows` 和 `relief-story-agent discover-comfyui-workflows` 可扫描本地整合包 workflow。
+- `POST /api/comfyui/outputs` 和 `relief-story-agent comfyui-outputs` 可在已有 `prompt_id` 时读取 `/history`、可选等待和下载，不重新入队。
+
+### 4.3 local_comfyui_smoke
 
 已实现：
 
-- 多模型阶段配置。
-- `chief_screenwriter -> deepseek_polish -> quality_gate`。
-- `gpt_prompt_writer -> gpt_prompt_audit -> gpt_prompt_reviser`。
-- prompt writer 模板路径：`prompt_writer_template_path`。
-- prompt audit 模板路径：`prompt_audit_template_path`。
-- audit 失败时只自动修正一次。
-- GPT Image 2 四宫格提示词长度控制，避免提示词过长。
+- `relief_story_agent/smoke_comfyui.py`
+- `POST /api/smoke/comfyui`
+- `python -m relief_story_agent.smoke_comfyui --request smoke_request.json`
+- dry-run：预检、四宫格图校验、workflow patch 预览、artifact 写出；不上传、不入队。
+- real-run：上传四宫格图、读取 `/object_info`、patch LTX workflow、调用 ComfyUI `/prompt`、记录 `prompt_id`。
 
-需要守住的边界：
-
-- 不要把用户提示词模板写死在代码里。
-- 不要把自动修正改成无限循环。
-- 不要让质量门禁提前拦截 Gemini 初稿。
-
-### 3.2 ComfyUI / LTX 2.3 四宫格
-
-已实现：
-
-- ComfyUI workflow 分析。
-- LiteGraph LTX 自动注入点识别。
-- LiteGraph LTX widget patch 识别：支持常见整合包/`ComfyUI-LTXVideo` 示例 workflow，自动替换已有正向/负向 prompt、`RandomNoise` seed、`LoadImage` 文件名和 `SaveVideo`/`VHS_VideoCombine` 输出前缀；不生成节点、不改采样器、不重画工作流。
-- LiteGraph real-run 会读取 ComfyUI `/object_info`，用运行时节点 schema 补齐 frontend workflow 里隐藏的必填 widget 值，包括 `PrimitiveInt`、`PrimitiveFloat`、loader 默认值、动态 combo 子字段等。
-- 动态 combo 字段按 ComfyUI API 需要保留前缀，例如 `resize_type.longer_size`、`resize_type.shorter_size`、`resize_type.multiple`。
-- 当 workflow 里的 COMBO 模型/LoRA 文件名不在本地整合包可用列表中时，会按 `/object_info` 的 options 做保守的运行时资产名兼容匹配；找不到可信匹配时保留原值，让 ComfyUI 或诊断明确报错。
-- LTX payload 构造。
-- workflow patch。
-- ComfyUI `/upload/image`。
-- ComfyUI `/prompt` 入队。
-- 四宫格图生成/手动覆盖的统一资产模型。
-- 四宫格图结构校验。
-- 资源限流：图片生成和 ComfyUI 提交分开限流。
-
-用户提供的 LTX 2.3 四宫格工作流关键节点已验证：
+真实本机 smoke 证据：
 
 ```text
-node 202: LTX JSON 文本输入
-node 37: RandomNoise seed
-node 79: filename_prefix
-node 196: LoadImage 四宫格图
-node 221: TD_LTXVAddGuideFromGrid
-grid shape: 2x2
-```
-
-### 3.3 批量、恢复、诊断
-
-已实现：
-
-- 本地持久化 scheduler。
-- run / batch 状态存储。
-- 模型配置和 API key 环境变量检查。
-- 配置 validate / diagnose API。
-- 失败分类。
-- batch recovery plan。
-- artifacts 和 manifest。
-- ComfyUI 输出等待、取消、下载相关基础能力。
-- `execution_policy` 运行时护栏，以及 preflight/diagnose 对总阶段预算和未知阶段名的提前校验。
-- ComfyUI endpoint 地址框归一化：可接受 `127.0.0.1:8188`、尾斜杠和 `/queue` 粘贴输入，再统一连接本地 ComfyUI 根地址。
-- 本地 ComfyUI HTTP 调用绕过环境代理，避免 Windows 代理把 `127.0.0.1:8188` 的 `/queue`、上传、`/prompt`、history/view 请求错误转发成代理 `502`。
-- ComfyUI workflow 发现：`POST /api/comfyui/discover-workflows` 和 `relief-story-agent discover-comfyui-workflows` 可扫描本地整合包目录或 JSON 文件，识别可自动 patch 的 LTX workflow，并返回推荐路径给未来 UI/启动器。
-- 已用本机 `D:/AI-Comfyui-onekey-V5/.../ComfyUI` 扫描验证：LTX 候选可返回 `adapter_mode=litegraph_ltx_widget_patch` 的 `recommended.path`，可作为后续地址框/工作流选择器的自动推荐来源。
-- 机器可读 pipeline schema：`GET /api/pipeline/schema` 和 `relief-story-agent pipeline-schema --pretty` 可查询固定工序、阶段类型、可重试性、副作用和关键不变量。
-- 单条 run 审计：`GET /api/runs/{run_id}/audit` 和 `relief-story-agent run-audit` 可检查事件序列、阶段顺序、未知阶段名和失败记录一致性。
-- 单条 run 进度摘要：`GET /api/runs/{run_id}/timeline` 和 `relief-story-agent run-timeline` 返回 UI 友好的阶段状态、完成百分比、输出视频路径、artifact 链接和建议动作。
-- 本地 UI/bootstrap 契约：`GET /api/local/bootstrap` 和 `relief-story-agent local-bootstrap --pretty` 返回 API 端口、推荐 UI origin、CORS 白名单、默认 ComfyUI 地址和核心端点路径。
-- 本地 doctor 就绪检查：`GET /api/local/doctor` 和 `relief-story-agent local-doctor` 返回模型环境、状态持久化、scheduler、资源限制和下一步建议；可选 `check_comfyui_connection=true` / `--check-comfyui-connection --comfyui-endpoint ...` 直接 ping 用户填入的本地 ComfyUI 地址。
-- ComfyUI 连接检查会读取 `/object_info`，验证 workflow 需要的 node class 是否在当前本地 ComfyUI 运行时存在。缺节点时返回 `comfyui_node_types` 失败和 `install_or_enable_comfyui_nodes` 建议。
-- 独立 ComfyUI 输出查询/下载：`POST /api/comfyui/outputs` 和 `relief-story-agent comfyui-outputs` 可在已有 `prompt_id` 的情况下读取 `/history`、可选等待、可选下载 `/view` 文件；它不会调用大模型、不会 patch workflow、不会重新入队。
-- 本地离线演练：`relief-story-agent local-demo --output-dir D:/relief_story_demo --batch-size 2 --pretty` 使用内置 fake model，关闭 ComfyUI 和图片生成，写出单条 run artifacts、batch 摘要、持久化重启恢复演练和 `local_demo_summary.json`；它只证明本地编排骨架、artifact 和恢复计划能跑通，不代表真实模型/真实视频验收完成。
-- 本地 UI/启动器配置入口：`GET /api/local/bootstrap` 暴露推荐端口和核心 endpoint；`POST /api/local/setup-bundle` 接收 `output_dir`、`workflow_path`、`comfyui_endpoint`、`output_root`，写出与 `relief-story-agent setup` 相同的配置包，并且只保存环境变量名，不保存 API key。
-- 本地验收证据收集器：`relief-story-agent local-acceptance` 会运行 `compileall`、全量 pytest，并可选用 `--local-demo` 收集离线演练证据、收集 `model-check`、run/batch `diagnose`、`smoke-comfyui`，落盘 `command_outputs/`、`local_acceptance_summary.json`、`acceptance_report.json` 和 `ACCEPTANCE_REPORT.md`，方便另一个 AI 或操作者核查当前进度。
-- 模板迭代检查：`relief-story-agent template-check --writer-template ... --audit-template ...` 可在真实 run 前校验 Markdown 模板必需占位符、未知占位符和 sha256 指纹，减少模板改坏后才消耗模型额度的问题。
-- 模型连接检查：`relief-story-agent model-check --model-config ...` 默认 dry-run 校验 profile、model 名和环境变量；`--real-run` 会对每个 profile 发一个极小 JSON 探针。API 入口为 `POST /api/config/model-check`，方便未来 UI 做“测试模型连接”按钮。
-
-### 3.4 本地 ComfyUI smoke runner
-
-已实现：
-
-- `relief_story_agent/smoke_comfyui.py`。
-- `POST /api/smoke/comfyui`。
-- `python -m relief_story_agent.smoke_comfyui --request smoke_request.json`。
-- dry-run：预检、四宫格校验、workflow patch 预览、artifact 写出，不上传、不入队。
-- real-run：上传四宫格图、读取 `/object_info`、patch LTX workflow、调用 ComfyUI `/prompt`、记录 prompt id。
-- real-run 写出的 `smoke_workflow_patched.json` 现在和实际 `/prompt` payload 同源，包含 runtime object_info 补出的动态字段和本机资产名兼容结果。
-- mock ComfyUI 测试覆盖 dry-run、real-run、上传失败、prompt 失败、API、CLI。
-
-真实本机 ComfyUI 已验证：
-
-```text
-endpoint: http://127.0.0.1:8188
-workflow:
-D:/AI-Comfyui-onekey-V5/ComfyUI_windows_portable_nvidia/ComfyUI_windows_portable/ComfyUI/custom_nodes/ComfyUI-LTXVideo/example_workflows/2.3/LTX-2.3_ICLoRA_Motion_Track_Distilled.json
-
-command:
 python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
-
-result:
 status=passed
 ready=true
 prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
 artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
-post-check queue: {"queue_running": [], "queue_pending": []}
 ```
 
-该 smoke 只证明上传和 `/prompt` 入队链路已被本机 ComfyUI 接受；没有等待渲染完成，也没有下载视频。
+注意：这个 smoke 只证明上传、patch、`/prompt` 入队被本地 ComfyUI 接受；它没有等待真实视频渲染完成，也没有下载视频。
 
-## 4. 当前最重要的下一步
+### 4.4 批量、持久化、恢复、导出
 
-`local_comfyui_smoke` 已经在本地完成，并已用真实本机 ComfyUI 跑通 real-run `/prompt` 入队。下一阶段不是重复实现 smoke runner，而是接真实模型链路和端到端验收。
+- 本地持久化 scheduler。
+- run / batch JSON 状态存储。
+- run/batch idempotency。
+- batch plan、batch create、pause、resume、cancel、retry。
+- 失败分类与 recovery plan。
+- batch diagnostic endpoints 可容忍 child run 文件缺失，返回 `inspect_missing_run`。
+- `GET /api/runs/{run_id}/timeline` 和 `GET /api/batches/{batch_id}/timeline` 给未来 UI 用。
+- artifact manifest。
+- batch artifact index。
+- batch export：publish index、publish videos、zip、sha256。
+- export validate 和 zip validate。
 
-目标：接入真实 Gemini / DeepSeek / GPT 模型配置，跑通单条端到端视频产出，再跑批量生成和恢复验收。
+### 4.5 本地部署与诊断
 
-总开发计划：
+- `start_relief_story_agent.bat` Windows 一键启动入口。
+- `GET /api/local/bootstrap` 和 `relief-story-agent local-bootstrap`。
+- `GET /api/local/doctor` 和 `relief-story-agent local-doctor`。
+- `POST /api/local/setup-bundle` 和 `relief-story-agent setup`。
+- `relief-story-agent local-demo`：无 API key、无 GPU 的 fake model 离线演练。
+- `relief-story-agent local-acceptance`：收集 compileall、pytest、model-check、diagnose、local-demo、smoke、comfyui-output 等证据。
+- `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
+- `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。
+
+## 5. 本次新增：local-readiness
+
+本次交接前新增了一个统一本地就绪度入口：
+
+```http
+GET /api/local/readiness
+```
+
+CLI：
+
+```powershell
+relief-story-agent local-readiness `
+  --server "http://127.0.0.1:8891" `
+  --acceptance-report "D:/relief_story_acceptance/acceptance_report.json" `
+  --check-comfyui-connection `
+  --comfyui-endpoint "127.0.0.1:8188/queue" `
+  --comfyui-workflow-path "D:/ComfyUI/workflows/ltx23_four_grid.json" `
+  --pretty
+```
+
+用途：
+
+- 给未来 UI 或启动器一个“检查我的本地部署”的统一 JSON。
+- 汇总 bootstrap、local-doctor、ComfyUI 地址检查、workflow 节点检查、acceptance-status 阻塞项。
+- 返回 `ready_for_real_runs`、`ready_for_release`、`phase`、`checks`、`suggested_actions` 和 `ui_contract`。
+- `ui_contract` 明确未来 UI 里 ComfyUI 地址框、workflow 路径框、验收报告路径对应的参数和后端端点。
+
+边界：
+
+- 不调用大模型。
+- 不上传图片。
+- 不入队 ComfyUI。
+- 不等待视频。
+- 不下载视频。
+
+相关文件：
+
+- `relief_story_agent/local_runtime.py`
+- `relief_story_agent/api.py`
+- `relief_story_agent/cli.py`
+- `relief_story_agent/setup_wizard.py`
+- `relief_story_agent/tests/test_local_runtime.py`
+- `relief_story_agent/tests/test_cli.py`
+- `relief_story_agent/tests/test_setup_wizard.py`
+- `docs/LOCAL_DEPLOYMENT.md`
+- `relief_story_agent/README.md`
+
+## 6. 用户未提供模型 API 前能做什么
+
+可以做：
+
+- `python -m compileall -q relief_story_agent`
+- `python -m pytest relief_story_agent/tests -q`
+- `relief-story-agent local-demo`
+- `relief-story-agent template-check`
+- `relief-story-agent model-check` dry-run
+- `relief-story-agent diagnose`
+- `relief-story-agent local-bootstrap`
+- `relief-story-agent local-doctor`
+- `relief-story-agent local-readiness`
+- ComfyUI endpoint / workflow 检查
+- smoke dry-run
+- 如果已有手动四宫格图和本地 ComfyUI，可跑 smoke real-run 到 `/prompt` 入队
+
+不能诚实完成：
+
+- Gemini 真实 `chief_screenwriter`
+- DeepSeek 真实 `deepseek_polish`
+- GPT 真实 prompt writer / audit / reviser
+- GPT Image 或兼容图像模型真实生成四宫格图
+- 真实单条 run 从 idea 到本地 mp4
+- 真实 3-5 条 batch 验收
+- 最终“除 UI 外完成”声明
+
+## 7. 还缺什么
+
+### P0：等待用户提供真实模型 API 与本地环境
+
+需要用户给：
+
+- Gemini 或兼容 OpenAI endpoint、model、`GEMINI_API_KEY`
+- DeepSeek endpoint、model、`DEEPSEEK_API_KEY`
+- GPT 文本模型 endpoint、model、`OPENAI_API_KEY`
+- 图像模型 endpoint、model，可用 GPT Image 2 或兼容服务
+- 本地 ComfyUI 地址，默认 `http://127.0.0.1:8188`
+- 可用 LTX 2.3 workflow 路径
+- 本地输出目录
+
+### P1：真实模型连接验收
+
+目标：证明模型配置真的可用。
+
+命令：
+
+```powershell
+relief-story-agent model-check `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --real-run `
+  --pretty
+```
+
+验收标准：
+
+- `ready=true`
+- 每个 profile 至少一次小 JSON 探针成功
+- 不返回鉴权、模型名、endpoint 或 JSON contract 错误
+
+### P2：单条真实端到端视频
+
+目标：从 idea 自动跑完完整工序并拿到本地视频文件。
+
+流程：
+
+```powershell
+relief-story-agent diagnose `
+  --request "D:/relief_story_config/run_request.full-ltx.json" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --check-comfyui-connection `
+  --pretty
+
+relief-story-agent run `
+  --request "D:/relief_story_config/run_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --preflight `
+  --check-comfyui-connection `
+  --pretty
+```
+
+轮询：
+
+```powershell
+relief-story-agent run-status --run-id "{run_id}" --pretty
+relief-story-agent run-timeline --run-id "{run_id}" --pretty
+relief-story-agent run-artifacts --run-id "{run_id}" --pretty
+```
+
+验收标准：
+
+- run `status=completed`
+- `final_storyboard` 非空
+- 四宫格图存在
+- ComfyUI prompt id 存在
+- `actual_outputs` 中有本地视频路径
+- mp4 文件存在且可打开
+
+### P3：真实 batch 验收
+
+目标：至少 3 条，最好 5 条，连续批量生成，单条失败不拖垮整批。
+
+流程：
+
+```powershell
+relief-story-agent batch-plan `
+  --request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --check-comfyui-connection `
+  --pretty
+
+relief-story-agent batch `
+  --request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --server "http://127.0.0.1:8891" `
+  --preflight `
+  --check-comfyui-connection `
+  --pretty
+```
+
+验收标准：
+
+- 返回 `batch_id`
+- 每个 item 有 `run_id`
+- 批量汇总正确
+- 失败项可诊断，可重试或进入 manual blocker
+- 成功项进入 publish-ready
+
+### P4：重启恢复演练
+
+目标：API 中途关闭后，用同一个 `state-dir` 重启，任务不丢。
+
+步骤：
+
+1. batch queued/running 时停止 API。
+2. 用同一 `--state-dir` 重启 API。
+3. 调：
+
+```powershell
+relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty
+relief-story-agent scheduler --pretty
+relief-story-agent batch-status --batch-id "{batch_id}" --pretty
+```
+
+验收标准：
+
+- batch 状态仍可查。
+- queued/running/expired work 有明确 recovery plan。
+- safe recovery action 可 dry-run。
+- 不盲目重新提交 ComfyUI 已接受任务。
+
+### P5：导出与校验
+
+目标：把 batch 结果打成可发布/可分享包。
+
+命令：
+
+```powershell
+relief-story-agent export-batch `
+  --batch-id "{batch_id}" `
+  --export-root "D:/relief_story_exports" `
+  --include-zip `
+  --pretty
+
+relief-story-agent validate-export `
+  --batch-id "{batch_id}" `
+  --export-dir "D:/relief_story_exports/{batch_id}" `
+  --save-report `
+  --pretty
+
+relief-story-agent validate-export-zip `
+  --batch-id "{batch_id}" `
+  --zip-path "D:/relief_story_exports/{batch_id}.zip" `
+  --save-report `
+  --pretty
+```
+
+验收标准：
+
+- `publish_index.json`
+- `publish_index.csv`
+- `publish_videos/`
+- zip
+- sha256
+- validation report `valid=true`
+
+### P6：最终本地验收证据包
+
+命令：
+
+```powershell
+relief-story-agent local-acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --repo-root "D:/codex工作区" `
+  --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
+  --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --local-demo `
+  --smoke-request "D:/relief_story_config/smoke_request.json" `
+  --comfyui-output-prompt-id "{prompt_id}" `
+  --comfyui-output-artifact-dir "D:/relief_story_acceptance/comfyui_outputs" `
+  --pretty
+```
+
+验收标准：
+
+- `command_outputs/`
+- `local_acceptance_summary.json`
+- `acceptance_report.json`
+- `acceptance_status.json`
+- `ACCEPTANCE_REPORT.md`
+- `ready_for_release=true`
+
+只有这一步和真实视频、真实 batch、真实导出都通过，才能说“除 UI 外基本完成”。
+
+## 8. 后续详细计划文件
+
+新的后续完成路线图写在：
+
+```text
+docs/superpowers/plans/2026-06-26-relief-story-agent-completion-roadmap.md
+```
+
+继续开发时优先按这个计划拆任务。旧总计划仍保留：
 
 ```text
 docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md
 ```
 
-smoke runner 规格记录：
+## 9. 新会话启动指令
+
+把下面这段给新会话：
 
 ```text
-docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md
-```
-
-smoke runner 实现计划记录：
-
-```text
-docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md
-```
-
-下一阶段按这个顺序推进：
-
-```text
-1. 推送本次 ComfyUI runtime object_info / real-smoke 验证提交到 GitHub。
-2. 补模板示例包、模型配置示例、真实 run/batch 请求示例。
-3. 用真实 Gemini / DeepSeek / GPT 模型跑单条端到端，拿到本地视频文件。
-4. 跑至少 3-5 条 batch，验证恢复、导出、校验。
-5. 写部署文档和最终验收报告。
-```
-
-当前仍不能说“除了 UI 外已经完整做好”。原因是：真实模型链路、真实 ComfyUI 视频产出、批量真实验收、粉丝部署文档和配置体验还没有全部用证据跑完。
-
-## 5. 文件地图
-
-### 入口与配置
-
-- `pyproject.toml`：包信息和依赖。
-- `start_relief_story_agent.bat`：Windows 一键启动。
-- `relief_story_agent/server.py`：命令行 server 入口。
-- `relief_story_agent/api.py`：FastAPI 路由。
-- `relief_story_agent/examples/model_config.local.example.json`：模型配置示例。
-
-### 核心流水线
-
-- `relief_story_agent/orchestrator.py`：主编排。
-- `relief_story_agent/models.py`：Pydantic 类型。
-- `relief_story_agent/providers.py`：模型 provider。
-- `relief_story_agent/model_runtime.py`：模型调用运行时。
-- `relief_story_agent/prompt_templates.py`：模板渲染和默认模板。
-- `relief_story_agent/quality.py`：剧本质量门禁。
-- `relief_story_agent/output_contracts.py`：模型输出结构约束。
-
-### ComfyUI / LTX
-
-- `relief_story_agent/comfyui.py`：ComfyUI 分析、预览、提交、输出处理。
-- `relief_story_agent/ltx_workflow.py`：LTX LiteGraph 注入点和 patch。
-- `relief_story_agent/grid_image.py`：四宫格图提示词编译、校验、资产处理。
-- `relief_story_agent/image_providers.py`：OpenAI-compatible 图片生成 provider。
-- `relief_story_agent/resource_limits.py`：图片生成和 ComfyUI 提交限流。
-
-### 可靠性与交付
-
-- `relief_story_agent/scheduler.py`：本地持久化调度。
-- `relief_story_agent/storage.py`：run/batch 存储。
-- `relief_story_agent/failure_policy.py`：失败分类。
-- `relief_story_agent/recovery.py`：恢复计划。
-- `relief_story_agent/artifacts.py`：artifact、manifest、交付索引。
-- `relief_story_agent/config_validation.py`：配置预检/诊断。
-- `relief_story_agent/metrics.py`：统计和健康信息。
-
-### 测试入口
-
-- `relief_story_agent/tests/test_prompt_workflow.py`
-- `relief_story_agent/tests/test_comfyui_mapping.py`
-- `relief_story_agent/tests/test_grid_image.py`
-- `relief_story_agent/tests/test_orchestrator.py`
-- `relief_story_agent/tests/test_scheduler.py`
-- `relief_story_agent/tests/test_artifacts.py`
-- `relief_story_agent/tests/fixtures/ltx23_workflow_factory.py`
-
-## 6. 新会话建议启动方式
-
-另开会话后，建议直接复制 [NEXT_SESSION_PROMPT.md](NEXT_SESSION_PROMPT.md) 里的内容。
-
-新会话先做三件事：
-
-```powershell
-cd D:\codex工作区
+请接手 D:\codex工作区 的 relief-story-agent 项目。
+先阅读 PROJECT_HANDOFF.md，这是当前唯一完整交接文件。
+再运行：
 git status --short --branch
-python -m pytest relief_story_agent/tests -q
-```
-
-然后阅读：
-
-```text
-PROJECT_HANDOFF.md
-docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md
-docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md
-docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md
-```
-
-再按总计划从真实 ComfyUI smoke 验收开始推进。
-
-## 7. 验证命令
-
-全量验证：
-
-```powershell
+git pull --ff-only
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
+
+目标：继续完成批量全自动短片生成 agent。UI 暂不优先。
+固定工序不能改：
+chief_screenwriter -> deepseek_polish -> quality_gate -> gpt_prompt_writer -> gpt_prompt_audit -> gpt_prompt_reviser(最多一次) -> final_prompts -> four_grid_asset -> artifacts -> comfyui。
+
+注意：当前在没有真实模型 API key 前，只能做 dry-run、fake-model demo、diagnose、ComfyUI smoke、readiness 和单元/集成测试；不能宣称真实端到端完成。
+下一步等用户提供 Gemini / DeepSeek / GPT / 图像模型 API 后，先跑 model-check --real-run，再跑单条真实端到端视频，然后 3-5 条 batch、重启恢复、导出校验和 local-acceptance。
+不要 git add .，只提交 relief-story-agent 相关文件。
 ```
 
-下一阶段 smoke runner 的相关验证：
+## 10. Git 注意事项
+
+仓库根目录是 `D:\codex工作区`，里面还有其他项目。不要使用：
 
 ```powershell
-python -m pytest relief_story_agent/tests/test_smoke_comfyui.py -q
-python -m pytest relief_story_agent/tests/test_comfyui_mapping.py relief_story_agent/tests/test_grid_image.py relief_story_agent/tests/test_api.py -q
+git add .
 ```
 
-## 8. Git / GitHub 状态
-
-仓库地址：
-
-```text
-https://github.com/AharaOoO/relief-story-agent
-```
-
-本地分支：
-
-```text
-master -> origin/master
-```
-
-当前仓库根目录是 `D:\codex工作区`。这个目录里还有很多无关项目，不要直接 `git add .`。
-
-推荐提交范围：
+只提交本项目相关文件，例如：
 
 ```powershell
-git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start_relief_story_agent.bat relief_story_agent docs/superpowers .gitignore .gitattributes
+git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start_relief_story_agent.bat relief_story_agent docs
 ```
 
 不要提交：
 
-- API key；
-- 用户私有 workflow 原件；
-- ComfyUI 输出；
-- 视频、图片、模型权重；
-- `.pytest_cache/`；
-- `build/`；
-- `*.egg-info/`；
-- 其他项目目录。
+- API key
+- 私有 workflow 原文件
+- ComfyUI 输出视频/图片
+- 模型权重
+- `.pytest_cache/`
+- `build/`
+- `*.egg-info/`
+- 其他项目目录
 
-## 9. 开发注意点
+## 11. 当前关键命令速查
 
-- 尽量走 TDD：先写失败测试，再实现。
-- 保持模块边界清楚。不要把 smoke runner 写进 `api.py` 或 `comfyui.py` 里堆大函数。
-- `dry_run=true` 必须无副作用：不上传、不入队。
-- real-run 可以有副作用，但只到 `/prompt` 入队为止。
-- ComfyUI workflow 只替换声明字段，不修用户节点图。
-- LTX 四宫格工作流要保护注入点语义，不要硬编码只适配一个文件名。
-- 后续可以研究 Temporal、Prefect、LangGraph 的工作流思想，但先不要引入重型依赖。
-- 文档要跟代码一起更新。这个项目后续很依赖交接质量。
+启动 API：
 
-## 10. 最近基线
+```powershell
+relief-story-agent serve --host 127.0.0.1 --port 8891 --state-dir "D:/relief_story_state"
+```
 
-最近已知通过的验证：
+本地 bootstrap：
 
-```text
+```powershell
+relief-story-agent local-bootstrap --pretty
+```
+
+本地 doctor：
+
+```powershell
+relief-story-agent local-doctor `
+  --server "http://127.0.0.1:8891" `
+  --check-comfyui-connection `
+  --comfyui-endpoint "127.0.0.1:8188/queue" `
+  --comfyui-workflow-path "D:/ComfyUI/workflows/ltx23_four_grid.json" `
+  --pretty
+```
+
+统一 readiness：
+
+```powershell
+relief-story-agent local-readiness `
+  --server "http://127.0.0.1:8891" `
+  --acceptance-report "D:/relief_story_acceptance/acceptance_report.json" `
+  --check-comfyui-connection `
+  --comfyui-endpoint "127.0.0.1:8188/queue" `
+  --comfyui-workflow-path "D:/ComfyUI/workflows/ltx23_four_grid.json" `
+  --pretty
+```
+
+模型检查：
+
+```powershell
+relief-story-agent model-check --model-config "D:/relief_story_config/model_config.local.json" --pretty
+relief-story-agent model-check --model-config "D:/relief_story_config/model_config.local.json" --real-run --pretty
+```
+
+模板检查：
+
+```powershell
+relief-story-agent template-check `
+  --writer-template "D:/relief_story_config/templates/prompt_writer.default.md" `
+  --audit-template "D:/relief_story_config/templates/prompt_audit.default.md" `
+  --pretty
+```
+
+本地离线演练：
+
+```powershell
+relief-story-agent local-demo --output-dir "D:/relief_story_demo" --batch-size 2 --pretty
+```
+
+ComfyUI smoke：
+
+```powershell
+relief-story-agent smoke-comfyui --request "D:/relief_story_config/smoke_request.json" --dry-run
+relief-story-agent smoke-comfyui --request "D:/relief_story_config/smoke_request.json"
+```
+
+## 12. 本次交接前验证
+
+提交前必须重新运行：
+
+```powershell
+git diff --check
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-345 passed
 ```
 
-最近已推送的核心功能提交：
-
-```text
-a13a909 fix: bypass proxy for local ComfyUI calls
-b487761 feat: add ComfyUI check to local doctor
-5d7cb4c feat: add local doctor readiness report
-522cd85 feat: validate execution policy stage names
-96e3e82 feat: normalize ComfyUI endpoint inputs
-3f1b70a feat: validate execution policy budgets
-8102aae feat: add execution policy guardrails
-```
-
-## 11. 2026-06-25 Codex Update
-
-- Added batch progress timeline contract for local launchers/UI:
-  `GET /api/batches/{batch_id}/timeline`.
-- Added CLI equivalent:
-  `relief-story-agent batch-timeline --batch-id "{batch_id}" --pretty`.
-- The response aggregates child run timelines, publish-ready video paths,
-  retryability, recommended actions, and links to artifacts, health,
-  recovery-plan, recover, and export endpoints.
-- Bootstrap now exposes `batch_timeline` in `GET /api/local/bootstrap`.
-- Batch diagnostic endpoints now tolerate missing child run state files and
-  return `inspect_missing_run` items instead of failing the whole batch lookup.
+如果下一会话看到本文和实际命令输出不一致，以新鲜命令输出为准。

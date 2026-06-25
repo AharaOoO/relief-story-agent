@@ -64,6 +64,7 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
         "endpoints": {
             "health": "/api/health",
             "local_doctor": "/api/local/doctor",
+            "local_readiness": "/api/local/readiness",
             "local_acceptance_status": "/api/local/acceptance-status",
             "local_setup_bundle": "/api/local/setup-bundle",
             "metrics": "/api/metrics",
@@ -89,6 +90,97 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
             "comfyui_outputs": "/api/comfyui/outputs",
             "smoke_comfyui": "/api/smoke/comfyui",
         },
+    }
+
+
+def build_local_readiness(
+    *,
+    bootstrap: dict,
+    doctor: dict,
+    acceptance_status: dict | None = None,
+) -> dict:
+    doctor_summary = doctor.get("summary") or {}
+    doctor_ready = bool(doctor.get("ready"))
+    acceptance_ready = bool((acceptance_status or {}).get("ready_for_release"))
+    checks = [
+        _readiness_check(
+            "local_doctor",
+            "pass" if doctor_ready else "fail",
+            (
+                "Local API, model configuration, scheduler, state, resources, and optional ComfyUI checks are ready."
+                if doctor_ready
+                else "Local runtime still has blocking setup or connection checks."
+            ),
+            {
+                "failed": int(doctor_summary.get("failed") or 0),
+                "warnings": int(doctor_summary.get("warnings") or 0),
+                "passed": int(doctor_summary.get("passed") or 0),
+                "comfyui_checked": _doctor_has_check(doctor, "comfyui_connection"),
+                "suggested_actions": list(doctor.get("suggested_actions") or []),
+            },
+        )
+    ]
+    if acceptance_status is None:
+        checks.append(
+            _readiness_check(
+                "acceptance_status",
+                "warn",
+                "No acceptance report path was supplied; release evidence has not been checked.",
+                {
+                    "report_path": "",
+                    "exists": False,
+                    "blocking_count": 0,
+                    "check_count": 0,
+                    "suggested_actions": ["run_local_acceptance"],
+                },
+            )
+        )
+    else:
+        acceptance_summary = acceptance_status.get("summary") or {}
+        checks.append(
+            _readiness_check(
+                "acceptance_status",
+                "pass" if acceptance_ready else "fail",
+                (
+                    "Acceptance report proves every release gate."
+                    if acceptance_ready
+                    else "Acceptance report is missing or still has blocking evidence gaps."
+                ),
+                {
+                    "report_path": str(acceptance_status.get("report_path") or ""),
+                    "exists": bool(acceptance_status.get("exists")),
+                    "blocking_count": int(acceptance_summary.get("blocking_count") or 0),
+                    "check_count": int(acceptance_summary.get("check_count") or 0),
+                    "blocking_checks": list(acceptance_status.get("blocking_checks") or []),
+                    "suggested_actions": list(acceptance_status.get("suggested_actions") or []),
+                },
+            )
+        )
+
+    summary = {
+        "passed": sum(1 for check in checks if check["status"] == "pass"),
+        "warnings": sum(1 for check in checks if check["status"] == "warn"),
+        "failed": sum(1 for check in checks if check["status"] == "fail"),
+        "blocking_count": sum(1 for check in checks if check["status"] == "fail"),
+    }
+    ready_for_real_runs = doctor_ready
+    ready_for_release = doctor_ready and acceptance_ready
+    return {
+        "ready_for_configuration": True,
+        "ready_for_real_runs": ready_for_real_runs,
+        "ready_for_release": ready_for_release,
+        "phase": _readiness_phase(
+            doctor_ready=doctor_ready,
+            acceptance_status=acceptance_status,
+            acceptance_ready=acceptance_ready,
+        ),
+        "summary": summary,
+        "checks": checks,
+        "suggested_actions": _readiness_actions(checks),
+        "ui_contract": _readiness_ui_contract(bootstrap),
+        "bootstrap": bootstrap,
+        "doctor": doctor,
+        "acceptance_status": acceptance_status or {},
     }
 
 
@@ -160,6 +252,74 @@ def build_local_doctor(
         "suggested_actions": _doctor_actions(checks),
         "bootstrap": bootstrap,
     }
+
+
+def _readiness_check(check_id: str, status: str, message: str, details: dict) -> dict:
+    return {
+        "id": check_id,
+        "status": status,
+        "message": message,
+        "details": details,
+    }
+
+
+def _readiness_phase(
+    *,
+    doctor_ready: bool,
+    acceptance_status: dict | None,
+    acceptance_ready: bool,
+) -> str:
+    if not doctor_ready:
+        return "setup_blocked"
+    if acceptance_status is None:
+        return "acceptance_not_checked"
+    if not acceptance_ready:
+        return "acceptance_blocked"
+    return "release_ready"
+
+
+def _readiness_actions(checks: list[dict]) -> list[str]:
+    actions: list[str] = []
+    for check in checks:
+        if check["status"] == "pass":
+            continue
+        details = check.get("details") or {}
+        actions.extend(str(action) for action in details.get("suggested_actions") or [])
+    return _dedupe(actions)
+
+
+def _readiness_ui_contract(bootstrap: dict) -> dict:
+    endpoints = bootstrap.get("endpoints") or {}
+    comfyui = bootstrap.get("comfyui") or {}
+    return {
+        "comfyui_address_field": {
+            "parameter": "comfyui_endpoint",
+            "default": str(comfyui.get("default_endpoint") or DEFAULT_COMFYUI_ENDPOINT),
+            "connect_endpoint": str(
+                comfyui.get("connect_endpoint") or endpoints.get("comfyui_connect") or "/api/comfyui/connect"
+            ),
+            "doctor_endpoint": str(
+                comfyui.get("doctor_endpoint") or endpoints.get("local_doctor") or "/api/local/doctor"
+            ),
+            "readiness_endpoint": str(endpoints.get("local_readiness") or "/api/local/readiness"),
+        },
+        "workflow_path_field": {
+            "parameter": "comfyui_workflow_path",
+            "discover_endpoint": str(
+                comfyui.get("discover_workflows_endpoint")
+                or endpoints.get("comfyui_discover_workflows")
+                or "/api/comfyui/discover-workflows"
+            ),
+        },
+        "acceptance_report_field": {
+            "parameter": "acceptance_report_path",
+            "status_endpoint": str(endpoints.get("local_acceptance_status") or "/api/local/acceptance-status"),
+        },
+    }
+
+
+def _doctor_has_check(doctor: dict, check_id: str) -> bool:
+    return any(check.get("id") == check_id for check in doctor.get("checks") or [])
 
 
 def _comfyui_connection_check(comfyui_status: dict) -> dict:

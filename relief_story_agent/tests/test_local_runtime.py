@@ -7,6 +7,7 @@ from relief_story_agent.local_runtime import (
     LocalRuntimeConfig,
     build_local_bootstrap,
     build_local_doctor,
+    build_local_readiness,
 )
 from relief_story_agent.orchestrator import StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
@@ -108,6 +109,52 @@ def test_build_local_doctor_reports_missing_model_environment():
     assert checks["model_environment"]["status"] == "fail"
     assert checks["model_environment"]["details"]["missing_environment_variables"] == ["MISSING_KEY"]
     assert "configure_model_environment" in report["suggested_actions"]
+
+
+def test_build_local_readiness_combines_doctor_and_acceptance_blockers():
+    bootstrap = build_local_bootstrap()
+    doctor = build_local_doctor(
+        bootstrap=bootstrap,
+        model_status={
+            "profiles": {
+                "writer": {
+                    "api_key_env": "MISSING_KEY",
+                    "secret_required": True,
+                    "secret_configured": False,
+                }
+            },
+            "stages": {"chief_screenwriter": "writer"},
+            "missing_environment_variables": ["MISSING_KEY"],
+        },
+        resource_status={"image_generation_concurrency": 2, "comfyui_submission_concurrency": 1},
+        scheduler_enabled=False,
+        state_persistent=False,
+    )
+    acceptance_status = {
+        "exists": False,
+        "ready_for_release": False,
+        "summary": {"check_count": 13, "blocking_count": 13},
+        "blocking_checks": [{"id": "full_tests", "status": "manual_pending"}],
+        "suggested_actions": ["run_local_acceptance", "run_full_tests"],
+    }
+
+    readiness = build_local_readiness(
+        bootstrap=bootstrap,
+        doctor=doctor,
+        acceptance_status=acceptance_status,
+    )
+
+    checks = {check["id"]: check for check in readiness["checks"]}
+    assert readiness["ready_for_release"] is False
+    assert readiness["ready_for_real_runs"] is False
+    assert readiness["summary"]["blocking_count"] == 2
+    assert checks["local_doctor"]["status"] == "fail"
+    assert checks["acceptance_status"]["status"] == "fail"
+    assert checks["acceptance_status"]["details"]["blocking_count"] == 13
+    assert readiness["ui_contract"]["comfyui_address_field"]["default"] == "http://127.0.0.1:8188"
+    assert readiness["ui_contract"]["comfyui_address_field"]["connect_endpoint"] == "/api/comfyui/connect"
+    assert "configure_model_environment" in readiness["suggested_actions"]
+    assert "run_local_acceptance" in readiness["suggested_actions"]
 
 
 def test_build_local_doctor_flags_placeholder_model_profiles():
@@ -313,3 +360,56 @@ def test_api_local_doctor_passes_workflow_path_to_comfyui_connection(tmp_path, m
     assert calls[0].workflow_api_path == str(workflow_path)
     assert body["ready"] is False
     assert checks["comfyui_connection"]["status"] == "fail"
+
+
+def test_api_local_readiness_combines_runtime_and_acceptance_status(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_connect(request):
+        calls.append(request)
+        return {
+            "connected": True,
+            "ready": True,
+            "endpoint": request.endpoint,
+            "queue": {"running": 0, "pending": 0},
+            "checks": [
+                {
+                    "name": "comfyui_endpoint",
+                    "status": "passed",
+                    "message": "ComfyUI /queue is reachable.",
+                    "details": {},
+                }
+            ],
+        }
+
+    monkeypatch.setattr("relief_story_agent.api.connect_comfyui", fake_connect)
+    app = build_app(
+        state_dir=str(tmp_path / "state"),
+        provider=FakeModelProvider.minimal_success(),
+        host="127.0.0.1",
+        port=8899,
+    )
+    client = TestClient(app)
+    report_path = tmp_path / "acceptance" / "acceptance_report.json"
+
+    response = client.get(
+        "/api/local/readiness",
+        params={
+            "acceptance_report_path": str(report_path),
+            "check_comfyui_connection": "true",
+            "comfyui_endpoint": "127.0.0.1:8188/queue",
+            "comfyui_workflow_path": str(tmp_path / "workflow.json"),
+            "comfyui_timeout_seconds": "3",
+        },
+    )
+
+    body = response.json()
+    checks = {check["id"]: check for check in body["checks"]}
+    assert response.status_code == 200
+    assert calls[0].endpoint == "http://127.0.0.1:8188"
+    assert calls[0].workflow_api_path == str(tmp_path / "workflow.json")
+    assert calls[0].timeout_seconds == 3
+    assert body["ready_for_release"] is False
+    assert checks["local_doctor"]["details"]["comfyui_checked"] is True
+    assert checks["acceptance_status"]["details"]["report_path"] == str(report_path)
+    assert "run_local_acceptance" in body["suggested_actions"]

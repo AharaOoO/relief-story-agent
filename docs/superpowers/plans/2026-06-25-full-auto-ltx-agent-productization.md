@@ -1,5 +1,11 @@
 # Full Auto LTX Short Video Agent Productization Implementation Plan
 
+> 2026-06-26 update: the current single source of truth for handoff is
+> `PROJECT_HANDOFF.md`. The next actionable completion roadmap is
+> `docs/superpowers/plans/2026-06-26-relief-story-agent-completion-roadmap.md`.
+> This older plan remains useful for background context, but new sessions should
+> execute the 2026-06-26 roadmap after reading the handoff.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 Relief Story Agent 从“API 核心能力已成型”推进到“粉丝可本地部署、批量全自动生成 LTX 2.3 短视频”的完整软件。
@@ -93,7 +99,7 @@ python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 ```
 
-当前已验证：`345 passed`。
+当前已验证：`361 passed`。
 
 尚未完成或尚未真实证明：
 
@@ -213,8 +219,7 @@ git log --oneline --decorate -5
 Expected:
 
 ```text
-## master...origin/master [ahead 1]
-80da952 (HEAD -> master) feat: add local ComfyUI smoke runner
+Use PROJECT_HANDOFF.md and `git log --oneline --decorate -5` as the current source of truth.
 ```
 
 - [ ] **Step 2: 更新文档入口**

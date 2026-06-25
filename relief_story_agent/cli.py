@@ -128,6 +128,24 @@ def main(argv: list[str] | None = None) -> int:
     local_doctor_parser.add_argument("--comfyui-endpoint", default="", help="Optional ComfyUI endpoint override.")
     local_doctor_parser.add_argument("--comfyui-workflow-path", default="", help="Optional workflow JSON path for ComfyUI runtime node validation.")
     local_doctor_parser.add_argument("--comfyui-timeout-seconds", type=float, default=5.0, help="ComfyUI ping timeout.")
+    local_readiness_parser = subparsers.add_parser(
+        "local-readiness",
+        help="Fetch one combined local deployment readiness report for launchers and UI.",
+    )
+    _add_api_base_args(local_readiness_parser)
+    local_readiness_parser.add_argument(
+        "--acceptance-report",
+        default="",
+        help="Optional acceptance_report.json path to include release evidence blockers.",
+    )
+    local_readiness_parser.add_argument(
+        "--check-comfyui-connection",
+        action="store_true",
+        help="Ask the server to ping ComfyUI /queue.",
+    )
+    local_readiness_parser.add_argument("--comfyui-endpoint", default="", help="Optional ComfyUI endpoint override.")
+    local_readiness_parser.add_argument("--comfyui-workflow-path", default="", help="Optional workflow JSON path for ComfyUI runtime node validation.")
+    local_readiness_parser.add_argument("--comfyui-timeout-seconds", type=float, default=5.0, help="ComfyUI ping timeout.")
     local_demo_parser = subparsers.add_parser(
         "local-demo",
         help="Run an offline fake-model demo that writes run and batch artifacts.",
@@ -374,6 +392,8 @@ def main(argv: list[str] | None = None) -> int:
         return _local_bootstrap(args)
     if args.command == "local-doctor":
         return _local_doctor(args)
+    if args.command == "local-readiness":
+        return _local_readiness(args)
     if args.command == "local-demo":
         return _local_demo(args)
     if args.command == "run":
@@ -632,6 +652,20 @@ def _local_doctor(args: argparse.Namespace) -> int:
             query["comfyui_workflow_path"] = args.comfyui_workflow_path
         query["comfyui_timeout_seconds"] = args.comfyui_timeout_seconds
     return _get_json_command(args, "/api/local/doctor", query=query)
+
+
+def _local_readiness(args: argparse.Namespace) -> int:
+    query: dict[str, str | int | bool] = {}
+    if args.acceptance_report:
+        query["acceptance_report_path"] = args.acceptance_report
+    if args.check_comfyui_connection:
+        query["check_comfyui_connection"] = True
+        if args.comfyui_endpoint:
+            query["comfyui_endpoint"] = args.comfyui_endpoint
+        if args.comfyui_workflow_path:
+            query["comfyui_workflow_path"] = args.comfyui_workflow_path
+        query["comfyui_timeout_seconds"] = args.comfyui_timeout_seconds
+    return _get_json_command(args, "/api/local/readiness", query=query)
 
 
 def _local_demo(args: argparse.Namespace) -> int:

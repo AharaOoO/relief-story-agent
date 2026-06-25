@@ -105,8 +105,10 @@ def test_local_deployment_guides_cover_required_operator_workflows():
         "relief-story-agent model-check",
         "relief-story-agent local-bootstrap",
         "relief-story-agent local-doctor",
+        "relief-story-agent local-readiness",
         "relief-story-agent local-acceptance",
         "POST /api/local/setup-bundle",
+        "GET /api/local/readiness",
         "next_commands",
         "next_endpoints",
         "relief-story-agent discover-comfyui-workflows",
@@ -224,6 +226,7 @@ def test_readme_documents_one_click_and_editable_startup_paths():
     assert "relief-story-agent model-check" in text
     assert "relief-story-agent local-bootstrap" in text
     assert "relief-story-agent local-doctor" in text
+    assert "relief-story-agent local-readiness" in text
     assert "relief-story-agent local-acceptance" in text
     assert "relief-story-agent discover-comfyui-workflows" in text
     assert "POST /api/comfyui/discover-workflows" in text

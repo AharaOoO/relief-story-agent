@@ -35,8 +35,11 @@ def test_cli_help_lists_core_local_commands():
     assert "recovery-plan" in completed.stdout
     assert "recover-batch" in completed.stdout
     assert "run-status" in completed.stdout
+    assert "runs" in completed.stdout
     assert "batch-status" in completed.stdout
+    assert "batches" in completed.stdout
     assert "scheduler" in completed.stdout
+    assert "run-events" in completed.stdout
     assert "run-artifacts" in completed.stdout
     assert "batch-artifacts" in completed.stdout
     assert "batch-health" in completed.stdout
@@ -378,6 +381,42 @@ def test_cli_run_status_gets_run_detail():
     assert recorded["path"] == "/api/runs/run_cli"
 
 
+def test_cli_runs_lists_runs_with_filters():
+    server = _CliApiServer({"items": [{"run_id": "run_cli", "status": "failed"}]})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "runs",
+                "--server",
+                server.url,
+                "--status",
+                "failed",
+                "--parent-batch-id",
+                "batch_cli",
+                "--limit",
+                "5",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["items"][0]["run_id"] == "run_cli"
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/runs"
+    assert recorded["query"] == {
+        "status": ["failed"],
+        "parent_batch_id": ["batch_cli"],
+        "limit": ["5"],
+    }
+
+
 def test_cli_batch_status_gets_batch_detail():
     server = _CliApiServer({"batch_id": "batch_cli", "status": "running"})
 
@@ -405,6 +444,36 @@ def test_cli_batch_status_gets_batch_detail():
     assert recorded["path"] == "/api/batches/batch_cli"
 
 
+def test_cli_batches_lists_batches_with_filters():
+    server = _CliApiServer({"items": [{"batch_id": "batch_cli", "status": "completed"}]})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "batches",
+                "--server",
+                server.url,
+                "--status",
+                "completed",
+                "--limit",
+                "10",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["items"][0]["batch_id"] == "batch_cli"
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/batches"
+    assert recorded["query"] == {"status": ["completed"], "limit": ["10"]}
+
+
 def test_cli_scheduler_gets_scheduler_status():
     server = _CliApiServer({"queue_depth": 1, "active_items": []})
 
@@ -428,6 +497,36 @@ def test_cli_scheduler_gets_scheduler_status():
     recorded = server.requests[0]
     assert recorded["method"] == "GET"
     assert recorded["path"] == "/api/scheduler"
+
+
+def test_cli_run_events_gets_incremental_events():
+    server = _CliApiServer({"run_id": "run_cli", "events": [{"sequence": 13, "type": "stage_started"}]})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "run-events",
+                "--server",
+                server.url,
+                "--run-id",
+                "run_cli",
+                "--after",
+                "12",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 0
+    assert json.loads(completed.stdout)["events"][0]["sequence"] == 13
+    recorded = server.requests[0]
+    assert recorded["method"] == "GET"
+    assert recorded["path"] == "/api/runs/run_cli/events"
+    assert recorded["query"] == {"after": ["12"]}
 
 
 def test_cli_run_artifacts_gets_run_artifact_index():
@@ -575,6 +674,32 @@ def test_cli_validate_export_posts_validation_request():
     assert recorded["json"] == {"export_dir": "D:/exports/batch_cli", "save_report": True}
 
 
+def test_cli_validate_export_returns_nonzero_when_report_is_invalid():
+    server = _CliApiServer({"valid": False, "errors": ["missing publish_index.json"]})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "validate-export",
+                "--server",
+                server.url,
+                "--batch-id",
+                "batch_cli",
+                "--export-dir",
+                "D:/exports/batch_cli",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 1
+    assert json.loads(completed.stdout)["valid"] is False
+
+
 def test_cli_validate_export_zip_posts_zip_validation_request():
     server = _CliApiServer({"valid": True, "report_path": "D:/exports/batch_cli.zip.validation.json"})
 
@@ -611,6 +736,32 @@ def test_cli_validate_export_zip_posts_zip_validation_request():
         "expected_size_bytes": 42,
         "save_report": True,
     }
+
+
+def test_cli_validate_export_zip_returns_nonzero_when_report_is_invalid():
+    server = _CliApiServer({"valid": False, "errors": ["sha256 mismatch"]})
+
+    with server:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "relief_story_agent.cli",
+                "validate-export-zip",
+                "--server",
+                server.url,
+                "--batch-id",
+                "batch_cli",
+                "--zip-path",
+                "D:/exports/batch_cli.zip",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    assert completed.returncode == 1
+    assert json.loads(completed.stdout)["valid"] is False
 
 
 class _CliApiServer:

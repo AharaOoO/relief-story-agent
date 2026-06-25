@@ -103,16 +103,37 @@ def main(argv: list[str] | None = None) -> int:
         help="Fetch one run's current state through the local API server.",
     )
     _add_run_id_api_args(run_status_parser)
+    runs_parser = subparsers.add_parser(
+        "runs",
+        help="List runs through the local API server.",
+    )
+    _add_api_base_args(runs_parser)
+    runs_parser.add_argument("--status", default="", help="Optional run status filter.")
+    runs_parser.add_argument("--parent-batch-id", default="", help="Optional parent batch id filter.")
+    runs_parser.add_argument("--limit", type=int, default=50, help="Maximum run records to return.")
     batch_status_parser = subparsers.add_parser(
         "batch-status",
         help="Fetch one batch's current state through the local API server.",
     )
     _add_batch_id_api_args(batch_status_parser)
+    batches_parser = subparsers.add_parser(
+        "batches",
+        help="List batches through the local API server.",
+    )
+    _add_api_base_args(batches_parser)
+    batches_parser.add_argument("--status", default="", help="Optional batch status filter.")
+    batches_parser.add_argument("--limit", type=int, default=50, help="Maximum batch records to return.")
     scheduler_parser = subparsers.add_parser(
         "scheduler",
         help="Fetch local scheduler queue and worker status.",
     )
     _add_api_base_args(scheduler_parser)
+    run_events_parser = subparsers.add_parser(
+        "run-events",
+        help="Fetch one run's persisted event stream through the local API server.",
+    )
+    _add_run_id_api_args(run_events_parser)
+    run_events_parser.add_argument("--after", type=int, default=0, help="Only return events after this sequence.")
     run_artifacts_parser = subparsers.add_parser(
         "run-artifacts",
         help="Fetch one run's artifact index through the local API server.",
@@ -201,10 +222,16 @@ def main(argv: list[str] | None = None) -> int:
         return _recover_batch(args)
     if args.command == "run-status":
         return _run_status(args)
+    if args.command == "runs":
+        return _list_runs(args)
     if args.command == "batch-status":
         return _batch_status(args)
+    if args.command == "batches":
+        return _list_batches(args)
     if args.command == "scheduler":
         return _scheduler_status(args)
+    if args.command == "run-events":
+        return _run_events(args)
     if args.command == "run-artifacts":
         return _run_artifacts(args)
     if args.command == "batch-artifacts":
@@ -378,12 +405,32 @@ def _run_status(args: argparse.Namespace) -> int:
     return _get_json_command(args, f"/api/runs/{args.run_id}")
 
 
+def _list_runs(args: argparse.Namespace) -> int:
+    query: dict[str, str | int] = {"limit": args.limit}
+    if args.status:
+        query["status"] = args.status
+    if args.parent_batch_id:
+        query["parent_batch_id"] = args.parent_batch_id
+    return _get_json_command(args, "/api/runs", query=query)
+
+
 def _batch_status(args: argparse.Namespace) -> int:
     return _get_json_command(args, f"/api/batches/{args.batch_id}")
 
 
+def _list_batches(args: argparse.Namespace) -> int:
+    query: dict[str, str | int] = {"limit": args.limit}
+    if args.status:
+        query["status"] = args.status
+    return _get_json_command(args, "/api/batches", query=query)
+
+
 def _scheduler_status(args: argparse.Namespace) -> int:
     return _get_json_command(args, "/api/scheduler")
+
+
+def _run_events(args: argparse.Namespace) -> int:
+    return _get_json_command(args, f"/api/runs/{args.run_id}/events", query={"after": args.after})
 
 
 def _run_artifacts(args: argparse.Namespace) -> int:
@@ -406,6 +453,7 @@ def _validate_export(args: argparse.Namespace) -> int:
             "export_dir": args.export_dir,
             "save_report": args.save_report,
         },
+        fail_when_invalid=True,
     )
 
 
@@ -419,11 +467,17 @@ def _validate_export_zip(args: argparse.Namespace) -> int:
             "expected_size_bytes": args.expected_size_bytes,
             "save_report": args.save_report,
         },
+        fail_when_invalid=True,
     )
 
 
-def _get_json_command(args: argparse.Namespace, path: str) -> int:
-    url = _api_url(args.server, path, {})
+def _get_json_command(
+    args: argparse.Namespace,
+    path: str,
+    *,
+    query: dict[str, str | int | bool] | None = None,
+) -> int:
+    url = _api_url(args.server, path, query or {})
     with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
         response = client.get(url)
         result = response.json()
@@ -435,13 +489,15 @@ def _post_json_command(
     path: str,
     payload: dict,
     *,
-    query: dict[str, bool] | None = None,
+    query: dict[str, str | int | bool] | None = None,
+    fail_when_invalid: bool = False,
 ) -> int:
     url = _api_url(args.server, path, query or {})
     with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
         response = client.post(url, json=payload)
         result = response.json()
-    return _print_api_result(args, response.status_code, result)
+    status_code = 400 if fail_when_invalid and result.get("valid") is False else response.status_code
+    return _print_api_result(args, status_code, result)
 
 
 def _print_api_result(args: argparse.Namespace, status_code: int, result: dict) -> int:
@@ -449,12 +505,16 @@ def _print_api_result(args: argparse.Namespace, status_code: int, result: dict) 
     return 1 if status_code >= 400 else 0
 
 
-def _api_url(server: str, path: str, query: dict[str, bool]) -> str:
+def _api_url(server: str, path: str, query: dict[str, str | int | bool]) -> str:
     base = server.rstrip("/")
     url = f"{base}{path}"
     if not query:
         return url
-    return f"{url}?{urlencode({key: 'true' for key in query})}"
+    encoded = {
+        key: ("true" if value is True else "false" if value is False else str(value))
+        for key, value in query.items()
+    }
+    return f"{url}?{urlencode(encoded)}"
 
 
 def _read_json_file(path: str) -> dict:

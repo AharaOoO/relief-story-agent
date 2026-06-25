@@ -155,9 +155,21 @@ Invoke-RestMethod `
 Poll:
 
 ```powershell
+relief-story-agent runs `
+  --server "http://127.0.0.1:8891" `
+  --status running `
+  --limit 20 `
+  --pretty
+
 relief-story-agent run-status `
   --server "http://127.0.0.1:8891" `
   --run-id "{run_id}" `
+  --pretty
+
+relief-story-agent run-events `
+  --server "http://127.0.0.1:8891" `
+  --run-id "{run_id}" `
+  --after 0 `
   --pretty
 
 relief-story-agent run-artifacts `
@@ -217,6 +229,12 @@ HTTP endpoint summary: `POST /api/batches`.
 Track the batch:
 
 ```powershell
+relief-story-agent batches `
+  --server "http://127.0.0.1:8891" `
+  --status running `
+  --limit 20 `
+  --pretty
+
 relief-story-agent batch-status `
   --server "http://127.0.0.1:8891" `
   --batch-id "{batch_id}" `

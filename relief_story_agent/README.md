@@ -179,6 +179,17 @@ relief-story-agent run-status `
   --run-id "{run_id}" `
   --pretty
 
+relief-story-agent runs `
+  --status failed `
+  --parent-batch-id "{batch_id}" `
+  --limit 20 `
+  --pretty
+
+relief-story-agent run-events `
+  --run-id "{run_id}" `
+  --after 0 `
+  --pretty
+
 relief-story-agent run-artifacts `
   --run-id "{run_id}" `
   --pretty
@@ -198,6 +209,11 @@ relief-story-agent batch `
 
 relief-story-agent batch-status `
   --batch-id "{batch_id}" `
+  --pretty
+
+relief-story-agent batches `
+  --status completed `
+  --limit 20 `
   --pretty
 
 relief-story-agent batch-artifacts `
@@ -736,6 +752,8 @@ CLI equivalent:
 
 ```powershell
 relief-story-agent run-status --run-id "{run_id}" --pretty
+relief-story-agent run-events --run-id "{run_id}" --after 12 --pretty
+relief-story-agent runs --status failed --parent-batch-id "{batch_id}" --limit 20 --pretty
 ```
 
 Run list entries include `queue_priority`, so launchers can show why one item is waiting behind another.
@@ -750,6 +768,7 @@ GET /api/batches?status=completed&limit=20
 CLI equivalent:
 
 ```powershell
+relief-story-agent batches --status completed --limit 20 --pretty
 relief-story-agent batch-status --batch-id "{batch_id}" --pretty
 relief-story-agent batch-health --batch-id "{batch_id}" --pretty
 ```

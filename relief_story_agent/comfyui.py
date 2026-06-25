@@ -264,6 +264,14 @@ def connect_comfyui(
                         },
                     )
                 )
+                if connected:
+                    checks.append(
+                        _check_runtime_node_types(
+                            active_client,
+                            endpoint,
+                            workflow_config,
+                        )
+                    )
             except Exception as exc:
                 checks.append(
                     _diagnostic_check(
@@ -498,6 +506,7 @@ def plan_storyboard_workflows(
     duration_seconds: int = 90,
     grid_image_asset: GridImageAsset | None = None,
     allow_unuploaded_grid_image: bool = False,
+    object_info: dict[str, Any] | None = None,
 ) -> list[PlannedComfyUIWorkflow]:
     if not config.workflow_api_path:
         raise ValueError("workflow_api_path is required when ComfyUI is enabled")
@@ -531,6 +540,7 @@ def plan_storyboard_workflows(
                 seed=_read_storyboard_seed(storyboard),
                 filename_prefix=run_id,
                 grid_image_filename=grid_image_filename,
+                object_info=object_info,
             )
             replacements.append(
                 {
@@ -602,6 +612,7 @@ def plan_storyboard_workflows(
                 seed=_read_storyboard_seed(storyboard),
                 filename_prefix=run_id,
                 image_filename=image_filename,
+                object_info=object_info,
             )
             replacements.extend(
                 {
@@ -677,6 +688,7 @@ def preview_storyboard_submission(
     include_workflow: bool = False,
     grid_image_asset: GridImageAsset | None = None,
     allow_unuploaded_grid_image: bool = False,
+    object_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     image_resolution = ""
     if grid_image_asset is None and _workflow_requires_grid_image(config):
@@ -693,6 +705,7 @@ def preview_storyboard_submission(
         duration_seconds=duration_seconds,
         grid_image_asset=grid_image_asset,
         allow_unuploaded_grid_image=allow_unuploaded_grid_image,
+        object_info=object_info,
     )
     workflow_format = planned[0].workflow_format if planned else "unknown"
     items = []
@@ -767,6 +780,70 @@ def _ltx_widget_points_payload(points) -> dict[str, Any]:
     }
 
 
+def _check_runtime_node_types(
+    client: httpx.Client,
+    endpoint: str,
+    config: ComfyUIRunConfig,
+) -> dict[str, Any]:
+    try:
+        workflow = load_workflow(config.workflow_api_path or "")
+        workflow_format = detect_workflow_format(workflow)
+        api_prompt = litegraph_to_api_prompt(workflow) if workflow_format == "litegraph" else workflow
+        required = sorted(
+            {
+                str(node.get("class_type") or "")
+                for node in api_prompt.values()
+                if isinstance(node, dict) and node.get("class_type")
+            }
+        )
+        response = client.get(f"{endpoint.rstrip('/')}/object_info")
+        response.raise_for_status()
+        object_info = response.json()
+        available = set(object_info.keys()) if isinstance(object_info, dict) else set()
+    except Exception as exc:
+        return _diagnostic_check(
+            "comfyui_node_types",
+            "failed",
+            f"Cannot verify ComfyUI runtime node types: {exc}",
+            {"workflow_api_path": config.workflow_api_path or ""},
+        )
+
+    missing = [node_type for node_type in required if node_type not in available]
+    details = {
+        "required_node_type_count": len(required),
+        "missing_node_types": missing,
+    }
+    if missing:
+        return _diagnostic_check(
+            "comfyui_node_types",
+            "failed",
+            "ComfyUI is missing node types required by the workflow.",
+            details,
+        )
+    return _diagnostic_check(
+        "comfyui_node_types",
+        "passed",
+        "ComfyUI runtime exposes every workflow node type.",
+        details,
+    )
+
+
+def fetch_workflow_runtime_object_info(
+    client: httpx.Client,
+    endpoint: str,
+    config: ComfyUIRunConfig,
+) -> dict[str, Any] | None:
+    if not config.workflow_api_path:
+        return None
+    workflow = load_workflow(config.workflow_api_path)
+    if detect_workflow_format(workflow) != "litegraph":
+        return None
+    response = client.get(f"{endpoint.rstrip('/')}/object_info")
+    response.raise_for_status()
+    payload = response.json()
+    return payload if isinstance(payload, dict) else {}
+
+
 def _diagnostic_check(
     name: str,
     status: str,
@@ -793,6 +870,9 @@ def _suggest_connection_actions(checks: list[dict[str, Any]]) -> list[dict[str, 
         elif name == "comfyui_workflow":
             code = "fix_comfyui_workflow"
             label = "Fix ComfyUI workflow"
+        elif name == "comfyui_node_types":
+            code = "install_or_enable_comfyui_nodes"
+            label = "Install or enable ComfyUI custom nodes"
         else:
             code = "manual_review_comfyui_connection"
             label = "Review ComfyUI connection"
@@ -887,21 +967,25 @@ def submit_storyboard(
     on_update: SubmissionUpdateCallback | None = None,
     client: httpx.Client | None = None,
     grid_image_asset: GridImageAsset | None = None,
+    object_info: dict[str, Any] | None = None,
 ) -> list[ComfyUISubmission]:
-    planned_workflows = plan_storyboard_workflows(
-        config,
-        storyboard,
-        run_id,
-        duration_seconds=duration_seconds,
-        grid_image_asset=grid_image_asset,
-        allow_unuploaded_grid_image=False,
-    )
-
     existing = existing_submissions or []
     submissions: list[ComfyUISubmission] = []
     owns_client = client is None
     active_client = client or _comfyui_http_client(timeout=30.0)
     try:
+        if object_info is None:
+            object_info = fetch_workflow_runtime_object_info(active_client, config.endpoint, config)
+        planned_workflows = plan_storyboard_workflows(
+            config,
+            storyboard,
+            run_id,
+            duration_seconds=duration_seconds,
+            grid_image_asset=grid_image_asset,
+            allow_unuploaded_grid_image=False,
+            object_info=object_info,
+        )
+
         for planned in planned_workflows:
             fingerprint = _content_fingerprint(planned.workflow)
             previous = next(

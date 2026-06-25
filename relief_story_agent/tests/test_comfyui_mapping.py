@@ -21,6 +21,7 @@ from relief_story_agent.grid_image import validate_grid_image
 from relief_story_agent.ltx_workflow import (
     find_ltx_injection_points,
     find_ltx_widget_patch_points,
+    litegraph_to_api_prompt,
     patch_ltx_litegraph_workflow,
     patch_ltx_widget_workflow,
 )
@@ -200,14 +201,28 @@ def test_api_comfyui_connect_reaches_queue_and_analyzes_ltx_workflow(tmp_path, m
 
     def handler(request: httpx.Request):
         requests.append(str(request.url))
-        assert request.url.path == "/queue"
-        return httpx.Response(
-            200,
-            json={
-                "queue_running": [["running", "prompt-a"]],
-                "queue_pending": [["pending", "prompt-b"], ["pending", "prompt-c"]],
-            },
-        )
+        if request.url.path == "/queue":
+            return httpx.Response(
+                200,
+                json={
+                    "queue_running": [["running", "prompt-a"]],
+                    "queue_pending": [["pending", "prompt-b"], ["pending", "prompt-c"]],
+                },
+            )
+        if request.url.path == "/object_info":
+            return httpx.Response(
+                200,
+                json={
+                    "FixturePassthrough": {},
+                    "JWString": {},
+                    "LoadImage": {},
+                    "ParseJsonNode": {},
+                    "RandomNoise": {},
+                    "TD_LTXVAddGuideFromGrid": {},
+                    "VHS_VideoCombine": {},
+                },
+            )
+        return httpx.Response(404)
 
     monkeypatch.setattr(
         "relief_story_agent.comfyui.httpx.Client",
@@ -241,7 +256,54 @@ def test_api_comfyui_connect_reaches_queue_and_analyzes_ltx_workflow(tmp_path, m
     assert body["workflow"]["grid_shape"] == {"columns": 2, "rows": 2}
     assert body["suggested_config"]["endpoint"] == "http://comfy.local"
     assert body["suggested_config"]["workflow_api_path"] == str(workflow_path)
-    assert requests == ["http://comfy.local/queue"]
+    assert requests == ["http://comfy.local/queue", "http://comfy.local/object_info"]
+
+
+def test_connect_comfyui_reports_missing_runtime_node_types(tmp_path):
+    workflow_path = tmp_path / "missing_node_workflow.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {
+                        "id": 1,
+                        "type": "CLIPTextEncode",
+                        "title": "CLIP Text Encode (Positive Prompt)",
+                        "widgets_values": ["prompt"],
+                    },
+                    {
+                        "id": 2,
+                        "type": "MissingSampler",
+                        "widgets_values": [],
+                    },
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def handler(request: httpx.Request):
+        if request.url.path == "/queue":
+            return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
+        if request.url.path == "/object_info":
+            return httpx.Response(200, json={"CLIPTextEncode": {}})
+        return httpx.Response(404)
+
+    report = connect_comfyui(
+        ComfyUIConnectionRequest(
+            endpoint="http://comfy.local",
+            workflow_api_path=str(workflow_path),
+        ),
+        client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+
+    node_check = next(check for check in report["checks"] if check["name"] == "comfyui_node_types")
+    assert report["ready"] is False
+    assert node_check["status"] == "failed"
+    assert node_check["details"]["missing_node_types"] == ["MissingSampler"]
+    assert report["suggested_actions"][0]["code"] == "install_or_enable_comfyui_nodes"
 
 
 def test_connect_comfyui_uses_direct_http_client_by_default(monkeypatch):
@@ -612,6 +674,118 @@ def test_submit_storyboard_uses_direct_http_client_by_default(tmp_path, monkeypa
     assert created_clients[0].get("trust_env") is False
 
 
+def test_submit_storyboard_enriches_litegraph_workflow_with_runtime_object_info(tmp_path):
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {
+                        "id": 1,
+                        "type": "LoadImage",
+                        "inputs": [{"name": "image", "type": "IMAGE", "widget": {"name": "image"}}],
+                        "widgets_values": ["old.png", "image"],
+                    },
+                    {
+                        "id": 2,
+                        "type": "CLIPTextEncode",
+                        "title": "Positive Prompt",
+                        "widgets_values": ["old prompt"],
+                    },
+                    {
+                        "id": 3,
+                        "type": "CheckpointLoaderSimple",
+                        "widgets_values": ["ltx-2.3.safetensors"],
+                    },
+                    {
+                        "id": 4,
+                        "type": "EmptyLTXVLatentVideo",
+                        "inputs": [
+                            {"name": "width", "type": "INT", "widget": {"name": "width"}, "link": 41},
+                            {"name": "height", "type": "INT", "widget": {"name": "height"}, "link": 42},
+                            {"name": "length", "type": "INT", "widget": {"name": "length"}, "link": 43},
+                        ],
+                        "widgets_values": [960, 544, 121, 1],
+                    },
+                    {
+                        "id": 5,
+                        "type": "SaveVideo",
+                        "widgets_values": ["old_prefix", "video/h264-mp4", "h264"],
+                    },
+                ],
+                "links": [
+                    [41, 11, 0, 4, 0, "INT"],
+                    [42, 12, 0, 4, 1, "INT"],
+                    [43, 13, 0, 4, 2, "INT"],
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    asset = GridImageAsset(
+        source="manual",
+        local_path=str(tmp_path / "grid.png"),
+        sha256="c" * 64,
+        mime_type="image/png",
+        width=1024,
+        height=1024,
+        byte_size=100,
+        comfyui_filename="uploaded_grid.png",
+        upload_status="accepted",
+    )
+    submitted: list[dict] = []
+    requests: list[str] = []
+
+    def handler(request: httpx.Request):
+        requests.append(request.url.path)
+        if request.url.path == "/object_info":
+            return httpx.Response(
+                200,
+                json={
+                    "LoadImage": {"input": {"required": {"image": ["COMBO", {}]}}},
+                    "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
+                    "CheckpointLoaderSimple": {
+                        "input": {"required": {"ckpt_name": ["COMBO", {}]}},
+                    },
+                    "EmptyLTXVLatentVideo": {
+                        "input": {
+                            "required": {
+                                "width": ["INT", {}],
+                                "height": ["INT", {}],
+                                "length": ["INT", {}],
+                                "batch_size": ["INT", {}],
+                            }
+                        },
+                    },
+                    "SaveVideo": {"input": {"required": {"filename_prefix": ["STRING", {}]}}},
+                },
+            )
+        if request.url.path == "/prompt":
+            payload = json.loads(request.content)
+            submitted.append(payload)
+            return httpx.Response(200, json={"prompt_id": payload["prompt_id"]})
+        return httpx.Response(404)
+
+    submissions = submit_storyboard(
+        ComfyUIRunConfig(enabled=True, endpoint="http://comfy.local", workflow_api_path=str(workflow_path)),
+        [{"shot_id": 1, "image_prompt": "quiet scene"}],
+        "runtime_run",
+        duration_seconds=4,
+        client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+        grid_image_asset=asset,
+    )
+
+    prompt = submitted[0]["prompt"]
+    assert requests == ["/object_info", "/prompt"]
+    assert submissions[0].status == "accepted"
+    assert prompt["3"]["inputs"]["ckpt_name"] == "ltx-2.3.safetensors"
+    assert prompt["4"]["inputs"]["width"] == ["11", 0]
+    assert prompt["4"]["inputs"]["height"] == ["12", 0]
+    assert prompt["4"]["inputs"]["length"] == ["13", 0]
+    assert prompt["4"]["inputs"]["batch_size"] == 1
+
+
 def test_submit_storyboard_reports_missing_placeholder_source(tmp_path):
     config = ComfyUIRunConfig(
         enabled=True,
@@ -827,6 +1001,204 @@ def test_ltx_widget_patch_writes_gemma_prompt_without_overwriting_api_key():
     assert workflow["nodes"][1]["widgets_values"] == ["", "old prompt", "legacy-model-slot", "ltx-2.3.safetensors"]
 
 
+def test_litegraph_to_api_prompt_uses_object_info_for_required_widgets():
+    workflow = {
+        "version": 0.4,
+        "nodes": [
+            {
+                "id": 1,
+                "type": "CheckpointLoaderSimple",
+                "inputs": [],
+                "widgets_values": ["ltx-2.3.safetensors"],
+            },
+            {
+                "id": 2,
+                "type": "EmptyLTXVLatentVideo",
+                "inputs": [
+                    {"name": "width", "type": "INT", "widget": {"name": "width"}, "link": 11},
+                    {"name": "height", "type": "INT", "widget": {"name": "height"}, "link": 12},
+                    {"name": "length", "type": "INT", "widget": {"name": "length"}, "link": 13},
+                ],
+                "widgets_values": [960, 544, 121, 1],
+            },
+        ],
+        "links": [
+            [11, 10, 0, 2, 0, "INT"],
+            [12, 11, 0, 2, 1, "INT"],
+            [13, 12, 0, 2, 2, "INT"],
+        ],
+    }
+    object_info = {
+        "CheckpointLoaderSimple": {
+            "input": {"required": {"ckpt_name": ["COMBO", {}]}},
+        },
+        "EmptyLTXVLatentVideo": {
+            "input": {
+                "required": {
+                    "width": ["INT", {}],
+                    "height": ["INT", {}],
+                    "length": ["INT", {}],
+                    "batch_size": ["INT", {}],
+                }
+            },
+        },
+    }
+
+    prompt = litegraph_to_api_prompt(workflow, object_info=object_info)
+
+    assert prompt["1"]["inputs"]["ckpt_name"] == "ltx-2.3.safetensors"
+    assert prompt["2"]["inputs"]["width"] == ["10", 0]
+    assert prompt["2"]["inputs"]["height"] == ["11", 0]
+    assert prompt["2"]["inputs"]["length"] == ["12", 0]
+    assert prompt["2"]["inputs"]["batch_size"] == 1
+
+
+def test_litegraph_to_api_prompt_expands_dynamic_combo_widgets_from_object_info():
+    workflow = {
+        "version": 0.4,
+        "nodes": [
+            {
+                "id": 1,
+                "type": "ResizeImageMaskNode",
+                "inputs": [{"name": "input", "type": "IMAGE", "link": 21}],
+                "widgets_values": ["scale longer dimension", 1536, "lanczos"],
+            },
+            {
+                "id": 2,
+                "type": "ResizeImageMaskNode",
+                "inputs": [
+                    {"name": "input", "type": "IMAGE", "link": 22},
+                    {"name": "resize_type.multiple", "type": "INT", "widget": {"name": "resize_type.multiple"}, "link": 23},
+                ],
+                "widgets_values": ["scale to multiple", 64, "lanczos"],
+            },
+        ],
+        "links": [
+            [21, 10, 0, 1, 0, "IMAGE"],
+            [22, 11, 0, 2, 0, "IMAGE"],
+            [23, 12, 0, 2, 1, "INT"],
+        ],
+    }
+    object_info = {
+        "ResizeImageMaskNode": {
+            "input": {
+                "required": {
+                    "input": ["IMAGE", {}],
+                    "resize_type": [
+                        "COMFY_DYNAMICCOMBO_V3",
+                        {
+                            "options": [
+                                {
+                                    "key": "scale longer dimension",
+                                    "inputs": {"required": {"longer_size": ["INT", {}]}},
+                                },
+                                {
+                                    "key": "scale to multiple",
+                                    "inputs": {"required": {"multiple": ["INT", {}]}},
+                                },
+                            ]
+                        },
+                    ],
+                    "scale_method": ["COMBO", {}],
+                }
+            }
+        }
+    }
+
+    prompt = litegraph_to_api_prompt(workflow, object_info=object_info)
+
+    assert prompt["1"]["inputs"]["resize_type"] == "scale longer dimension"
+    assert prompt["1"]["inputs"]["resize_type.longer_size"] == 1536
+    assert prompt["1"]["inputs"]["scale_method"] == "lanczos"
+    assert prompt["2"]["inputs"]["resize_type"] == "scale to multiple"
+    assert prompt["2"]["inputs"]["resize_type.multiple"] == ["12", 0]
+    assert prompt["2"]["inputs"]["scale_method"] == "lanczos"
+
+
+def test_litegraph_to_api_prompt_reconciles_runtime_combo_asset_names_from_object_info():
+    workflow = {
+        "version": 0.4,
+        "nodes": [
+            {
+                "id": 1,
+                "type": "CheckpointLoaderSimple",
+                "widgets_values": ["ltx-2.3-22b-dev.safetensors"],
+            },
+            {
+                "id": 2,
+                "type": "LTXAVTextEncoderLoader",
+                "widgets_values": [
+                    "comfy_gemma_3_12B_it.safetensors",
+                    "ltx-2.3-22b-dev.safetensors",
+                    "default",
+                ],
+            },
+            {
+                "id": 3,
+                "type": "LoraLoaderModelOnly",
+                "widgets_values": [
+                    "ltxv/ltx2/ltx-2.3-22b-distilled-lora-384.safetensors",
+                    0.5,
+                ],
+            },
+        ],
+        "links": [],
+    }
+    object_info = {
+        "CheckpointLoaderSimple": {
+            "input": {
+                "required": {
+                    "ckpt_name": [
+                        ["sdpose_wholebody_fp16.safetensors", "DasiwaLTX23Safetensors_solsticecoinV2.safetensors"],
+                        {},
+                    ],
+                }
+            },
+        },
+        "LTXAVTextEncoderLoader": {
+            "input": {
+                "required": {
+                    "text_encoder": [
+                        "COMBO",
+                        {"options": ["clip_l.safetensors", "gemma_3_12B_it_fpmixed.safetensors"]},
+                    ],
+                    "ckpt_name": [
+                        "COMBO",
+                        {"options": ["sdpose_wholebody_fp16.safetensors", "DasiwaLTX23Safetensors_solsticecoinV2.safetensors"]},
+                    ],
+                    "device": ["COMBO", {"options": ["default", "cpu"]}],
+                }
+            },
+        },
+        "LoraLoaderModelOnly": {
+            "input": {
+                "required": {
+                    "lora_name": [
+                        "COMBO",
+                        {
+                            "options": [
+                                "WAN2.2/FastWan_T2V_14B_480p_lora_rank_128_bf16.safetensors",
+                                "LTX2.3/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors",
+                            ]
+                        },
+                    ],
+                    "strength_model": ["FLOAT", {}],
+                }
+            },
+        },
+    }
+
+    prompt = litegraph_to_api_prompt(workflow, object_info=object_info)
+
+    assert prompt["1"]["inputs"]["ckpt_name"] == "DasiwaLTX23Safetensors_solsticecoinV2.safetensors"
+    assert prompt["2"]["inputs"]["text_encoder"] == "gemma_3_12B_it_fpmixed.safetensors"
+    assert prompt["2"]["inputs"]["ckpt_name"] == "DasiwaLTX23Safetensors_solsticecoinV2.safetensors"
+    assert (
+        prompt["3"]["inputs"]["lora_name"]
+        == "LTX2.3/ltx-2.3-22b-distilled-1.1_lora-dynamic_fro09_avg_rank_111_bf16.safetensors"
+    )
+
+
 def test_analyze_workflow_detects_ltx_widget_patch_mode(tmp_path):
     workflow_path = _ltx_widget_workflow_file(tmp_path)
     client = TestClient(
@@ -909,6 +1281,73 @@ def test_preview_widget_ltx_workflow_patches_existing_widgets(tmp_path):
     assert workflow["20"]["inputs"]["text"] == "shouting, violence"
     assert workflow["30"]["inputs"]["noise_seed"] == 777
     assert workflow["40"]["inputs"]["filename_prefix"] == "widget_run"
+
+
+def test_preview_storyboard_submission_can_include_runtime_object_info_enriched_workflow(tmp_path):
+    workflow_path = tmp_path / "widget_runtime_workflow.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {
+                        "id": 10,
+                        "type": "LoadImage",
+                        "widgets_values": ["example.png", "image"],
+                    },
+                    {
+                        "id": 21,
+                        "type": "CLIPTextEncode",
+                        "title": "Positive Prompt",
+                        "widgets_values": ["old prompt"],
+                    },
+                    {
+                        "id": 30,
+                        "type": "CheckpointLoaderSimple",
+                        "widgets_values": ["ltx-2.3-22b-dev.safetensors"],
+                    },
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    asset = GridImageAsset(
+        source="manual",
+        local_path=str(tmp_path / "grid.png"),
+        sha256="d" * 64,
+        mime_type="image/png",
+        width=1024,
+        height=1024,
+        byte_size=100,
+        comfyui_filename="uploaded_grid.png",
+        upload_status="accepted",
+    )
+
+    preview = preview_storyboard_submission(
+        ComfyUIRunConfig(enabled=True, workflow_api_path=str(workflow_path)),
+        [{"shot_id": 1, "image_prompt": "quiet scene"}],
+        "runtime_preview",
+        include_workflow=True,
+        grid_image_asset=asset,
+        object_info={
+            "LoadImage": {"input": {"required": {"image": ["COMBO", {}]}}},
+            "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
+            "CheckpointLoaderSimple": {
+                "input": {
+                    "required": {
+                        "ckpt_name": [
+                            ["sdpose_wholebody_fp16.safetensors", "DasiwaLTX23Safetensors_solsticecoinV2.safetensors"],
+                            {},
+                        ]
+                    }
+                }
+            },
+        },
+    )
+
+    workflow = preview["items"][0]["workflow"]
+    assert workflow["30"]["inputs"]["ckpt_name"] == "DasiwaLTX23Safetensors_solsticecoinV2.safetensors"
 
 
 def test_discover_workflows_recommends_ltx_widget_candidate(tmp_path):

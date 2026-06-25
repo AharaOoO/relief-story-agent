@@ -74,7 +74,10 @@ chief_screenwriter
 
 - ComfyUI workflow 分析。
 - LiteGraph LTX 自动注入点识别。
-- LiteGraph LTX widget patch 识别：支持常见整合包/`ComfyUI-LTXVideo` 示例 workflow，自动替换已有正向/负向 prompt、`RandomNoise` seed、`LoadImage` 文件名和 `SaveVideo`/`VHS_VideoCombine` 输出前缀；不生成节点、不改模型和采样器。
+- LiteGraph LTX widget patch 识别：支持常见整合包/`ComfyUI-LTXVideo` 示例 workflow，自动替换已有正向/负向 prompt、`RandomNoise` seed、`LoadImage` 文件名和 `SaveVideo`/`VHS_VideoCombine` 输出前缀；不生成节点、不改采样器、不重画工作流。
+- LiteGraph real-run 会读取 ComfyUI `/object_info`，用运行时节点 schema 补齐 frontend workflow 里隐藏的必填 widget 值，包括 `PrimitiveInt`、`PrimitiveFloat`、loader 默认值、动态 combo 子字段等。
+- 动态 combo 字段按 ComfyUI API 需要保留前缀，例如 `resize_type.longer_size`、`resize_type.shorter_size`、`resize_type.multiple`。
+- 当 workflow 里的 COMBO 模型/LoRA 文件名不在本地整合包可用列表中时，会按 `/object_info` 的 options 做保守的运行时资产名兼容匹配；找不到可信匹配时保留原值，让 ComfyUI 或诊断明确报错。
 - LTX payload 构造。
 - workflow patch。
 - ComfyUI `/upload/image`。
@@ -115,6 +118,7 @@ grid shape: 2x2
 - 单条 run 审计：`GET /api/runs/{run_id}/audit` 和 `relief-story-agent run-audit` 可检查事件序列、阶段顺序、未知阶段名和失败记录一致性。
 - 本地 UI/bootstrap 契约：`GET /api/local/bootstrap` 和 `relief-story-agent local-bootstrap --pretty` 返回 API 端口、推荐 UI origin、CORS 白名单、默认 ComfyUI 地址和核心端点路径。
 - 本地 doctor 就绪检查：`GET /api/local/doctor` 和 `relief-story-agent local-doctor` 返回模型环境、状态持久化、scheduler、资源限制和下一步建议；可选 `check_comfyui_connection=true` / `--check-comfyui-connection --comfyui-endpoint ...` 直接 ping 用户填入的本地 ComfyUI 地址。
+- ComfyUI 连接检查会读取 `/object_info`，验证 workflow 需要的 node class 是否在当前本地 ComfyUI 运行时存在。缺节点时返回 `comfyui_node_types` 失败和 `install_or_enable_comfyui_nodes` 建议。
 
 ### 3.4 本地 ComfyUI smoke runner
 
@@ -124,14 +128,35 @@ grid shape: 2x2
 - `POST /api/smoke/comfyui`。
 - `python -m relief_story_agent.smoke_comfyui --request smoke_request.json`。
 - dry-run：预检、四宫格校验、workflow patch 预览、artifact 写出，不上传、不入队。
-- real-run：上传四宫格图、patch LTX workflow、调用 ComfyUI `/prompt`、记录 prompt id。
+- real-run：上传四宫格图、读取 `/object_info`、patch LTX workflow、调用 ComfyUI `/prompt`、记录 prompt id。
+- real-run 写出的 `smoke_workflow_patched.json` 现在和实际 `/prompt` payload 同源，包含 runtime object_info 补出的动态字段和本机资产名兼容结果。
 - mock ComfyUI 测试覆盖 dry-run、real-run、上传失败、prompt 失败、API、CLI。
+
+真实本机 ComfyUI 已验证：
+
+```text
+endpoint: http://127.0.0.1:8188
+workflow:
+D:/AI-Comfyui-onekey-V5/ComfyUI_windows_portable_nvidia/ComfyUI_windows_portable/ComfyUI/custom_nodes/ComfyUI-LTXVideo/example_workflows/2.3/LTX-2.3_ICLoRA_Motion_Track_Distilled.json
+
+command:
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+
+result:
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+post-check queue: {"queue_running": [], "queue_pending": []}
+```
+
+该 smoke 只证明上传和 `/prompt` 入队链路已被本机 ComfyUI 接受；没有等待渲染完成，也没有下载视频。
 
 ## 4. 当前最重要的下一步
 
-`local_comfyui_smoke` 已经在本地完成。下一阶段不是重复实现 smoke runner，而是做真实本机联调和端到端验收。
+`local_comfyui_smoke` 已经在本地完成，并已用真实本机 ComfyUI 跑通 real-run `/prompt` 入队。下一阶段不是重复实现 smoke runner，而是接真实模型链路和端到端验收。
 
-目标：验证“最终提示词产物 + 四宫格图 + 用户 LTX 2.3 workflow”能否在真实本机 ComfyUI 中成功 `/prompt` 入队，然后接入真实 Gemini / DeepSeek / GPT 模型配置，跑通单条和批量视频生成。
+目标：接入真实 Gemini / DeepSeek / GPT 模型配置，跑通单条端到端视频产出，再跑批量生成和恢复验收。
 
 总开发计划：
 
@@ -154,13 +179,11 @@ docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md
 下一阶段按这个顺序推进：
 
 ```text
-1. 推送本地 smoke runner 和总开发计划到 GitHub。
-2. 用用户真实 LTX 2.3 workflow + 手动四宫格图跑 smoke dry-run。
-3. 启动本地 ComfyUI，跑 smoke real-run，确认 prompt_id。
-4. 补模板示例包、模型配置示例、真实 run/batch 请求示例。
-5. 用真实模型跑单条端到端，拿到本地视频文件。
-6. 跑至少 3-5 条 batch，验证恢复、导出、校验。
-7. 写部署文档和最终验收报告。
+1. 推送本次 ComfyUI runtime object_info / real-smoke 验证提交到 GitHub。
+2. 补模板示例包、模型配置示例、真实 run/batch 请求示例。
+3. 用真实 Gemini / DeepSeek / GPT 模型跑单条端到端，拿到本地视频文件。
+4. 跑至少 3-5 条 batch，验证恢复、导出、校验。
+5. 写部署文档和最终验收报告。
 ```
 
 当前仍不能说“除了 UI 外已经完整做好”。原因是：真实模型链路、真实 ComfyUI 视频产出、批量真实验收、粉丝部署文档和配置体验还没有全部用证据跑完。
@@ -303,7 +326,7 @@ git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-309 passed
+318 passed
 ```
 
 最近已推送的核心功能提交：

@@ -49,19 +49,11 @@ chief_screenwriter
 
 GitHub 仓库：`https://github.com/AharaOoO/relief-story-agent`
 
-当前本地 HEAD 在写这份计划前是：
+当前关键状态：
 
-```text
-80da952 feat: add local ComfyUI smoke runner
-```
-
-当时 `origin/master` 仍停在：
-
-```text
-5888455 docs: strengthen project handoff
-```
-
-这表示本地已经实现 `local_comfyui_smoke`，但 GitHub 只有推送后才会包含它。
+- `local_comfyui_smoke` 已实现。
+- LiteGraph submit 路径已接入 ComfyUI `/object_info`：补齐 runtime-required widget、动态 combo 子字段、本地 COMBO 资产名别名，并验证缺失 node class。
+- 已用本机 ComfyUI 跑通真实 ready workflow `/prompt` 入队。
 
 已实现能力：
 
@@ -81,6 +73,15 @@ GitHub 仓库：`https://github.com/AharaOoO/relief-story-agent`
 - artifact manifest、batch export、zip/checksum/export validation。
 - metrics、health、config validate/diagnose。
 - 本地 ComfyUI smoke runner：`relief_story_agent/smoke_comfyui.py`、`POST /api/smoke/comfyui`、CLI dry-run/real-run、artifact 写出、mock ComfyUI 测试。
+- 真实本机 smoke 证据：
+
+```text
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+```
 
 最新本地验证基线在新增 smoke runner 后应为：
 
@@ -89,12 +90,12 @@ python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 ```
 
-期望：`229 passed`。
+当前已验证：`318 passed`。
 
 尚未完成或尚未真实证明：
 
 - 没有用真实 Gemini/DeepSeek/GPT 模型配置跑完整链路。
-- 没有用用户本机 ComfyUI + 用户真实 LTX 2.3 workflow 真实生成视频并下载验收。
+- 已用用户本机 ComfyUI + LTX 2.3 ready workflow 证明 `/prompt` 可入队；但还没有等待真实视频渲染完成并下载验收。
 - 没有形成面向粉丝的配置向导、安装包、清晰本地部署流程。
 - 没有模板库版本管理与模板示例包。
 - 没有非开发者友好的批量任务入口。
@@ -1098,7 +1099,7 @@ Use a narrower `git add` if unrelated files appear in `git status`.
 另一个会话可以直接从这段开始：
 
 ```text
-请接手 D:\codex工作区 的 relief-story-agent 项目。先阅读 README.md、PROJECT_HANDOFF.md、NEXT_SESSION_PROMPT.md，以及 docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md。目标是把它推进到粉丝可本地部署的 LTX 2.3 批量全自动短视频生成 agent。不要优先做 UI。先核对 git 状态和测试，再按总计划从真实 ComfyUI smoke 验收、模板示例包、真实模型配置、单条端到端验收、批量验收、CLI/配置向导、部署文档逐步推进。每个阶段都要测试、commit、push。不要 git add .。
+请接手 D:\codex工作区 的 relief-story-agent 项目。先阅读 README.md、PROJECT_HANDOFF.md、NEXT_SESSION_PROMPT.md，以及 docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md。目标是把它推进到粉丝可本地部署的 LTX 2.3 批量全自动短视频生成 agent。不要优先做 UI。先核对 git 状态和测试，再按总计划从真实模型配置、单条端到端视频产出、批量验收、CLI/配置向导、部署文档逐步推进。每个阶段都要测试、commit、push。不要 git add .。
 ```
 
 ## 8. 当前阶段推荐下一步
@@ -1113,11 +1114,4 @@ python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 ```
 
-然后做真实 ComfyUI smoke：
-
-```powershell
-python -m relief_story_agent.smoke_comfyui --request relief_story_agent/examples/smoke_request.example.json --dry-run
-python -m relief_story_agent.smoke_comfyui --request relief_story_agent/examples/smoke_request.example.json
-```
-
-只有这两个真实本机 smoke 都通过，才开始接真实模型链路。
+真实 ComfyUI smoke 已通过。下一步开始接真实模型链路，先跑单条端到端，拿到本地视频文件后再做 3-5 条 batch、恢复、导出和最终验收报告。

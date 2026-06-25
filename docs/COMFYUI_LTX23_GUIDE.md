@@ -31,7 +31,16 @@ LiteGraph analysis has two automatic adapter modes:
   and `SaveVideo`/`VHS_VideoCombine` filename prefixes.
 
 Both modes preserve the user's graph topology. They do not create nodes,
-install custom nodes, change model files, or change sampler settings.
+install custom nodes, or change sampler settings.
+
+During real submit, LiteGraph prompts are enriched with ComfyUI `/object_info`.
+That runtime schema fills required widget values which may only exist in the
+frontend JSON's `widgets_values`, including primitive defaults, loader defaults,
+and dynamic combo children such as `resize_type.longer_size`. If a workflow's
+COMBO model or LoRA filename is absent from the local package but a close
+runtime option is available, the agent can reconcile the filename to the local
+option before `/prompt`. If no confident match exists, the original value is
+kept so ComfyUI reports the exact missing asset.
 
 ## Address Box Flow
 
@@ -49,8 +58,11 @@ Equivalent API:
 POST /api/comfyui/connect
 ```
 
-This call pings `/queue`, reports running/pending queue counts, and analyzes the
-workflow file. It does not upload images and does not enqueue video work.
+This call pings `/queue`, reports running/pending queue counts, analyzes the
+workflow file, and reads `/object_info` when ComfyUI is reachable. The
+`/object_info` check confirms that required custom node classes are available in
+the user's currently running integrated package. It does not upload images and
+does not enqueue video work.
 
 If the user does not know which JSON file to pick from an integrated package,
 scan the package first:
@@ -119,8 +131,22 @@ relief-story-agent smoke-comfyui `
 ```
 
 Dry-run writes artifacts and patched workflow JSON without upload or enqueue.
-Real smoke uploads, patches, and submits `/prompt`. It does not wait for video
-rendering and does not download final video files.
+Real smoke uploads, reads `/object_info`, patches, and submits `/prompt`. It
+does not wait for video rendering and does not download final video files.
+
+Recent local evidence:
+
+```text
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+```
+
+The patched artifact from that run includes runtime-expanded fields such as
+`resize_type.longer_size`, local LTX checkpoint aliases, text encoder aliases,
+and LTX2.3 LoRA aliases accepted by the user's running ComfyUI.
 
 ## Common Errors
 

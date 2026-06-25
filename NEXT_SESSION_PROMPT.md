@@ -28,7 +28,23 @@ git status --short --branch
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
 
-注意：local_comfyui_smoke 已实现并已推送；最近核心功能提交包括：
+注意：local_comfyui_smoke 已实现；真实本机 ComfyUI real-run 已通过 `/prompt` 入队验证。
+
+最新 smoke 证据：
+
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+
+最新全量测试：
+
+python -m compileall -q relief_story_agent
+python -m pytest relief_story_agent/tests -q
+318 passed
+
+最近核心功能提交包括：
 
 a13a909 fix: bypass proxy for local ComfyUI calls
 b487761 feat: add ComfyUI check to local doctor
@@ -38,16 +54,14 @@ b487761 feat: add ComfyUI check to local doctor
 3f1b70a feat: validate execution policy budgets
 8102aae feat: add execution policy guardrails
 
-不要重复实现 smoke runner。优先从真实 ComfyUI smoke 验收继续；如果本地分支落后远端，先 `git pull --ff-only`。
+不要重复实现 smoke runner 或本地 ComfyUI 入队探针。优先从真实模型端到端继续；如果本地分支落后远端，先 `git pull --ff-only`。
 
 接下来按总计划推进真实验收：
 
-1. 用用户真实 LTX 2.3 workflow + 手动四宫格图跑 smoke dry-run。
-2. 启动本地 ComfyUI 后跑 smoke real-run，确认 /prompt 返回 prompt_id。
-3. 补模板示例包、模型配置示例、真实 run/batch 请求示例。
-4. 接真实 Gemini / DeepSeek / GPT 配置，跑单条端到端。
-5. 跑 3-5 条 batch，验证恢复、导出和校验。
-6. 写本地部署文档和最终验收报告。
+1. 补模板示例包、模型配置示例、真实 run/batch 请求示例。
+2. 接真实 Gemini / DeepSeek / GPT 配置，跑单条端到端，拿到本地视频文件。
+3. 跑 3-5 条 batch，验证恢复、导出和校验。
+4. 写本地部署文档和最终验收报告。
 
 不要优先做 UI，不要自动生成 ComfyUI 节点图，不要把用户模板写死在代码里，不要改变固定工序顺序。
 
@@ -59,5 +73,5 @@ b487761 feat: add ComfyUI check to local doctor
 如果新会话需要一句更短的指令，可以用这个：
 
 ```text
-读取 docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md，确认 smoke runner 已推送，然后从真实 ComfyUI smoke 验收开始推进；每个阶段 full test、commit、push。
+读取 docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md，确认真实 ComfyUI smoke 已通过，然后从真实模型端到端和批量验收继续；每个阶段 full test、commit、push。
 ```

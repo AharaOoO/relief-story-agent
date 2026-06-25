@@ -10,6 +10,32 @@
 
 ---
 
+## Current Completion Evidence
+
+This implementation slice is complete and has been extended beyond the original
+first smoke runner with runtime ComfyUI `/object_info` support.
+
+Latest verification:
+
+```text
+python -m compileall -q relief_story_agent
+python -m pytest relief_story_agent/tests -q
+318 passed
+```
+
+Latest real local ComfyUI smoke:
+
+```text
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+```
+
+The runner still stops at `/prompt`: it does not wait for render completion and
+does not download final video files.
+
 ## File Structure
 
 - Create `relief_story_agent/smoke_comfyui.py`: owns smoke request/result models, preflight checks, artifact writing, CLI parsing, and the `run_comfyui_smoke` orchestration function.

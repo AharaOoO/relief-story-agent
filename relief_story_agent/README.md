@@ -372,11 +372,28 @@ and optional `run_id`, `seed`, and `filename_prefix`.
 
 Dry-run writes preflight and patched-workflow artifacts without uploading or
 enqueueing. Real mode uploads the four-grid image to `/upload/image`, injects
-the returned filename into the detected `LoadImage` node, submits `/prompt`,
-and records the returned `prompt_id`.
+the returned filename into the detected `LoadImage` node, fetches `/object_info`,
+patches runtime-required widget values, submits `/prompt`, and records the
+returned `prompt_id`.
+
+For LiteGraph workflows, real mode uses `/object_info` to fill required widget
+inputs that the frontend JSON often stores only in `widgets_values`. This covers
+dynamic combo inputs such as `resize_type.longer_size`, primitive defaults,
+loader defaults, and local model/LoRA COMBO names when the selected workflow
+uses a filename alias that differs from the user's integrated package.
 
 This tool does not call text models, does not generate the four-grid image,
 does not wait for render completion, and does not download final videos.
+
+Latest local smoke evidence:
+
+```text
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+```
 
 ## Acceptance Evidence
 
@@ -388,7 +405,7 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:238 passed" `
+  --check "full_tests=pass:318 passed" `
   --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `
@@ -439,7 +456,9 @@ Discovery can now recommend two automatic LiteGraph modes:
   `ComfyUI-LTXVideo` examples. The agent patches existing positive/negative
   prompt widgets, `RandomNoise` seed widgets, `LoadImage` filenames, and
   `SaveVideo`/`VHS_VideoCombine` filename prefixes. It does not create nodes,
-  install custom nodes, or rewrite model/sampler settings.
+  install custom nodes, or rewrite sampler settings. Runtime COMBO model/LoRA
+  filenames are only reconciled against `/object_info` options when the workflow
+  value is not available locally and a close local asset alias exists.
 
 For launcher, desktop-shell, or future UI flows where the user fills one local ComfyUI address box first, call:
 
@@ -464,7 +483,19 @@ ComfyUI HTTP calls bypass environment proxy settings, so localhost requests stay
 inside the user's local integrated package instead of being routed through a
 system proxy.
 
-The endpoint pings ComfyUI `/queue`, reports running and pending queue counts, and, when `workflow_api_path` is supplied, analyzes the local workflow with the same LTX/placeholder logic used by real runs. It returns `ready`, `connected`, `checks`, `suggested_actions`, `suggested_config`, and workflow details such as `adapter_mode`, `grid_shape`, `ltx_injection_points`, and `ltx_widget_patch_points`. It does not upload images, call models, enqueue `/prompt`, wait for rendering, or download outputs.
+The endpoint pings ComfyUI `/queue`, reports running and pending queue counts,
+and, when `workflow_api_path` is supplied, analyzes the local workflow with the
+same LTX/placeholder logic used by real runs. For a reachable ComfyUI server it
+also reads `/object_info` and verifies that every workflow `class_type` is
+available in the runtime. It returns `ready`, `connected`, `checks`,
+`suggested_actions`, `suggested_config`, and workflow details such as
+`adapter_mode`, `grid_shape`, `ltx_injection_points`, and
+`ltx_widget_patch_points`. It does not upload images, call models, enqueue
+`/prompt`, wait for rendering, or download outputs.
+
+If runtime node classes are missing, the response includes a failed
+`comfyui_node_types` check and a suggested action
+`install_or_enable_comfyui_nodes`.
 
 The same check is available without starting the API:
 

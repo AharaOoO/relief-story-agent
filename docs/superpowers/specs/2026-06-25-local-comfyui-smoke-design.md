@@ -1,5 +1,22 @@
 # Local ComfyUI Smoke Runner Design
 
+## Current Status
+
+Implemented and locally verified. The real-run path now uploads the four-grid
+image, reads ComfyUI `/object_info`, writes the runtime-enriched patched
+workflow artifact, submits `/prompt`, and stops without waiting for video
+rendering.
+
+Latest local evidence:
+
+```text
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+```
+
 ## Objective
 
 Build a focused real-run smoke layer for the local LTX 2.3 short-video agent.

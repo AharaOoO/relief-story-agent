@@ -4,7 +4,9 @@ import copy
 import json
 import re
 from dataclasses import dataclass
+from difflib import SequenceMatcher
 from typing import Any
+from urllib.parse import unquote
 
 
 LTX_REQUIRED_JSON_KEYS = {"prompt", "frame_indices", "strengths", "duration_seconds"}
@@ -119,7 +121,11 @@ def find_ltx_widget_patch_points(workflow: dict[str, Any]) -> LTXWidgetPatchPoin
     )
 
 
-def litegraph_to_api_prompt(workflow: dict[str, Any]) -> dict[str, Any]:
+def litegraph_to_api_prompt(
+    workflow: dict[str, Any],
+    *,
+    object_info: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     if detect_workflow_format(workflow) != "litegraph":
         raise ValueError("Expected a LiteGraph workflow")
 
@@ -150,6 +156,7 @@ def litegraph_to_api_prompt(workflow: dict[str, Any]) -> dict[str, Any]:
                     inputs[name] = value
 
         _apply_known_widget_values(node, inputs)
+        _apply_object_info_widget_values(node, inputs, object_info)
 
         prompt[node_id] = {
             "class_type": node.get("type"),
@@ -201,6 +208,7 @@ def patch_ltx_litegraph_workflow(
     seed: int | None = None,
     filename_prefix: str | None = None,
     grid_image_filename: str | None = None,
+    object_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     patched = copy.deepcopy(workflow)
     points = find_ltx_injection_points(patched)
@@ -222,7 +230,7 @@ def patch_ltx_litegraph_workflow(
         prefix_node = _find_node(patched, points.filename_prefix_node_id)
         _write_widget_value(prefix_node, "filename_prefix", filename_prefix)
 
-    return litegraph_to_api_prompt(patched)
+    return litegraph_to_api_prompt(patched, object_info=object_info)
 
 
 def patch_ltx_widget_workflow(
@@ -232,6 +240,7 @@ def patch_ltx_widget_workflow(
     seed: int | None = None,
     filename_prefix: str | None = None,
     image_filename: str | None = None,
+    object_info: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     patched = copy.deepcopy(workflow)
     points = find_ltx_widget_patch_points(patched)
@@ -257,7 +266,7 @@ def patch_ltx_widget_workflow(
         for node_id in points.filename_prefix_node_ids:
             _write_widget_value(_find_node(patched, node_id), "filename_prefix", filename_prefix)
 
-    return litegraph_to_api_prompt(patched)
+    return litegraph_to_api_prompt(patched, object_info=object_info)
 
 
 def build_ltx_payload_from_storyboard(
@@ -680,3 +689,225 @@ def _apply_known_widget_values(node: dict[str, Any], inputs: dict[str, Any]) -> 
         if name == "upload" or name.startswith("_"):
             continue
         inputs[name] = values[index]
+
+
+def _apply_object_info_widget_values(
+    node: dict[str, Any],
+    inputs: dict[str, Any],
+    object_info: dict[str, Any] | None,
+) -> None:
+    node_type = str(node.get("type") or "")
+    if not object_info or node_type in _KNOWN_WIDGET_INPUT_NAMES:
+        return
+    values = _iter_widget_values(node)
+    if not values:
+        return
+    class_info = object_info.get(node_type)
+    if not isinstance(class_info, dict):
+        return
+    input_info = class_info.get("input") or {}
+    if not isinstance(input_info, dict):
+        return
+    fields = _object_info_fields(input_info)
+    frontend_widget_names = _frontend_widget_names(node)
+    value_index = 0
+
+    for name, spec in fields:
+        if _is_dynamic_combo_spec(spec):
+            if value_index >= len(values):
+                continue
+            selected = _coerce_object_info_value(spec, values[value_index])
+            value_index += 1
+            if name not in inputs:
+                inputs[name] = selected
+            for nested_name, nested_spec in _dynamic_option_fields(spec, selected):
+                dotted_name = f"{name}.{nested_name}"
+                if dotted_name in inputs:
+                    if not _is_link_value(inputs[dotted_name]):
+                        inputs[dotted_name] = _coerce_object_info_value(nested_spec, inputs[dotted_name])
+                    if value_index < len(values):
+                        value_index += 1
+                    continue
+                if nested_name in inputs:
+                    linked_value = inputs.pop(nested_name)
+                    inputs[dotted_name] = (
+                        linked_value
+                        if _is_link_value(linked_value)
+                        else _coerce_object_info_value(nested_spec, linked_value)
+                    )
+                    if value_index < len(values):
+                        value_index += 1
+                    continue
+                if value_index < len(values):
+                    inputs[dotted_name] = _coerce_object_info_value(nested_spec, values[value_index])
+                    value_index += 1
+            continue
+
+        if name in inputs:
+            if not _is_link_value(inputs[name]):
+                inputs[name] = _coerce_object_info_value(spec, inputs[name])
+            if name in frontend_widget_names and value_index < len(values):
+                value_index += 1
+            continue
+        if value_index < len(values) and _object_info_field_looks_widget(spec):
+            inputs[name] = _coerce_object_info_value(spec, values[value_index])
+            value_index += 1
+
+
+def _object_info_fields(input_info: dict[str, Any]) -> list[tuple[str, Any]]:
+    fields: list[tuple[str, Any]] = []
+    for section_name in ("required", "optional"):
+        section = input_info.get(section_name) or {}
+        if isinstance(section, dict):
+            fields.extend((str(name), spec) for name, spec in section.items())
+    return fields
+
+
+def _frontend_widget_names(node: dict[str, Any]) -> set[str]:
+    return {
+        str(input_spec.get("name"))
+        for input_spec in node.get("inputs") or []
+        if "widget" in input_spec and input_spec.get("name")
+    }
+
+
+def _object_info_field_looks_widget(spec: Any) -> bool:
+    if not isinstance(spec, list) or not spec:
+        return False
+    value_type = spec[0]
+    if isinstance(value_type, list):
+        return True
+    return str(value_type) not in {
+        "AUDIO",
+        "CLIP",
+        "CONDITIONING",
+        "IMAGE",
+        "LATENT",
+        "MASK",
+        "MODEL",
+        "NOISE",
+        "VAE",
+        "VIDEO",
+    }
+
+
+def _is_dynamic_combo_spec(spec: Any) -> bool:
+    return isinstance(spec, list) and len(spec) > 1 and str(spec[0]).startswith("COMFY_DYNAMICCOMBO")
+
+
+def _dynamic_option_fields(spec: Any, selected: Any) -> list[tuple[str, Any]]:
+    if not isinstance(spec, list) or len(spec) < 2 or not isinstance(spec[1], dict):
+        return []
+    options = spec[1].get("options") or []
+    for option in options:
+        if not isinstance(option, dict) or option.get("key") != selected:
+            continue
+        inputs = option.get("inputs") or {}
+        required = inputs.get("required") or {}
+        if isinstance(required, dict):
+            return [(str(name), field_spec) for name, field_spec in required.items()]
+    return []
+
+
+def _is_link_value(value: Any) -> bool:
+    return isinstance(value, list) and len(value) == 2 and isinstance(value[0], str) and isinstance(value[1], int)
+
+
+def _coerce_object_info_value(spec: Any, value: Any) -> Any:
+    options = _object_info_options(spec)
+    if not options or value in options:
+        return value
+    if not isinstance(value, str):
+        return value
+    best = _best_combo_option(value, options)
+    return best if best is not None else value
+
+
+def _object_info_options(spec: Any) -> list[Any]:
+    if not isinstance(spec, list) or not spec:
+        return []
+    if isinstance(spec[0], list):
+        return list(spec[0])
+    if len(spec) > 1 and isinstance(spec[1], dict):
+        options = spec[1].get("options") or []
+        if isinstance(options, list):
+            return [option.get("key") if isinstance(option, dict) else option for option in options]
+    return []
+
+
+def _best_combo_option(value: str, options: list[Any]) -> str | None:
+    best_option: str | None = None
+    best_score = 0.0
+    for option in options:
+        if not isinstance(option, str):
+            continue
+        score = _combo_match_score(value, option)
+        if score > best_score:
+            best_score = score
+            best_option = option
+    return best_option if best_score >= 0.9 else None
+
+
+def _combo_match_score(source: str, candidate: str) -> float:
+    source_key = _combo_key(source)
+    candidate_key = _combo_key(candidate)
+    if not source_key or not candidate_key:
+        return 0.0
+    if source_key == candidate_key:
+        return 10.0
+    score = SequenceMatcher(None, source_key, candidate_key).ratio()
+    if source_key in candidate_key or candidate_key in source_key:
+        score += 2.0
+
+    source_tokens = _combo_tokens(source)
+    candidate_tokens = _combo_tokens(candidate)
+    if source_tokens:
+        overlap = source_tokens & candidate_tokens
+        score += len(overlap) / len(source_tokens)
+        score += 0.35 * len(overlap & _ASSET_ANCHOR_TOKENS)
+    return score
+
+
+def _combo_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", unquote(value).lower())
+
+
+def _combo_tokens(value: str) -> set[str]:
+    decoded = unquote(value).lower()
+    compact = _combo_key(decoded)
+    tokens = set(re.findall(r"[a-z]+|\d+[a-z]*", decoded))
+    for anchor in _ASSET_ANCHOR_TOKENS:
+        if anchor in compact:
+            tokens.add(anchor)
+    if "ltx23" in compact or re.search(r"ltx[^a-z0-9]*2[^a-z0-9]*3", decoded):
+        tokens.add("ltx23")
+    tokens.update(re.findall(r"\d+b", decoded))
+    return {token for token in tokens if token not in _GENERIC_ASSET_TOKENS}
+
+
+_ASSET_ANCHOR_TOKENS = {
+    "clip",
+    "gemma",
+    "ltx",
+    "ltx23",
+    "qwen",
+    "t5",
+    "umt5",
+    "wan",
+}
+
+_GENERIC_ASSET_TOKENS = {
+    "auto",
+    "bf16",
+    "ckpt",
+    "comfy",
+    "default",
+    "dev",
+    "dynamic",
+    "fp16",
+    "fp8",
+    "lora",
+    "model",
+    "rank",
+    "safetensors",
+}

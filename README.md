@@ -80,12 +80,24 @@ GET http://127.0.0.1:8891/api/health
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-309 passed
+318 passed
 ```
 
 ## 下一步开发
 
-`local_comfyui_smoke` 已实现并推送。最近核心功能提交包括：
+`local_comfyui_smoke` 已实现。最新本机验证已经跑通真实 ComfyUI `/prompt` 入队：
+
+```text
+python -m relief_story_agent.smoke_comfyui --request "D:/relief_story_inputs/local_ltx_ready_smoke_request.real.json"
+status=passed
+ready=true
+prompt_id=31037f9b-b8c8-5919-b717-fbe3c7e634eb
+artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
+```
+
+这次验证只到上传四宫格图、读取 `/object_info`、patch workflow、调用 `/prompt` 为止；没有等待渲染完成，也没有下载视频。
+
+最近核心功能提交包括：
 
 ```text
 a13a909 fix: bypass proxy for local ComfyUI calls
@@ -97,10 +109,8 @@ b487761 feat: add ComfyUI check to local doctor
 8102aae feat: add execution policy guardrails
 ```
 
-下一步从真实本机联调开始：
+下一步从真实模型端到端开始：
 
-- 用用户真实 LTX 2.3 workflow 和手动四宫格图跑 dry-run。
-- 启动本地 ComfyUI 后跑 real-run，确认 `/prompt` 返回 prompt id。
 - 再接真实 Gemini / DeepSeek / GPT 模型配置，跑单条端到端。
 - 最后做批量验收、导出验收、部署文档和非 UI 的本地使用体验。
 

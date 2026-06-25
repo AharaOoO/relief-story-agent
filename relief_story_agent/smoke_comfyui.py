@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from .comfyui_endpoint import normalize_comfyui_endpoint
 from .comfyui import (
     analyze_workflow_config,
+    fetch_workflow_runtime_object_info,
     preview_storyboard_submission,
     submit_storyboard,
     upload_grid_image,
@@ -133,80 +134,118 @@ def run_comfyui_smoke(
     prompt_id = ""
     if not request.dry_run:
         assert grid_asset is not None
+        owns_client = client is None
+        active_client = client or httpx.Client(timeout=request.timeout_seconds, trust_env=False)
         try:
-            upload_filename = upload_grid_image(
-                request.comfyui_base_url,
-                grid_asset.local_path,
-                destination_name=grid_asset.comfyui_filename,
-                client=client,
-            )
-        except (httpx.TransportError, httpx.HTTPStatusError) as exc:
-            _fail(
-                checks,
-                "comfyui_upload_failed",
-                str(exc),
-                "Check ComfyUI /upload/image and whether the server is running.",
-            )
-            result = ComfyUISmokeResult(
-                status="failed",
-                ready=False,
-                preflight=checks,
-                workflow_summary=workflow_summary,
-                grid_asset=grid_asset.model_dump(),
-                patched_replacements=replacements,
-                artifact_dir=str(artifact_dir),
-                logs=logs,
-                failure_code="comfyui_upload_failed",
-            )
-            _write_json(artifact_dir / "smoke_result.json", result.model_dump())
-            return result
-        grid_asset.comfyui_filename = upload_filename
-        grid_asset.upload_status = "accepted"
-        upload_result = {"filename": upload_filename, "status": "accepted"}
-        _write_json(artifact_dir / "smoke_upload.json", upload_result)
-        real_preview = preview_storyboard_submission(
-            config,
-            storyboard,
-            request.filename_prefix or request.run_id,
-            include_workflow=True,
-            grid_image_asset=grid_asset,
-        )
-        if real_preview.get("items") and real_preview["items"][0].get("workflow"):
-            _write_json(
-                artifact_dir / "smoke_workflow_patched.json",
-                real_preview["items"][0]["workflow"],
-            )
-        try:
-            with _comfyui_limit(resource_limits):
-                submissions = submit_storyboard(
+            try:
+                upload_filename = upload_grid_image(
+                    request.comfyui_base_url,
+                    grid_asset.local_path,
+                    destination_name=grid_asset.comfyui_filename,
+                    client=active_client,
+                )
+            except (httpx.TransportError, httpx.HTTPStatusError) as exc:
+                _fail(
+                    checks,
+                    "comfyui_upload_failed",
+                    str(exc),
+                    "Check ComfyUI /upload/image and whether the server is running.",
+                    **_http_error_evidence(exc),
+                )
+                result = ComfyUISmokeResult(
+                    status="failed",
+                    ready=False,
+                    preflight=checks,
+                    workflow_summary=workflow_summary,
+                    grid_asset=grid_asset.model_dump(),
+                    patched_replacements=replacements,
+                    artifact_dir=str(artifact_dir),
+                    logs=logs,
+                    failure_code="comfyui_upload_failed",
+                )
+                _write_json(artifact_dir / "smoke_result.json", result.model_dump())
+                return result
+            grid_asset.comfyui_filename = upload_filename
+            grid_asset.upload_status = "accepted"
+            upload_result = {"filename": upload_filename, "status": "accepted"}
+            _write_json(artifact_dir / "smoke_upload.json", upload_result)
+            try:
+                runtime_object_info = fetch_workflow_runtime_object_info(
+                    active_client,
+                    request.comfyui_base_url,
+                    config,
+                )
+                real_preview = preview_storyboard_submission(
                     config,
                     storyboard,
                     request.filename_prefix or request.run_id,
-                    client=client,
+                    include_workflow=True,
                     grid_image_asset=grid_asset,
+                    object_info=runtime_object_info,
                 )
-        except Exception as exc:
-            _fail(
-                checks,
-                "comfyui_prompt_failed",
-                str(exc),
-                "Check ComfyUI /prompt and the patched workflow.",
-            )
-            result = ComfyUISmokeResult(
-                status="failed",
-                ready=False,
-                preflight=checks,
-                workflow_summary=workflow_summary,
-                grid_asset=grid_asset.model_dump(),
-                upload_result=upload_result,
-                patched_replacements=replacements,
-                artifact_dir=str(artifact_dir),
-                logs=logs,
-                failure_code="comfyui_prompt_failed",
-            )
-            _write_json(artifact_dir / "smoke_result.json", result.model_dump())
-            return result
-        prompt_id = submissions[0].prompt_id if submissions else ""
+            except (httpx.TransportError, httpx.HTTPStatusError, ValueError) as exc:
+                _fail(
+                    checks,
+                    "comfyui_object_info_failed",
+                    str(exc),
+                    "Check ComfyUI /object_info and the selected workflow.",
+                    **_http_error_evidence(exc),
+                )
+                result = ComfyUISmokeResult(
+                    status="failed",
+                    ready=False,
+                    preflight=checks,
+                    workflow_summary=workflow_summary,
+                    grid_asset=grid_asset.model_dump(),
+                    upload_result=upload_result,
+                    patched_replacements=replacements,
+                    artifact_dir=str(artifact_dir),
+                    logs=logs,
+                    failure_code="comfyui_object_info_failed",
+                )
+                _write_json(artifact_dir / "smoke_result.json", result.model_dump())
+                return result
+            if real_preview.get("items") and real_preview["items"][0].get("workflow"):
+                _write_json(
+                    artifact_dir / "smoke_workflow_patched.json",
+                    real_preview["items"][0]["workflow"],
+                )
+            try:
+                with _comfyui_limit(resource_limits):
+                    submissions = submit_storyboard(
+                        config,
+                        storyboard,
+                        request.filename_prefix or request.run_id,
+                        client=active_client,
+                        grid_image_asset=grid_asset,
+                        object_info=runtime_object_info,
+                    )
+            except Exception as exc:
+                _fail(
+                    checks,
+                    "comfyui_prompt_failed",
+                    str(exc),
+                    "Check ComfyUI /prompt and the patched workflow.",
+                    **_http_error_evidence(exc),
+                )
+                result = ComfyUISmokeResult(
+                    status="failed",
+                    ready=False,
+                    preflight=checks,
+                    workflow_summary=workflow_summary,
+                    grid_asset=grid_asset.model_dump(),
+                    upload_result=upload_result,
+                    patched_replacements=replacements,
+                    artifact_dir=str(artifact_dir),
+                    logs=logs,
+                    failure_code="comfyui_prompt_failed",
+                )
+                _write_json(artifact_dir / "smoke_result.json", result.model_dump())
+                return result
+            prompt_id = submissions[0].prompt_id if submissions else ""
+        finally:
+            if owns_client:
+                active_client.close()
         preview = real_preview
         replacements = _index_replacements(preview)
 
@@ -352,13 +391,29 @@ def _check_workflow(
         "Workflow format is supported.",
         format=summary.get("workflow_format"),
     )
+    adapter_mode = str(summary.get("adapter_mode") or "")
+    if adapter_mode == "litegraph_ltx_widget_patch":
+        widget_points = summary.get("ltx_widget_patch_points") or {}
+        required = ["positive_prompt_node_ids", "image_node_ids"]
+        missing = [key for key in required if not widget_points.get(key)]
+        if missing:
+            _fail(
+                checks,
+                "ltx_widget_patch_points",
+                f"Missing widget patch points: {missing}",
+                "Use a supported integrated-package LTX LiteGraph workflow.",
+            )
+        else:
+            _pass(
+                checks,
+                "ltx_widget_patch_points",
+                "Detected LTX widget patch points.",
+                **widget_points,
+            )
+        return summary
+
     points = summary.get("ltx_injection_points") or {}
-    required = [
-        "json_node_id",
-        "seed_node_id",
-        "filename_prefix_node_id",
-        "grid_image_node_id",
-    ]
+    required = ["json_node_id", "seed_node_id", "filename_prefix_node_id", "grid_image_node_id"]
     missing = [key for key in required if not points.get(key)]
     if missing:
         _fail(
@@ -367,19 +422,14 @@ def _check_workflow(
             f"Missing injection points: {missing}",
             "Use the supported LTX 2.3 workflow.",
         )
-    else:
-        _pass(checks, "ltx_injection_points", "Detected LTX injection points.", **points)
+        return summary
+
+    _pass(checks, "ltx_injection_points", "Detected LTX injection points.", **points)
     shape = summary.get("grid_shape") or {}
     if shape.get("columns") == 2 and shape.get("rows") == 2:
         _pass(checks, "grid_shape", "Detected 2x2 grid shape.", **shape)
     else:
-        _fail(
-            checks,
-            "grid_shape",
-            "Expected 2x2 grid shape.",
-            "Use the LTX 2.3 four-grid workflow.",
-            **shape,
-        )
+        _fail(checks, "grid_shape", "Expected 2x2 grid shape.", "Use the LTX 2.3 four-grid workflow.", **shape)
     return summary
 
 
@@ -504,8 +554,17 @@ def _comfyui_limit(resource_limits: ExecutionResourceLimits | None):
 
 
 def _load_request(path: Path) -> ComfyUISmokeRequest:
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload = json.loads(path.read_text(encoding="utf-8-sig"))
     return ComfyUISmokeRequest.model_validate(payload)
+
+
+def _http_error_evidence(exc: Exception) -> dict[str, Any]:
+    if not isinstance(exc, httpx.HTTPStatusError):
+        return {}
+    return {
+        "status_code": exc.response.status_code,
+        "response_text": exc.response.text[:4000],
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

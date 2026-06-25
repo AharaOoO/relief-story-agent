@@ -14,6 +14,7 @@ from .grid_image import validate_grid_image
 from .ltx_workflow import detect_workflow_format, find_ltx_injection_points, litegraph_to_api_prompt
 from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, RunRequest
+from .pipeline import stage_ids_for_run
 from .provenance import build_run_configuration_provenance
 
 
@@ -48,6 +49,7 @@ def validate_run_configuration(
         _validate_comfyui_workflow(request),
         _validate_grid_image_config(request),
         _validate_output_root(request),
+        _validate_execution_policy(request),
     ]
     if check_comfyui_connection:
         checks.append(_validate_comfyui_endpoint(request))
@@ -385,6 +387,42 @@ def _validate_output_root(request: RunRequest) -> dict[str, Any]:
     )
 
 
+def _validate_execution_policy(request: RunRequest) -> dict[str, Any]:
+    planned_stages = _planned_stage_ids(request)
+    minimum = len(planned_stages)
+    policy = request.execution_policy
+    details = {
+        "planned_stages": planned_stages,
+        "minimum_required_stage_executions": minimum,
+        "max_total_stage_executions": policy.max_total_stage_executions,
+        "max_stage_executions": dict(policy.max_stage_executions),
+    }
+    if policy.max_total_stage_executions and policy.max_total_stage_executions < minimum:
+        return _check(
+            "execution_policy",
+            "failed",
+            "execution_policy max_total_stage_executions is too low for the planned pipeline.",
+            details,
+        )
+    return _check(
+        "execution_policy",
+        "passed",
+        "execution_policy covers the planned pipeline.",
+        details,
+    )
+
+
+def _planned_stage_ids(request: RunRequest) -> list[str]:
+    requires_grid = _workflow_requires_grid_image(
+        request.comfyui.workflow_api_path if request.comfyui else None
+    )
+    return stage_ids_for_run(
+        requires_grid_asset=requires_grid,
+        writes_artifacts=bool(request.output_root or requires_grid),
+        comfyui_enabled=bool(request.comfyui and request.comfyui.enabled),
+    )
+
+
 def _validate_placeholder_map_targets(workflow: dict[str, Any], placeholder_map: dict[str, Any]) -> None:
     for key, target in placeholder_map.items():
         node_id = str(target.node)
@@ -442,6 +480,9 @@ def _suggest_actions_for_checks(checks: list[dict[str, Any]]) -> list[dict[str, 
         elif name == "output_root":
             code = "fix_output_root"
             label = "Fix output directory"
+        elif name == "execution_policy":
+            code = "fix_execution_policy"
+            label = "Increase execution policy budget"
         else:
             code = "manual_review_configuration"
             label = "Review configuration"

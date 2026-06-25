@@ -73,9 +73,9 @@ POST /api/config/diagnose
 POST /api/config/diagnose-batch
 ```
 
-This checks model API-key environment variables, prompt template paths/placeholders, the ComfyUI workflow file, placeholder-map targets, and `output_root` write access before a real run or batch is queued. It does not enqueue anything.
+This checks model API-key environment variables, prompt template paths/placeholders, the ComfyUI workflow file, placeholder-map targets, `output_root` write access, and `execution_policy` budgets before a real run or batch is queued. It does not enqueue anything.
 
-Use `validate` when you need a strict pass/fail gate. Use `diagnose` when building a launcher or UI: it returns `ready`, check counts, the raw checks, and `suggested_actions` such as `configure_model_environment`, `fix_prompt_template`, `fix_comfyui_workflow`, `start_or_check_comfyui`, and `fix_output_root`.
+Use `validate` when you need a strict pass/fail gate. Use `diagnose` when building a launcher or UI: it returns `ready`, check counts, the raw checks, and `suggested_actions` such as `configure_model_environment`, `fix_prompt_template`, `fix_comfyui_workflow`, `start_or_check_comfyui`, `fix_output_root`, and `fix_execution_policy`.
 
 `diagnose` also returns `provenance`, a sha256 trace for configured prompt templates, the ComfyUI workflow, and the placeholder map. This makes it possible to confirm which local template/workflow versions were checked before a run starts.
 
@@ -604,6 +604,10 @@ killing an active model request or ComfyUI job:
 Put the same object under batch `defaults` to apply it to every child run. When
 the policy blocks a stage, the run records `execution_policy_blocked`,
 `last_failure.code=execution_policy_exhausted`, and a non-retryable failure.
+Preflight validation and `relief-story-agent diagnose` also check that
+`max_total_stage_executions` can cover the planned pipeline stages. If the
+budget is too low, diagnostics return `fix_execution_policy` before model quota
+or ComfyUI GPU time is spent.
 
 `queue_priority` controls background scheduling order. Higher numbers run earlier; equal priorities keep their original enqueue order. A practical pattern is to give smoke-test items a higher priority, confirm templates and ComfyUI settings, then let the larger batch continue at normal priority.
 

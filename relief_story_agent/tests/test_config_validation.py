@@ -270,6 +270,72 @@ def test_config_diagnose_reports_output_root_and_suggested_actions(tmp_path):
     assert body["suggested_actions"] == []
 
 
+def test_config_validation_rejects_execution_policy_total_budget_below_planned_stages():
+    request = RunRequest(
+        idea="budget too low",
+        approval_mode="auto",
+        execution_policy={"max_total_stage_executions": 2},
+    )
+
+    result = validate_run_configuration(request, ModelConfigRegistry())
+    check = next(item for item in result["checks"] if item["name"] == "execution_policy")
+
+    assert result["passed"] is False
+    assert check["status"] == "failed"
+    assert "too low" in check["message"]
+    assert check["details"]["max_total_stage_executions"] == 2
+    assert check["details"]["minimum_required_stage_executions"] == 6
+    assert check["details"]["planned_stages"] == [
+        "chief_screenwriter",
+        "deepseek_polish",
+        "quality_gate",
+        "gpt_prompt_writer",
+        "gpt_prompt_audit",
+        "final_prompts",
+    ]
+
+
+def test_config_diagnose_suggests_fix_execution_policy_for_low_budget():
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=InMemoryRunStore(),
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/config/diagnose",
+        json={
+            "idea": "budget too low",
+            "execution_policy": {"max_total_stage_executions": 2},
+        },
+    )
+
+    body = response.json()
+    assert body["ready"] is False
+    assert body["suggested_actions"][0]["code"] == "fix_execution_policy"
+
+
+def test_config_validation_accepts_execution_policy_that_covers_planned_stages():
+    request = RunRequest(
+        idea="budget ok",
+        approval_mode="auto",
+        execution_policy={
+            "max_total_stage_executions": 6,
+            "max_stage_executions": {"gpt_prompt_audit": 1},
+        },
+    )
+
+    result = validate_run_configuration(request, ModelConfigRegistry())
+    check = next(item for item in result["checks"] if item["name"] == "execution_policy")
+
+    assert result["passed"] is True
+    assert check["status"] == "passed"
+    assert check["details"]["minimum_required_stage_executions"] == 6
+
+
 def test_config_diagnose_includes_file_provenance(tmp_path):
     writer = tmp_path / "writer.md"
     writer.write_text("writer {{script_json}}", encoding="utf-8")

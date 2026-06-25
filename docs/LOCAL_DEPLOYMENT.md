@@ -77,6 +77,12 @@ default bundle uses:
 For batches, keep this under `defaults.execution_policy` unless a specific item
 needs a different budget.
 
+Preflight validation and `relief-story-agent diagnose` also check the total
+budget before any model call or ComfyUI `/prompt` submission. If
+`max_total_stage_executions` cannot cover the planned stages, diagnostics return
+`fix_execution_policy` so the local launcher can ask the operator to raise the
+budget first.
+
 ## 4. Check ComfyUI
 
 Start ComfyUI, then test the local address box flow:

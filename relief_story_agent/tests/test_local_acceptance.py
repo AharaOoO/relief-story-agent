@@ -59,6 +59,7 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
 
     assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.smoke_comfyui"]
     assert Path(result["acceptance_report"]).exists()
+    assert Path(result["acceptance_status"]).exists()
     assert Path(result["summary"]).exists()
     assert (tmp_path / "acceptance" / "command_outputs" / "pytest.stdout.txt").read_text(encoding="utf-8") == "318 passed in 52.91s\n"
 
@@ -72,6 +73,10 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     assert checks["comfyui_real_smoke"]["status"] == "pass"
     assert checks["comfyui_real_smoke"]["evidence"].startswith("prompt_id=prompt-local")
     assert checks["restart_recovery"]["status"] == "manual_pending"
+
+    acceptance_status = json.loads(Path(result["acceptance_status"]).read_text(encoding="utf-8"))
+    assert acceptance_status["ready_for_release"] is False
+    assert acceptance_status["summary"]["blocking_count"] > 0
 
 
 def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
@@ -361,6 +366,7 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         return {
             "status": "completed",
             "acceptance_report": str(tmp_path / "acceptance_report.json"),
+            "acceptance_status": str(tmp_path / "acceptance_status.json"),
             "markdown_report": str(tmp_path / "ACCEPTANCE_REPORT.md"),
             "summary": str(tmp_path / "local_acceptance_summary.json"),
             "command_output_dir": str(tmp_path / "command_outputs"),

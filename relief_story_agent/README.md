@@ -158,9 +158,10 @@ relief-story-agent local-acceptance `
 ```
 
 This writes command stdout/stderr files, `local_acceptance_summary.json`,
-`acceptance_report.json`, and `ACCEPTANCE_REPORT.md`. Optional config/request
-arguments add `model-check`, run diagnose, batch diagnose, smoke, and
-standalone ComfyUI output-download evidence to the same report.
+`acceptance_report.json`, `acceptance_status.json`, and
+`ACCEPTANCE_REPORT.md`. Optional config/request arguments add `model-check`, run
+diagnose, batch diagnose, smoke, and standalone ComfyUI output-download
+evidence to the same report.
 
 You can also run the offline skeleton demo by itself:
 
@@ -526,7 +527,9 @@ evidence has been recorded.
 
 To collect compile/test output and optional smoke evidence automatically, use
 `relief-story-agent local-acceptance`. It preserves raw command output under
-`command_outputs/` and then renders the same acceptance report format.
+`command_outputs/`, renders the same acceptance report format, and writes a
+machine-readable `acceptance_status.json` with blocking checks and suggested
+actions.
 For JSON-producing checks such as `model-check` and `diagnose`, a zero exit code
 is not enough: `ready=false` or `valid=false` marks the check and generated
 acceptance status as failed.

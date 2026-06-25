@@ -198,7 +198,7 @@ This runs `compileall`, full tests, optional `model-check`, run/batch
 `diagnose`, optional offline `local-demo`, optional `smoke-comfyui`, and
 optional standalone ComfyUI output refresh/download evidence, stores
 raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
-acceptance reports.
+acceptance reports plus `acceptance_status.json`.
 
 To query a generated report without reading Markdown manually:
 
@@ -580,7 +580,8 @@ relief-story-agent local-acceptance `
 ```
 
 The command writes `local_acceptance_summary.json`, raw command output files,
-`acceptance_report.json`, and `ACCEPTANCE_REPORT.md`.
+`acceptance_report.json`, `acceptance_status.json`, and
+`ACCEPTANCE_REPORT.md`.
 
 For manual evidence entry:
 

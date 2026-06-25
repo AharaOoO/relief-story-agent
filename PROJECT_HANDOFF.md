@@ -106,45 +106,54 @@ grid shape: 2x2
 - artifacts 和 manifest。
 - ComfyUI 输出等待、取消、下载相关基础能力。
 
+### 3.4 本地 ComfyUI smoke runner
+
+已实现：
+
+- `relief_story_agent/smoke_comfyui.py`。
+- `POST /api/smoke/comfyui`。
+- `python -m relief_story_agent.smoke_comfyui --request smoke_request.json`。
+- dry-run：预检、四宫格校验、workflow patch 预览、artifact 写出，不上传、不入队。
+- real-run：上传四宫格图、patch LTX workflow、调用 ComfyUI `/prompt`、记录 prompt id。
+- mock ComfyUI 测试覆盖 dry-run、real-run、上传失败、prompt 失败、API、CLI。
+
 ## 4. 当前最重要的下一步
 
-下一阶段做 `local_comfyui_smoke`。
+`local_comfyui_smoke` 已经在本地完成。下一阶段不是重复实现 smoke runner，而是做真实本机联调和端到端验收。
 
-目标：验证“最终提示词产物 + 四宫格图 + 用户 LTX 2.3 workflow”能否真实进入本地 ComfyUI 并成功 `/prompt` 入队。
+目标：验证“最终提示词产物 + 四宫格图 + 用户 LTX 2.3 workflow”能否在真实本机 ComfyUI 中成功 `/prompt` 入队，然后接入真实 Gemini / DeepSeek / GPT 模型配置，跑通单条和批量视频生成。
 
-规格文档：
+总开发计划：
+
+```text
+docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md
+```
+
+smoke runner 规格记录：
 
 ```text
 docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md
 ```
 
-实现计划：
+smoke runner 实现计划记录：
 
 ```text
 docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md
 ```
 
-计划新增：
+下一阶段按这个顺序推进：
 
 ```text
-relief_story_agent/smoke_comfyui.py
-relief_story_agent/tests/test_smoke_comfyui.py
-POST /api/smoke/comfyui
-python -m relief_story_agent.smoke_comfyui --request smoke_request.json
+1. 推送本地 smoke runner 和总开发计划到 GitHub。
+2. 用用户真实 LTX 2.3 workflow + 手动四宫格图跑 smoke dry-run。
+3. 启动本地 ComfyUI，跑 smoke real-run，确认 prompt_id。
+4. 补模板示例包、模型配置示例、真实 run/batch 请求示例。
+5. 用真实模型跑单条端到端，拿到本地视频文件。
+6. 跑至少 3-5 条 batch，验证恢复、导出、校验。
+7. 写部署文档和最终验收报告。
 ```
 
-第一版 smoke runner 只做：
-
-- dry-run：预检、四宫格校验、workflow patch 预览、artifact 写出；
-- real-run：上传四宫格图、patch workflow、调用 `/prompt`、记录 prompt id。
-
-第一版不做：
-
-- 不调用大模型；
-- 不生成四宫格图；
-- 不等待视频渲染完成；
-- 不下载视频；
-- 不做 UI。
+当前仍不能说“除了 UI 外已经完整做好”。原因是：真实模型链路、真实 ComfyUI 视频产出、批量真实验收、粉丝部署文档和配置体验还没有全部用证据跑完。
 
 ## 5. 文件地图
 
@@ -210,11 +219,12 @@ python -m pytest relief_story_agent/tests -q
 
 ```text
 PROJECT_HANDOFF.md
+docs/superpowers/plans/2026-06-25-full-auto-ltx-agent-productization.md
 docs/superpowers/specs/2026-06-25-local-comfyui-smoke-design.md
 docs/superpowers/plans/2026-06-25-local-comfyui-smoke.md
 ```
 
-再按计划实现 `local_comfyui_smoke`。
+再按总计划从真实 ComfyUI smoke 验收开始推进。
 
 ## 7. 验证命令
 
@@ -283,11 +293,11 @@ git add README.md PROJECT_HANDOFF.md NEXT_SESSION_PROMPT.md pyproject.toml start
 ```text
 python -m compileall -q relief_story_agent
 python -m pytest relief_story_agent/tests -q
-220 passed
+229 passed
 ```
 
-最近已知提交：
+最近本地已知提交：
 
 ```text
-398f48e chore: prepare relief story agent handoff
+80da952 feat: add local ComfyUI smoke runner
 ```

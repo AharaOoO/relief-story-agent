@@ -410,7 +410,7 @@ def test_preview_manual_path_validates_without_upload_or_generation(tmp_path, mo
     assert preview["will_enqueue"] is False
 
 
-def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path, monkeypatch):
+def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path):
     workflow = build_sanitized_ltx23_workflow()
     original = copy.deepcopy(workflow)
     workflow_path = tmp_path / "immutable_workflow.json"
@@ -440,7 +440,11 @@ def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path, monkeypa
         comfyui_filename="immutable.png",
         upload_status="accepted",
     )
-    config = ComfyUIRunConfig(enabled=True, workflow_api_path=str(workflow_path))
+    config = ComfyUIRunConfig(
+        enabled=True,
+        endpoint="http://comfy.local",
+        workflow_api_path=str(workflow_path),
+    )
     storyboard = [{"shot_id": 1, "time_range": "0-4s", "image_prompt": "frame"}]
     preview_storyboard_submission(
         config,
@@ -449,18 +453,27 @@ def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path, monkeypa
         duration_seconds=4,
         grid_image_asset=asset,
     )
-    monkeypatch.setattr(
-        "relief_story_agent.comfyui.enqueue_workflow",
-        lambda *args, **kwargs: kwargs["prompt_id"],
-    )
+    requests: list[str] = []
+
+    def handler(request: httpx.Request):
+        requests.append(request.url.path)
+        if request.url.path == "/object_info":
+            return httpx.Response(200, json={})
+        if request.url.path == "/prompt":
+            payload = json.loads(request.content)
+            return httpx.Response(200, json={"prompt_id": payload["prompt_id"]})
+        return httpx.Response(404)
+
     submit_storyboard(
         config,
         storyboard,
         "immutable",
         duration_seconds=4,
         grid_image_asset=asset,
+        client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
     )
 
+    assert requests == ["/object_info", "/prompt"]
     persisted = json.loads(workflow_path.read_text(encoding="utf-8"))
     assert persisted == original
     assert len(persisted["nodes"]) == 60

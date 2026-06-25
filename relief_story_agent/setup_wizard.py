@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .comfyui_endpoint import normalize_comfyui_endpoint
+
 
 PROMPT_WRITER_TEMPLATE = """# gpt_prompt_writer template
 
@@ -107,6 +109,7 @@ def write_local_config_bundle(
     comfyui_endpoint: str = "http://127.0.0.1:8188",
     output_root: str = "D:/relief_story_runs",
 ) -> dict[str, str]:
+    comfyui_endpoint = normalize_comfyui_endpoint(comfyui_endpoint)
     target_dir = Path(output_dir)
     templates_dir = target_dir / "templates"
     target_dir.mkdir(parents=True, exist_ok=True)

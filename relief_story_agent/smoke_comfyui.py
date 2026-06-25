@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import httpx
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from .comfyui_endpoint import normalize_comfyui_endpoint
 from .comfyui import (
     analyze_workflow_config,
     preview_storyboard_submission,
@@ -44,6 +45,11 @@ class ComfyUISmokeRequest(BaseModel):
     filename_prefix: str | None = None
     dry_run: bool = False
     timeout_seconds: float = Field(default=30.0, gt=0)
+
+    @field_validator("comfyui_base_url")
+    @classmethod
+    def _normalize_comfyui_base_url(cls, value: str) -> str:
+        return normalize_comfyui_endpoint(value)
 
 
 class ComfyUISmokeResult(BaseModel):
@@ -515,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         request.dry_run = True
     if args.comfyui_base_url:
-        request.comfyui_base_url = args.comfyui_base_url
+        request.comfyui_base_url = normalize_comfyui_endpoint(args.comfyui_base_url)
     if args.output_root:
         request.output_root = args.output_root
     if args.timeout_seconds > 0:

@@ -80,3 +80,20 @@ def test_cli_setup_writes_local_config_bundle(tmp_path):
     assert "model_config.local.json" in completed.stdout
     assert (tmp_path / "run_request.full-ltx.json").exists()
     assert (tmp_path / "templates" / "prompt_writer.default.md").exists()
+
+
+def test_setup_wizard_normalizes_comfyui_endpoint_for_generated_files(tmp_path):
+    result = write_local_config_bundle(
+        tmp_path,
+        workflow_path="C:/ComfyUI/workflows/ltx23_four_grid.json",
+        comfyui_endpoint="127.0.0.1:8188/queue",
+        output_root="D:/relief_story_runs",
+    )
+
+    run_payload = json.loads(Path(result["run_request"]).read_text(encoding="utf-8"))
+    batch_payload = json.loads(Path(result["batch_request"]).read_text(encoding="utf-8"))
+    connect_payload = json.loads(Path(result["comfyui_connect"]).read_text(encoding="utf-8"))
+
+    assert run_payload["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
+    assert batch_payload["defaults"]["comfyui"]["endpoint"] == "http://127.0.0.1:8188"
+    assert connect_payload["endpoint"] == "http://127.0.0.1:8188"

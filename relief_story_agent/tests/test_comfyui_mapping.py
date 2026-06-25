@@ -13,9 +13,15 @@ from relief_story_agent.api import create_app
 from relief_story_agent.comfyui import preview_storyboard_submission, submit_storyboard, upload_grid_image
 from relief_story_agent.grid_image import validate_grid_image
 from relief_story_agent.ltx_workflow import find_ltx_injection_points, patch_ltx_litegraph_workflow
-from relief_story_agent.models import ComfyUIRunConfig, GridImageAsset, GridImageConfig
+from relief_story_agent.models import (
+    ComfyUIConnectionRequest,
+    ComfyUIRunConfig,
+    GridImageAsset,
+    GridImageConfig,
+)
 from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
+from relief_story_agent.smoke_comfyui import ComfyUISmokeRequest
 from relief_story_agent.tests.fixtures.ltx23_workflow_factory import build_sanitized_ltx23_workflow
 
 
@@ -225,6 +231,21 @@ def test_api_comfyui_connect_reaches_queue_and_analyzes_ltx_workflow(tmp_path, m
     assert body["suggested_config"]["endpoint"] == "http://comfy.local"
     assert body["suggested_config"]["workflow_api_path"] == str(workflow_path)
     assert requests == ["http://comfy.local/queue"]
+
+
+def test_comfyui_endpoint_models_accept_common_address_box_inputs():
+    connection = ComfyUIConnectionRequest(endpoint=" 127.0.0.1:8188/queue?view=1 ")
+    run_config = ComfyUIRunConfig(endpoint="http://localhost:8188/")
+    smoke_request = ComfyUISmokeRequest(
+        workflow_path="D:/workflow.json",
+        comfyui_base_url="localhost:8188/queue",
+        final_storyboard=[{"shot_id": 1, "image_prompt": "frame"}],
+        manual_grid_image_path="D:/grid.png",
+    )
+
+    assert connection.endpoint == "http://127.0.0.1:8188"
+    assert run_config.endpoint == "http://localhost:8188"
+    assert smoke_request.comfyui_base_url == "http://localhost:8188"
 
 
 def test_api_comfyui_connect_reports_unreachable_endpoint(monkeypatch):

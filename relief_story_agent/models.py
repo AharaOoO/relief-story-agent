@@ -5,6 +5,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from .comfyui_endpoint import normalize_comfyui_endpoint
+
 
 class StageModelConfig(BaseModel):
     base_url: str = "http://127.0.0.1:8045/v1"
@@ -138,6 +140,11 @@ class ComfyUIRunConfig(BaseModel):
     output_poll_interval_seconds: float = Field(default=5.0, ge=0)
     grid_image: GridImageConfig = Field(default_factory=GridImageConfig)
 
+    @field_validator("endpoint")
+    @classmethod
+    def _normalize_endpoint(cls, value: str) -> str:
+        return normalize_comfyui_endpoint(value)
+
 
 class ComfyUIConnectionRequest(BaseModel):
     endpoint: str = "http://127.0.0.1:8188"
@@ -145,6 +152,11 @@ class ComfyUIConnectionRequest(BaseModel):
     placeholder_map_path: str | None = None
     placeholder_map: dict[str, PlaceholderTarget] = Field(default_factory=dict)
     timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+
+    @field_validator("endpoint")
+    @classmethod
+    def _normalize_endpoint(cls, value: str) -> str:
+        return normalize_comfyui_endpoint(value)
 
 
 class ComfyUIPreviewRequest(BaseModel):

@@ -17,7 +17,8 @@ dependencies = [
 ]
 
 [project.scripts]
-relief-story-agent = "relief_story_agent.server:main"
+relief-story-agent = "relief_story_agent.cli:main"
+relief-story-agent-server = "relief_story_agent.server:main"
 
 [tool.setuptools]
 packages = ["relief_story_agent"]

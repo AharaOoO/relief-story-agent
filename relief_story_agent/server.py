@@ -50,7 +50,7 @@ def build_app(
     return create_app(orchestrator, scheduler=scheduler)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", default=8891, type=int)
@@ -70,7 +70,7 @@ def main() -> None:
     )
     parser.add_argument("--image-generation-concurrency", default=2, type=int)
     parser.add_argument("--comfyui-submission-concurrency", default=1, type=int)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     uvicorn.run(
         build_app(
             state_dir=args.state_dir,
@@ -84,7 +84,8 @@ def main() -> None:
         host=args.host,
         port=args.port,
     )
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

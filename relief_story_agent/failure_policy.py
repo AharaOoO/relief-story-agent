@@ -7,6 +7,7 @@ import httpx
 import openai
 
 from .models import FailureRecord
+from .pipeline import MODEL_STAGE_IDS
 
 
 def classify_failure(stage: str, exc: Exception) -> FailureRecord:
@@ -91,13 +92,7 @@ def _classify_message(stage: str, message: str) -> tuple[str, str, bool]:
 def _source_for_stage(stage: str) -> str:
     if stage == "comfyui":
         return "comfyui"
-    if stage in {
-        "chief_screenwriter",
-        "deepseek_polish",
-        "gpt_prompt_writer",
-        "gpt_prompt_audit",
-        "gpt_prompt_reviser",
-    }:
+    if stage in MODEL_STAGE_IDS:
         return "model"
     if stage == "artifacts":
         return "artifact"

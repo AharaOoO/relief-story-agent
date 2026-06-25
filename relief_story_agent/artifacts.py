@@ -12,6 +12,7 @@ from typing import Any
 from .comfyui import preview_storyboard_submission
 from .ltx_workflow import build_ltx_payload_from_storyboard
 from .models import BatchRunState, RunState
+from .pipeline import RECOVERABLE_STAGE_ORDER
 from .provenance import build_run_configuration_provenance
 
 
@@ -27,17 +28,6 @@ ARTIFACT_SPECS = [
 ]
 
 RELEASE_NOTES_FILENAME = "README_RELEASE.md"
-
-RECOVERABLE_STAGE_ORDER = [
-    "chief_screenwriter",
-    "deepseek_polish",
-    "quality_gate",
-    "gpt_prompt_writer",
-    "gpt_prompt_audit",
-    "gpt_prompt_reviser",
-    "artifacts",
-    "comfyui",
-]
 
 PUBLISH_INDEX_COLUMNS = [
     "index",

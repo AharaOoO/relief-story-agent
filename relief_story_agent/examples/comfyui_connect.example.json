@@ -1,0 +1,5 @@
+{
+  "endpoint": "http://127.0.0.1:8188",
+  "workflow_api_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+  "timeout_seconds": 5
+}

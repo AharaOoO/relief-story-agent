@@ -139,6 +139,14 @@ class ComfyUIRunConfig(BaseModel):
     grid_image: GridImageConfig = Field(default_factory=GridImageConfig)
 
 
+class ComfyUIConnectionRequest(BaseModel):
+    endpoint: str = "http://127.0.0.1:8188"
+    workflow_api_path: str | None = None
+    placeholder_map_path: str | None = None
+    placeholder_map: dict[str, PlaceholderTarget] = Field(default_factory=dict)
+    timeout_seconds: float = Field(default=5.0, gt=0, le=60)
+
+
 class ComfyUIPreviewRequest(BaseModel):
     comfyui: ComfyUIRunConfig
     storyboard: list[dict[str, Any]] = Field(min_length=1)
@@ -278,6 +286,7 @@ class RunRetryRequest(BaseModel):
         "gpt_prompt_writer",
         "gpt_prompt_audit",
         "gpt_prompt_reviser",
+        "final_prompts",
         "four_grid_asset",
         "artifacts",
         "comfyui",

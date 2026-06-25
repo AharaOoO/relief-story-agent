@@ -17,7 +17,7 @@ from .config_validation import (
     validate_batch_configuration,
     validate_run_configuration,
 )
-from .comfyui import analyze_workflow_config, preview_storyboard_submission
+from .comfyui import analyze_workflow_config, connect_comfyui, preview_storyboard_submission
 from .metrics import build_batch_health_report, build_system_metrics
 from .models import (
     BatchExportRequest,
@@ -27,6 +27,7 @@ from .models import (
     BatchRetryRequest,
     BatchRunRequest,
     BatchRunState,
+    ComfyUIConnectionRequest,
     ComfyUIPreviewRequest,
     ComfyUIWorkflowAnalysisRequest,
     RunRequest,
@@ -209,6 +210,10 @@ def create_app(
             return analyze_workflow_config(request.comfyui)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/comfyui/connect")
+    def connect_comfyui_endpoint(request: ComfyUIConnectionRequest):
+        return connect_comfyui(request)
 
     @app.post("/api/smoke/comfyui")
     def smoke_comfyui(request: ComfyUISmokeRequest):

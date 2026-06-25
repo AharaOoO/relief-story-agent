@@ -177,6 +177,88 @@ def test_analyze_workflow_reports_grid_requirements(tmp_path):
     assert body["grid_shape"] == {"columns": 2, "rows": 2}
 
 
+def test_api_comfyui_connect_reaches_queue_and_analyzes_ltx_workflow(tmp_path, monkeypatch):
+    workflow_path = _write_sanitized_workflow(tmp_path)
+    requests: list[str] = []
+
+    def handler(request: httpx.Request):
+        requests.append(str(request.url))
+        assert request.url.path == "/queue"
+        return httpx.Response(
+            200,
+            json={
+                "queue_running": [["running", "prompt-a"]],
+                "queue_pending": [["pending", "prompt-b"], ["pending", "prompt-c"]],
+            },
+        )
+
+    monkeypatch.setattr(
+        "relief_story_agent.comfyui.httpx.Client",
+        lambda *args, **kwargs: HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=InMemoryRunStore(),
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/comfyui/connect",
+        json={
+            "endpoint": "http://comfy.local",
+            "workflow_api_path": str(workflow_path),
+        },
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["ready"] is True
+    assert body["connected"] is True
+    assert body["endpoint"] == "http://comfy.local"
+    assert body["queue"] == {"running": 1, "pending": 2}
+    assert body["workflow"]["adapter_mode"] == "litegraph_ltx_auto_injection"
+    assert body["workflow"]["ltx_injection_points"]["grid_image_node_id"] == "196"
+    assert body["workflow"]["grid_shape"] == {"columns": 2, "rows": 2}
+    assert body["suggested_config"]["endpoint"] == "http://comfy.local"
+    assert body["suggested_config"]["workflow_api_path"] == str(workflow_path)
+    assert requests == ["http://comfy.local/queue"]
+
+
+def test_api_comfyui_connect_reports_unreachable_endpoint(monkeypatch):
+    def handler(request: httpx.Request):
+        raise httpx.ConnectError("offline", request=request)
+
+    monkeypatch.setattr(
+        "relief_story_agent.comfyui.httpx.Client",
+        lambda *args, **kwargs: HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+    client = TestClient(
+        create_app(
+            StoryRunOrchestrator(
+                provider=FakeModelProvider.minimal_success(),
+                store=InMemoryRunStore(),
+            )
+        )
+    )
+
+    response = client.post(
+        "/api/comfyui/connect",
+        json={"endpoint": "http://127.0.0.1:8188"},
+    )
+
+    body = response.json()
+    assert response.status_code == 200
+    assert body["ready"] is False
+    assert body["connected"] is False
+    assert body["checks"][0]["name"] == "comfyui_endpoint"
+    assert body["checks"][0]["status"] == "failed"
+    assert body["suggested_actions"][0]["code"] == "start_or_check_comfyui"
+    assert "offline" in body["checks"][0]["message"]
+
+
 def test_preview_manual_path_validates_without_upload_or_generation(tmp_path, monkeypatch):
     image_path = tmp_path / "manual.png"
     image = Image.new("RGB", (1024, 1024), "white")

@@ -14,10 +14,14 @@ Pipeline:
 4. `gpt_prompt_writer`
 5. `gpt_prompt_audit`
 6. Optional one-pass `gpt_prompt_reviser`
-7. Optional `four_grid_asset` generation/upload for LTX 2.3 four-grid workflows
-8. Optional ComfyUI workflow filling and `/prompt` enqueue
+7. `final_prompts`
+8. Optional `four_grid_asset` generation/upload for LTX 2.3 four-grid workflows
+9. Optional `artifacts`
+10. Optional ComfyUI workflow filling and `/prompt` enqueue
 
 `gpt_prompt_writer` and `gpt_prompt_audit` can use user-provided UTF-8 Markdown templates, so prompt rules can be iterated without code edits. If the audit finds prompt issues, the system asks `gpt_prompt_reviser` to fix them once, then uses the revised prompts as the final ComfyUI input.
+
+The core pipeline order is declared in `relief_story_agent/pipeline.py` as `StageSpec` records. Each stage has a category, retry policy, side-effect boundary, and expected outputs. Runtime execution, retry tails, recovery ordering, and failure-source classification use this shared registry so the fixed process stays consistent as the agent grows.
 
 ## Run
 
@@ -127,14 +131,17 @@ python -m relief_story_agent.server `
 Or use the console script installed by the package:
 
 ```powershell
-relief-story-agent --host 127.0.0.1 --port 8891
+relief-story-agent serve --host 127.0.0.1 --port 8891
 ```
+
+The package also keeps `relief-story-agent-server` as a direct server entrypoint for scripts that do not need the unified CLI.
 
 Copyable deployment examples live in `relief_story_agent/examples/`:
 
 - `start_server.example.ps1`
 - `run_request.example.json`
 - `batch_request.example.json`
+- `comfyui_connect.example.json`
 
 For both single runs and batches, set `idempotency_key` when calling from a launcher or script. Re-sending the same key with the same payload returns the existing job; re-sending the same key with different payload returns `409 Conflict`.
 
@@ -174,6 +181,30 @@ This tool does not call text models, does not generate the four-grid image,
 does not wait for render completion, and does not download final videos.
 
 ## ComfyUI / LTX 2.3 Workflows
+
+For launcher, desktop-shell, or future UI flows where the user fills one local ComfyUI address box first, call:
+
+```http
+POST /api/comfyui/connect
+```
+
+Example payload:
+
+```json
+{
+  "endpoint": "http://127.0.0.1:8188",
+  "workflow_api_path": "D:/ComfyUI/workflows/ltx23_four_grid.json",
+  "timeout_seconds": 5
+}
+```
+
+The endpoint pings ComfyUI `/queue`, reports running and pending queue counts, and, when `workflow_api_path` is supplied, analyzes the local workflow with the same LTX/placeholder logic used by real runs. It returns `ready`, `connected`, `checks`, `suggested_actions`, `suggested_config`, and workflow details such as `adapter_mode`, `grid_shape`, and `ltx_injection_points`. It does not upload images, call models, enqueue `/prompt`, wait for rendering, or download outputs.
+
+The same check is available without starting the API:
+
+```powershell
+relief-story-agent connect-comfyui --request .\relief_story_agent\examples\comfyui_connect.example.json --pretty
+```
 
 `workflow_api_path` accepts two workflow shapes:
 
@@ -725,6 +756,7 @@ A run may select another registered profile without changing the server configur
 - `POST /api/config/diagnose-batch`
 - `GET /api/scheduler`
 - `POST /api/batches/plan`
+- `POST /api/comfyui/connect`
 - `POST /api/comfyui/preview`
 - `POST /api/smoke/comfyui`
 - `POST /api/runs`

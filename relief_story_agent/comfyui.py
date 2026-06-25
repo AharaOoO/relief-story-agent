@@ -23,6 +23,7 @@ from .ltx_workflow import (
 )
 from .models import (
     ComfyUICancellation,
+    ComfyUIConnectionRequest,
     ComfyUIOutput,
     ComfyUIRunConfig,
     ComfyUISubmission,
@@ -157,6 +158,117 @@ def analyze_workflow_config(config: ComfyUIRunConfig) -> dict[str, Any]:
     }
     base["suggested_config"]["adapter_mode"] = "api_placeholder_map"
     return base
+
+
+def connect_comfyui(
+    request: ComfyUIConnectionRequest,
+    *,
+    client: httpx.Client | None = None,
+) -> dict[str, Any]:
+    endpoint = request.endpoint.rstrip("/")
+    checks: list[dict[str, Any]] = []
+    queue = {"running": 0, "pending": 0}
+    connected = False
+    workflow_report: dict[str, Any] = {}
+
+    owns_client = client is None
+    active_client = client or httpx.Client(timeout=request.timeout_seconds)
+    try:
+        try:
+            response = active_client.get(f"{endpoint}/queue")
+            response.raise_for_status()
+            payload = response.json()
+            queue_running = payload.get("queue_running") or []
+            queue_pending = payload.get("queue_pending") or []
+            queue = {"running": len(queue_running), "pending": len(queue_pending)}
+            connected = True
+            checks.append(
+                _diagnostic_check(
+                    "comfyui_endpoint",
+                    "passed",
+                    "ComfyUI /queue is reachable.",
+                    {
+                        "endpoint": endpoint,
+                        "queue_running": queue["running"],
+                        "queue_pending": queue["pending"],
+                    },
+                )
+            )
+        except Exception as exc:
+            checks.append(
+                _diagnostic_check(
+                    "comfyui_endpoint",
+                    "failed",
+                    f"Cannot reach ComfyUI /queue: {exc}",
+                    {"endpoint": endpoint},
+                )
+            )
+
+        if request.workflow_api_path:
+            workflow_config = ComfyUIRunConfig(
+                enabled=True,
+                endpoint=endpoint,
+                workflow_api_path=request.workflow_api_path,
+                placeholder_map_path=request.placeholder_map_path,
+                placeholder_map=request.placeholder_map,
+            )
+            try:
+                workflow_report = analyze_workflow_config(workflow_config)
+                checks.append(
+                    _diagnostic_check(
+                        "comfyui_workflow",
+                        "passed",
+                        "Workflow is readable and injection points were analyzed.",
+                        {
+                            "workflow_api_path": request.workflow_api_path,
+                            "workflow_format": workflow_report.get("workflow_format", ""),
+                            "adapter_mode": workflow_report.get("adapter_mode", ""),
+                            "grid_asset_required": workflow_report.get("grid_asset_required", False),
+                        },
+                    )
+                )
+            except Exception as exc:
+                checks.append(
+                    _diagnostic_check(
+                        "comfyui_workflow",
+                        "failed",
+                        f"Workflow analysis failed: {exc}",
+                        {"workflow_api_path": request.workflow_api_path},
+                    )
+                )
+        else:
+            checks.append(
+                _diagnostic_check(
+                    "comfyui_workflow",
+                    "skipped",
+                    "No workflow_api_path was provided.",
+                )
+            )
+    finally:
+        if owns_client:
+            active_client.close()
+
+    ready = connected and all(check["status"] != "failed" for check in checks)
+    suggested_config: dict[str, Any] = {
+        "enabled": True,
+        "endpoint": endpoint,
+    }
+    if workflow_report:
+        suggested_config.update(workflow_report.get("suggested_config") or {})
+        suggested_config["endpoint"] = endpoint
+    elif request.workflow_api_path:
+        suggested_config["workflow_api_path"] = request.workflow_api_path
+
+    return {
+        "ready": ready,
+        "connected": connected,
+        "endpoint": endpoint,
+        "queue": queue,
+        "workflow": workflow_report,
+        "checks": checks,
+        "suggested_actions": _suggest_connection_actions(checks),
+        "suggested_config": suggested_config,
+    }
 
 
 def apply_placeholder_map(
@@ -389,6 +501,46 @@ def _ltx_injection_points_payload(points) -> dict[str, Any]:
             }
         )
     return payload
+
+
+def _diagnostic_check(
+    name: str,
+    status: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "status": status,
+        "message": message,
+        "details": details or {},
+    }
+
+
+def _suggest_connection_actions(checks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    actions: list[dict[str, str]] = []
+    for check in checks:
+        if check.get("status") != "failed":
+            continue
+        name = str(check.get("name") or "")
+        if name == "comfyui_endpoint":
+            code = "start_or_check_comfyui"
+            label = "Start or check ComfyUI"
+        elif name == "comfyui_workflow":
+            code = "fix_comfyui_workflow"
+            label = "Fix ComfyUI workflow"
+        else:
+            code = "manual_review_comfyui_connection"
+            label = "Review ComfyUI connection"
+        actions.append(
+            {
+                "code": code,
+                "label": label,
+                "check": name,
+                "description": str(check.get("message") or ""),
+            }
+        )
+    return actions
 
 
 def _preview_grid_image_asset(

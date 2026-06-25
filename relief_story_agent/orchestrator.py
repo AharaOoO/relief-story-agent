@@ -55,6 +55,7 @@ from .models import (
     ModelUsageSummary,
 )
 from .output_contracts import require_bool, require_list, require_mapping, require_shot_contract
+from .pipeline import BASE_RUNTIME_STAGE_ORDER, retry_tail_for_stage, stage_ids_for_run
 from .prompt_templates import (
     build_prompt_audit_prompt,
     build_prompt_reviser_prompt,
@@ -67,13 +68,7 @@ from .resource_limits import ExecutionResourceLimits
 
 IMAGE_PROMPT_MAX_CHARS = 220
 CHECKPOINT_COMPLETE = "__checkpoint_complete__"
-PIPELINE_STAGES = [
-    "chief_screenwriter",
-    "deepseek_polish",
-    "quality_gate",
-    "gpt_prompt_writer",
-    "gpt_prompt_audit",
-]
+PIPELINE_STAGES = list(BASE_RUNTIME_STAGE_ORDER)
 
 
 class InMemoryRunStore:
@@ -667,27 +662,21 @@ class StoryRunOrchestrator:
         return None
 
     def _stage_sequence(self, run: RunState, *, resume: bool = False, start_stage: str | None = None) -> list[str]:
-        stages = list(PIPELINE_STAGES)
         requires_grid = self._requires_grid_asset(run)
-        if requires_grid:
-            stages.append("four_grid_asset")
-        if run.request.output_root or requires_grid:
-            stages.append("artifacts")
-        if run.request.comfyui and run.request.comfyui.enabled:
-            stages.append("comfyui")
-        if start_stage == "gpt_prompt_reviser":
-            tail = ["gpt_prompt_reviser"]
-            if requires_grid:
-                tail.append("four_grid_asset")
-            if run.request.output_root or requires_grid:
-                tail.append("artifacts")
-            if run.request.comfyui and run.request.comfyui.enabled:
-                tail.append("comfyui")
-            return tail
+        writes_artifacts = bool(run.request.output_root or requires_grid)
+        comfyui_enabled = bool(run.request.comfyui and run.request.comfyui.enabled)
+        stages = stage_ids_for_run(
+            requires_grid_asset=requires_grid,
+            writes_artifacts=writes_artifacts,
+            comfyui_enabled=comfyui_enabled,
+        )
         if start_stage:
-            if start_stage not in stages:
-                raise ValueError(f"Cannot retry from unavailable stage: {start_stage}")
-            return stages[stages.index(start_stage) :]
+            return retry_tail_for_stage(
+                start_stage,
+                requires_grid_asset=requires_grid,
+                writes_artifacts=writes_artifacts,
+                comfyui_enabled=comfyui_enabled,
+            )
         if resume and run.core_candidates:
             return stages[1:]
         return stages
@@ -709,6 +698,7 @@ class StoryRunOrchestrator:
             "gpt_prompt_writer": self._run_prompt_writer,
             "gpt_prompt_audit": self._run_prompt_audit,
             "gpt_prompt_reviser": self._run_prompt_reviser,
+            "final_prompts": self._run_final_prompts,
             "four_grid_asset": self._run_four_grid_asset,
             "artifacts": self._write_artifacts,
             "comfyui": self._run_comfyui,
@@ -861,6 +851,12 @@ class StoryRunOrchestrator:
             stage="gpt_prompt_reviser",
         )
         run.prompt_revision_count = 1
+
+    def _run_final_prompts(self, run: RunState) -> None:
+        run.current_stage = "final_prompts"
+        if not run.final_storyboard:
+            raise ValueError("final_prompts requires a finalized storyboard")
+        run.add_log("final_prompts", "Final prompts are ready for grid image and video generation.")
 
     def _acquire_generated_grid_asset(
         self,

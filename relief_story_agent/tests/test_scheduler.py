@@ -693,7 +693,7 @@ def test_manual_async_run_waits_for_approval_then_continues_in_background():
         assert approved.json()["status"] in {"queued", "running", "completed"}
         final = _wait_for_status(store, run_id, {"completed"})
 
-        assert final.last_completed_stage == "gpt_prompt_audit"
+        assert final.last_completed_stage == "final_prompts"
         assert provider.calls == [
             "chief_screenwriter",
             "deepseek_polish",

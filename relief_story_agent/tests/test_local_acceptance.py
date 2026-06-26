@@ -1041,7 +1041,10 @@ def test_run_local_acceptance_marks_failed_commands(tmp_path):
     assert result["status"] == "failed"
     assert checks["compileall"]["status"] == "pass"
     assert checks["full_tests"]["status"] == "fail"
-    assert checks["full_tests"]["evidence"] == "exit_code=1; 1 failed, 317 passed"
+    assert checks["full_tests"]["evidence"] == (
+        "full_tests_valid=false; exit_code=1; passed=317; failed=1; errors=0"
+    )
+    assert checks["full_tests"]["details"]["full_tests_evidence"]["error"] == "pytest_exit_code_nonzero"
     assert checks["full_tests"]["details"]["stderr_path"].endswith("pytest.stderr.txt")
 
 

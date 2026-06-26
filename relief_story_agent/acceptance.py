@@ -759,11 +759,20 @@ def _pipeline_schema_payload(details: dict[str, Any]) -> dict[str, Any]:
 def refresh_full_tests_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return [
         _refreshed_full_tests_check(check)
-        if str(check.get("id") or "") == "full_tests"
-        and str(check.get("status") or "").lower() in PASS_STATUSES
+        if _should_refresh_full_tests_check(check)
         else check
         for check in checks
     ]
+
+
+def _should_refresh_full_tests_check(check: dict[str, Any]) -> bool:
+    if str(check.get("id") or "") != "full_tests":
+        return False
+    if str(check.get("status") or "").lower() in PASS_STATUSES:
+        return True
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    evidence_keys = {"pytest_stdout", "stdout_path", "report_path", "stdout", "exit_code"}
+    return any(key in details for key in evidence_keys)
 
 
 def _refreshed_full_tests_check(check: dict[str, Any]) -> dict[str, Any]:

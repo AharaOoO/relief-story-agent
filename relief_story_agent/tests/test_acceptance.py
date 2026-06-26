@@ -1259,6 +1259,39 @@ def test_build_acceptance_status_blocks_full_tests_without_exit_code(tmp_path):
     assert "run_full_tests" in status["suggested_actions"]
 
 
+def test_write_acceptance_report_normalizes_failed_full_tests_command_evidence(tmp_path):
+    pytest_stdout = _pytest_stdout_path(tmp_path, "1 failed, 413 passed in 72.00s\n")
+
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "local_acceptance",
+            "status": "failed",
+            "checks": [
+                {
+                    "id": "full_tests",
+                    "status": "fail",
+                    "evidence": "exit_code=1; 1 failed, 413 passed",
+                    "details": {
+                        "stdout_path": str(pytest_stdout),
+                        "exit_code": 1,
+                    },
+                }
+            ],
+        },
+    )
+
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    full_tests_check = report["checks"][0]
+
+    assert full_tests_check["status"] == "fail"
+    assert full_tests_check["evidence"] == (
+        "full_tests_valid=false; exit_code=1; passed=413; failed=1; errors=0"
+    )
+    assert full_tests_check["details"]["full_tests_evidence"]["valid"] is False
+    assert full_tests_check["details"]["full_tests_evidence"]["error"] == "pytest_exit_code_nonzero"
+
+
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):
     video_path = tmp_path / "complete.mp4"
     video_path.write_bytes(_valid_mp4_bytes())

@@ -101,19 +101,25 @@ def build_local_readiness(
 ) -> dict:
     doctor_summary = doctor.get("summary") or {}
     doctor_ready = bool(doctor.get("ready"))
+    doctor_warnings = int(doctor_summary.get("warnings") or 0)
+    doctor_failures = int(doctor_summary.get("failed") or 0)
+    doctor_strict_ready = doctor_ready and doctor_warnings == 0
     acceptance_ready = bool((acceptance_status or {}).get("ready_for_release"))
+    doctor_status = "pass" if doctor_strict_ready else "fail" if doctor_failures else "warn"
     checks = [
         _readiness_check(
             "local_doctor",
-            "pass" if doctor_ready else "fail",
+            doctor_status,
             (
                 "Local API, model configuration, scheduler, state, resources, and optional ComfyUI checks are ready."
-                if doctor_ready
+                if doctor_status == "pass"
+                else "Local runtime has warnings that must be resolved before unattended real runs."
+                if doctor_status == "warn"
                 else "Local runtime still has blocking setup or connection checks."
             ),
             {
-                "failed": int(doctor_summary.get("failed") or 0),
-                "warnings": int(doctor_summary.get("warnings") or 0),
+                "failed": doctor_failures,
+                "warnings": doctor_warnings,
                 "passed": int(doctor_summary.get("passed") or 0),
                 "comfyui_checked": _doctor_has_check(doctor, "comfyui_connection"),
                 "suggested_actions": list(doctor.get("suggested_actions") or []),
@@ -163,14 +169,14 @@ def build_local_readiness(
         "failed": sum(1 for check in checks if check["status"] == "fail"),
         "blocking_count": sum(1 for check in checks if check["status"] == "fail"),
     }
-    ready_for_real_runs = doctor_ready
-    ready_for_release = doctor_ready and acceptance_ready
+    ready_for_real_runs = doctor_strict_ready
+    ready_for_release = doctor_strict_ready and acceptance_ready
     return {
         "ready_for_configuration": True,
         "ready_for_real_runs": ready_for_real_runs,
         "ready_for_release": ready_for_release,
         "phase": _readiness_phase(
-            doctor_ready=doctor_ready,
+            doctor_ready=doctor_strict_ready,
             acceptance_status=acceptance_status,
             acceptance_ready=acceptance_ready,
         ),

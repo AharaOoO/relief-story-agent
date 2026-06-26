@@ -157,6 +157,41 @@ def test_build_local_readiness_combines_doctor_and_acceptance_blockers():
     assert "run_local_acceptance" in readiness["suggested_actions"]
 
 
+def test_build_local_readiness_blocks_real_runs_when_doctor_has_warnings():
+    bootstrap = build_local_bootstrap()
+    doctor = build_local_doctor(
+        bootstrap=bootstrap,
+        model_status={"profiles": {}, "stages": {}, "missing_environment_variables": []},
+        resource_status={"image_generation_concurrency": 2, "comfyui_submission_concurrency": 1},
+        scheduler_enabled=False,
+        state_persistent=False,
+    )
+    acceptance_status = {
+        "exists": True,
+        "ready_for_release": True,
+        "summary": {"check_count": 14, "blocking_count": 0},
+        "blocking_checks": [],
+        "suggested_actions": [],
+    }
+
+    readiness = build_local_readiness(
+        bootstrap=bootstrap,
+        doctor=doctor,
+        acceptance_status=acceptance_status,
+    )
+
+    checks = {check["id"]: check for check in readiness["checks"]}
+    assert doctor["ready"] is True
+    assert doctor["summary"]["warnings"] == 3
+    assert readiness["ready_for_real_runs"] is False
+    assert readiness["ready_for_release"] is False
+    assert readiness["phase"] == "setup_blocked"
+    assert checks["local_doctor"]["status"] == "warn"
+    assert "run_setup" in readiness["suggested_actions"]
+    assert "restart_with_state_dir" in readiness["suggested_actions"]
+    assert "start_server_entrypoint" in readiness["suggested_actions"]
+
+
 def test_build_local_doctor_flags_placeholder_model_profiles():
     report = build_local_doctor(
         bootstrap=build_local_bootstrap(),

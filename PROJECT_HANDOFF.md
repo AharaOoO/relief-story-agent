@@ -163,6 +163,7 @@ relief-story-agent local-readiness `
 - 给未来 UI 或启动器一个“检查我的本地部署”的统一 JSON。
 - 汇总 bootstrap、local-doctor、ComfyUI 地址检查、workflow 节点检查、acceptance-status 阻塞项。
 - 返回 `ready_for_real_runs`、`ready_for_release`、`phase`、`checks`、`suggested_actions` 和 `ui_contract`。
+- `ready_for_real_runs` 要求 local-doctor 没有 fail 也没有 warn；缺模型 profile、非持久 state 或未挂 scheduler 不能被误报为可无人值守真实运行。
 - `ui_contract` 明确未来 UI 里 ComfyUI 地址框、workflow 路径框、验收报告路径对应的参数和后端端点。
 
 边界：

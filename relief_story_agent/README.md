@@ -126,6 +126,9 @@ When the API server is running, `GET /api/local/readiness` and
 user-entered ComfyUI address, the selected workflow path, and optional
 acceptance-report blockers into one machine-readable setup status. Use it for a
 future UI "check my local setup" button before real runs.
+It treats local-doctor warnings as not ready for unattended real runs, so missing
+model profiles, in-memory state, or a detached scheduler remain visible blockers
+even when no check has fully failed.
 
 For a local launcher or future UI setup screen, call
 `POST /api/local/setup-bundle` with `output_dir`, `workflow_path`,

@@ -259,6 +259,9 @@ HTTP equivalent for launchers and future UI shells:
 The response includes `ready_for_real_runs`, `ready_for_release`, a phase,
 blocking checks, deduped `suggested_actions`, and a `ui_contract` that names the
 ComfyUI address field and related endpoints.
+`ready_for_real_runs` stays `false` until local doctor has no failures and no
+warnings, so placeholder/missing model profiles, non-persistent state, or a
+missing scheduler do not get reported as unattended-run ready.
 
 For a quick no-key/no-GPU confidence check before touching real services, run:
 

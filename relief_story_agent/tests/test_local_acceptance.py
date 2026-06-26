@@ -701,6 +701,52 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
     assert "D:/runs/run_real/output.mp4" in report["video_paths"]
 
 
+def test_run_local_acceptance_fails_when_preserved_video_path_is_stale(tmp_path):
+    acceptance_dir = tmp_path / "acceptance"
+    missing_video = tmp_path / "deleted.mp4"
+    write_acceptance_report(
+        acceptance_dir,
+        {
+            "run_id": "run_real",
+            "mode": "single_run",
+            "status": "completed",
+            "checks": [
+                {
+                    "id": "single_run",
+                    "status": "pass",
+                    "required_evidence": "run artifact dir, downloaded video path",
+                    "evidence": f"run_id=run_real; video={missing_video}",
+                }
+            ],
+            "video_paths": [str(missing_video)],
+        },
+    )
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "381 passed in 63.57s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        acceptance_dir,
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
+    assert checks["video_files"]["status"] == "fail"
+    assert checks["video_files"]["details"]["videos"][0]["exists"] is False
+
+
 def test_run_local_acceptance_marks_failed_commands(tmp_path):
     def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         if command[2] == "compileall":

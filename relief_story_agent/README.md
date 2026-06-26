@@ -188,8 +188,8 @@ local-acceptance run records the same check id again; existing `run_id`,
 If a preserved or newly recorded `single_run` pass has no video path evidence,
 `acceptance-status` adds a `video_files` blocker until a real local video path
 is recorded and validates. When an existing report has `video_paths`,
-`acceptance-status` rechecks those files on disk instead of trusting a stale
-`video_files=pass` entry.
+`local-acceptance` and `acceptance-status` both recheck those files on disk
+instead of trusting a stale `video_files=pass` entry.
 
 You can also run the offline skeleton demo by itself:
 
@@ -571,7 +571,9 @@ is not enough: `ready=false` or `valid=false` marks the check and generated
 acceptance status as failed. Imported source files such as `smoke_result.json`
 and `local_demo_summary.json` are also interpreted before the top-level
 `local-acceptance` status is set, so a not-ready smoke or demo summary cannot
-leave the bundle marked completed.
+leave the bundle marked completed. Preserved video paths are revalidated at the
+same point, so a stale local mp4 path fails the bundle before the report is
+written.
 
 To inspect an existing report from scripts, another AI reviewer, or a future UI,
 use:

@@ -79,7 +79,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
     video_paths = _string_list(payload.get("video_paths") or [])
     checks = [_normalize_check(check) for check in payload.get("checks") or []]
     checks.extend(checks_from_sources(payload.get("sources") or {}))
-    checks = _refresh_video_evidence(
+    checks = refresh_video_evidence(
         checks,
         video_paths=video_paths,
         mode=str(payload.get("mode") or "manual"),
@@ -109,7 +109,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
     if path.exists():
         report = json.loads(path.read_text(encoding="utf-8"))
         checks = [_normalize_check(check) for check in report.get("checks") or []]
-        checks = _refresh_video_evidence(
+        checks = refresh_video_evidence(
             checks,
             video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
@@ -188,7 +188,7 @@ def _check_from_video_paths(video_paths: list[str]) -> dict[str, Any]:
     }
 
 
-def _refresh_video_evidence(
+def refresh_video_evidence(
     checks: list[dict[str, Any]],
     *,
     video_paths: list[str],

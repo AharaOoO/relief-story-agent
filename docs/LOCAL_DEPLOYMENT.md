@@ -218,6 +218,9 @@ and `export`, unless the new run records the same check id again; existing
 Imported `smoke_result.json` and `local_demo_summary.json` evidence is parsed
 before the top-level bundle status is set, so a not-ready source file marks
 `local-acceptance` failed even when the command that produced it exited `0`.
+Preserved `video_paths` from an existing report are also rechecked before the
+top-level bundle status is set, so a stale or missing mp4 keeps the bundle
+failed instead of only appearing later as an `acceptance-status` blocker.
 For `single_run` acceptance, a passing `single_run` check must include at least
 one recorded video path. If it does not, `acceptance-status` reports a
 `video_files` blocker and `ready_for_release=false`. Existing `video_paths` are

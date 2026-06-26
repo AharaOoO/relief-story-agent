@@ -12,6 +12,7 @@ from .acceptance import (
     PASS_STATUSES,
     build_acceptance_status,
     checks_from_sources,
+    refresh_video_evidence,
     write_acceptance_report,
 )
 from .video_validation import check_local_video_file
@@ -310,12 +311,17 @@ def run_local_acceptance(
         checks.append(output_check)
         video_paths.extend(refreshed_video_paths)
 
-    status_checks = _merge_preserved_checks(
+    status_base_checks = _merge_preserved_checks(
         [*checks, *checks_from_sources(sources)],
         preserved_checks,
     )
     checks = _merge_preserved_checks(checks, preserved_checks)
     video_paths = _dedupe_strings([*preserved_video_paths, *video_paths])
+    status_checks = refresh_video_evidence(
+        status_base_checks,
+        video_paths=video_paths,
+        mode="local_acceptance",
+    )
     status = (
         "completed"
         if all(item["exit_code"] == 0 for item in commands)

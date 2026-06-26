@@ -86,6 +86,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
     )
     checks = refresh_comfyui_outputs_evidence(checks)
     checks = refresh_model_check_evidence(checks)
+    checks = refresh_diagnose_evidence(checks)
     checks = refresh_batch_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_recovery_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
@@ -126,6 +127,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
         )
         checks = refresh_comfyui_outputs_evidence(checks)
         checks = refresh_model_check_evidence(checks)
+        checks = refresh_diagnose_evidence(checks)
         checks = refresh_batch_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_recovery_evidence(checks, batch_id=str(report.get("batch_id") or ""))
@@ -526,6 +528,102 @@ def _model_check_payload(details: dict[str, Any]) -> dict[str, Any]:
     if "real_run" in details or "checks" in details or "ready" in details:
         return {"payload": details}
     return {"error": "missing_model_check_evidence"}
+
+
+def refresh_diagnose_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _refreshed_diagnose_check(check, expected_kind=_diagnose_expected_kind(str(check.get("id") or "")))
+        if str(check.get("id") or "") in {"run_diagnose", "batch_diagnose"}
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_diagnose_check(check: dict[str, Any], *, expected_kind: str) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    diagnose_evidence = _diagnose_evidence_status(details, expected_kind=expected_kind)
+    valid = bool(diagnose_evidence["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"diagnose_valid={str(valid).lower()}; "
+            f"kind={diagnose_evidence['kind']}; "
+            f"ready={str(bool(diagnose_evidence['ready'])).lower()}; "
+            f"expected_kind={expected_kind}"
+        ),
+        "details": {
+            **details,
+            "diagnose_evidence": diagnose_evidence,
+        },
+    }
+
+
+def _diagnose_evidence_status(details: dict[str, Any], *, expected_kind: str) -> dict[str, Any]:
+    result = {
+        "valid": False,
+        "error": "",
+        "path": "",
+        "exists": False,
+        "expected_kind": expected_kind,
+        "kind": "",
+        "ready": False,
+    }
+    payload_result = _diagnose_payload(details)
+    result = {**result, **payload_result}
+    payload = payload_result.get("payload")
+    if not isinstance(payload, dict):
+        result.pop("payload", None)
+        if not result["error"]:
+            result["error"] = "missing_diagnose_evidence"
+        return result
+
+    kind = str(payload.get("kind") or "")
+    ready = bool(payload.get("ready"))
+    error = ""
+    if kind != expected_kind:
+        error = "diagnose_kind_mismatch"
+    elif not ready:
+        error = "diagnose_not_ready"
+
+    result.update(
+        {
+            "valid": not error,
+            "error": error,
+            "kind": kind,
+            "ready": ready,
+        }
+    )
+    result.pop("payload", None)
+    return result
+
+
+def _diagnose_payload(details: dict[str, Any]) -> dict[str, Any]:
+    raw_path = (
+        details.get("diagnose_report")
+        or details.get("diagnostic_report")
+        or details.get("stdout_path")
+        or details.get("report_path")
+        or ""
+    )
+    if raw_path:
+        path = Path(str(raw_path))
+        base = {"path": str(path), "exists": path.exists() and path.is_file()}
+        if not base["exists"]:
+            return {**base, "error": "missing_diagnose_report"}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {**base, "error": "invalid_diagnose_report_json"}
+        return {**base, "payload": payload}
+    if "kind" in details or "ready" in details:
+        return {"payload": details}
+    return {"error": "missing_diagnose_evidence"}
+
+
+def _diagnose_expected_kind(check_id: str) -> str:
+    return "batch" if check_id == "batch_diagnose" else "run"
 
 
 def refresh_batch_evidence(

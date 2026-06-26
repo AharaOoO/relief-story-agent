@@ -240,9 +240,13 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
     )
     assert checks["model_check"]["details"]["model_check_evidence"]["error"] == "model_check_not_real_run"
     assert checks["run_diagnose"]["status"] == "pass"
-    assert checks["run_diagnose"]["evidence"] == "exit_code=0; kind=run; ready=true"
+    assert checks["run_diagnose"]["evidence"] == (
+        "diagnose_valid=true; kind=run; ready=true; expected_kind=run"
+    )
     assert checks["batch_diagnose"]["status"] == "pass"
-    assert checks["batch_diagnose"]["evidence"] == "exit_code=0; kind=batch; ready=true"
+    assert checks["batch_diagnose"]["evidence"] == (
+        "diagnose_valid=true; kind=batch; ready=true; expected_kind=batch"
+    )
 
 
 def test_run_local_acceptance_can_collect_real_model_probe(tmp_path):

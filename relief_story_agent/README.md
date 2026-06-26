@@ -204,7 +204,9 @@ also revalidated from structured `actual_outputs` details or a recorded outputs
 report, and at least one downloaded video path must still pass container
 validation. `model_check=pass` is revalidated from the recorded model-check
 JSON; release evidence must come from `--real-run`, have non-empty passing
-checks, and include the image provider probe. `batch_run=pass` needs
+checks, and include the image provider probe. `run_diagnose=pass` and
+`batch_diagnose=pass` are revalidated from recorded diagnose JSON; their `kind`
+must match and `ready` must be true. `batch_run=pass` needs
 structured `--batch-artifacts-report` evidence with publish-ready completed
 items and failed items that include `failed_stage` plus
 `recommended_action.code`. `restart_recovery=pass` also needs structured

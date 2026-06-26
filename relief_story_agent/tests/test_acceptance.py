@@ -572,6 +572,21 @@ def test_build_acceptance_status_reports_missing_report_with_default_matrix(tmp_
     assert status["suggested_actions"][0] == "run_local_acceptance"
 
 
+def test_build_acceptance_status_reports_corrupt_report_as_blocker(tmp_path):
+    report_path = tmp_path / "acceptance_report.json"
+    report_path.write_text("{not valid json", encoding="utf-8")
+
+    status = build_acceptance_status(report_path)
+
+    assert status["exists"] is True
+    assert status["ready_for_release"] is False
+    assert status["summary"]["blocking_count"] == 1
+    assert status["blocking_checks"][0]["id"] == "acceptance_report"
+    assert status["blocking_checks"][0]["status"] == "fail"
+    assert status["blocking_checks"][0]["evidence"] == f"invalid acceptance_report JSON={report_path}"
+    assert status["suggested_actions"] == ["rerun_local_acceptance"]
+
+
 def test_build_acceptance_status_requires_full_release_matrix_for_partial_report(tmp_path):
     smoke_result_path = tmp_path / "smoke_result.json"
     smoke_result_path.write_text(

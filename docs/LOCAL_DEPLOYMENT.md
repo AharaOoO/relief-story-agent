@@ -271,6 +271,8 @@ A report created for only smoke, local-demo, or another narrow check stays
 blocked until the missing release gates have evidence.
 If the report's top-level status is not completed, `acceptance-status` also
 returns an `overall_status` blocker even when individual checks are passing.
+If the report JSON itself is unreadable, the response returns an
+`acceptance_report` blocker and suggests rerunning local acceptance.
 
 To query the whole local deployment state in one call, including the ComfyUI
 address box value, selected workflow path, and acceptance evidence blockers:

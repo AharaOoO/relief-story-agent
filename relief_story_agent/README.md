@@ -627,7 +627,8 @@ even when the command was created for a narrower smoke or manual check. Missing
 release gates are returned as blockers instead of allowing a partial report to
 become release-ready. A failed or pending report-level status is also returned
 as an `overall_status` blocker, so a bundle cannot look actionless when all
-individual checks are stale-passing.
+individual checks are stale-passing. If the report JSON itself is unreadable,
+the status response returns an `acceptance_report` blocker instead of crashing.
 
 ## ComfyUI / LTX 2.3 Workflows
 

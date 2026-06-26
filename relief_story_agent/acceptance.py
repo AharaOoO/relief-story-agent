@@ -122,7 +122,31 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
 def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
     path = Path(report_path)
     if path.exists():
-        report = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            report = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            blocking_checks = [
+                {
+                    "id": "acceptance_report",
+                    "required_evidence": "valid acceptance_report.json",
+                    "status": "fail",
+                    "evidence": f"invalid acceptance_report JSON={path}",
+                    "details": {"path": str(path)},
+                }
+            ]
+            return {
+                "report_path": str(path),
+                "exists": True,
+                "ready_for_release": False,
+                "summary": {
+                    "check_count": 0,
+                    "by_status": {"fail": 1},
+                    "ready_for_release": False,
+                    "blocking_count": len(blocking_checks),
+                },
+                "blocking_checks": blocking_checks,
+                "suggested_actions": _acceptance_status_actions(path, blocking_checks),
+            }
         checks = [_normalize_check(check) for check in report.get("checks") or []]
         checks = refresh_video_evidence(
             checks,
@@ -1444,6 +1468,7 @@ def _acceptance_status_actions(
         "comfyui_outputs": "check_comfyui_outputs",
         "video_files": "verify_video_files",
         "overall_status": "rerun_local_acceptance",
+        "acceptance_report": "rerun_local_acceptance",
         "model_check": "configure_and_check_models",
         "run_diagnose": "fix_run_preflight",
         "batch_diagnose": "fix_batch_preflight",

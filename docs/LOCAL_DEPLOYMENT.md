@@ -209,8 +209,9 @@ configured image provider. Use `--model-check-real-run` only for the final
 evidence pass after real model API keys are configured. When ComfyUI output
 download evidence is collected, the reported video `local_path` must point to
 an existing non-empty file with a recognized video container before that check
-can pass. The `pipeline_schema` check must pass to prove the fixed canonical
-stage order and invariants are still intact. Re-running `local-acceptance` in
+can pass; the validator checks container signatures instead of trusting the
+filename extension. The `pipeline_schema` check must pass to prove the fixed
+canonical stage order and invariants are still intact. Re-running `local-acceptance` in
 the same output directory preserves
 previously passed checks, such as `single_run`, `batch_run`, `restart_recovery`,
 and `export`, unless the new run records the same check id again; existing
@@ -595,7 +596,7 @@ Invoke-RestMethod `
 ```
 
 The export validator checks publish indexes, copied video files, non-empty
-publish videos with recognized containers, zip checksum, and the validation
+publish videos with recognized container signatures, zip checksum, and the validation
 report.
 
 CLI validation:

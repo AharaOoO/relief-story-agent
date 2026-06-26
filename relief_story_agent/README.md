@@ -186,8 +186,9 @@ four-grid image provider is covered by the model readiness evidence. Use
 the real text-model and image-provider probes. When `--comfyui-output-prompt-id`
 is used with download evidence, the reported video `local_path` must exist on
 disk, be non-empty, and have a recognized video container before the ComfyUI
-output check can pass. If an `acceptance_report.json` already exists in the
-output directory, passed checks from that report are preserved unless the new
+output check can pass; the validator checks container signatures instead of
+trusting the filename extension. If an `acceptance_report.json` already exists
+in the output directory, passed checks from that report are preserved unless the new
 local-acceptance run records the same check id again; existing `run_id`,
 `batch_id`, and video paths are carried forward too.
 If a preserved or newly recorded `single_run` pass has no video path evidence,
@@ -1150,7 +1151,7 @@ relief-story-agent validate-export `
 
 The validator checks the export manifest, publish indexes, `publish_videos/`,
 every publish-ready video path referenced by `publish_index.json`, that each
-publish video is non-empty with a recognized video container, and each publish
+publish video is non-empty with a recognized video container signature, and each publish
 video's recorded size and sha256 checksum. With `save_report: true`, it writes
 `validation_report.json` into the export directory.
 

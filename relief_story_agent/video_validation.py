@@ -20,13 +20,30 @@ def check_local_video_file(path_value: str) -> dict[str, Any]:
 
 def has_recognized_video_container(path: Path) -> bool:
     suffix = path.suffix.lower()
+    if suffix not in {".mp4", ".m4v", ".mov", ".webm", ".mkv", ".avi"}:
+        return False
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return False
     if suffix in {".mp4", ".m4v", ".mov"}:
-        try:
-            data = path.read_bytes()
-        except OSError:
-            return False
         return _has_mp4_required_boxes(data)
-    return suffix in {".webm", ".mkv", ".avi"}
+    if suffix in {".webm", ".mkv"}:
+        return _has_ebml_video_header(data)
+    if suffix == ".avi":
+        return _has_avi_header(data)
+    return False
+
+
+def _has_ebml_video_header(data: bytes) -> bool:
+    if not data.startswith(b"\x1a\x45\xdf\xa3"):
+        return False
+    header = data[:4096].lower()
+    return b"webm" in header or b"matroska" in header
+
+
+def _has_avi_header(data: bytes) -> bool:
+    return len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"AVI "
 
 
 def _has_mp4_required_boxes(data: bytes) -> bool:

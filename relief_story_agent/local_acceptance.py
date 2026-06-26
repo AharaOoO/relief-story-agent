@@ -21,6 +21,7 @@ from .acceptance import (
     refresh_model_check_evidence,
     refresh_pipeline_schema_evidence,
     refresh_recovery_evidence,
+    refresh_source_file_evidence,
     refresh_video_evidence,
     write_acceptance_report,
 )
@@ -331,6 +332,7 @@ def run_local_acceptance(
         video_paths=video_paths,
         mode="local_acceptance",
     )
+    status_checks = refresh_source_file_evidence(status_checks)
     status_checks = refresh_comfyui_outputs_evidence(status_checks)
     status_checks = refresh_model_check_evidence(status_checks)
     status_checks = refresh_diagnose_evidence(status_checks)
@@ -350,6 +352,7 @@ def run_local_acceptance(
         and _executed_checks_pass(status_checks)
         else "failed"
     )
+    checks = refresh_source_file_evidence(checks)
     checks = refresh_comfyui_outputs_evidence(checks)
     checks = refresh_model_check_evidence(checks)
     checks = refresh_diagnose_evidence(checks)

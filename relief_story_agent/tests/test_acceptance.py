@@ -120,6 +120,42 @@ def _pytest_stdout_path(tmp_path: Path, content: str = "414 passed in 71.02s\n")
     return pytest_stdout
 
 
+def _smoke_result_path(tmp_path: Path, name: str, *, prompt_id: str = "") -> Path:
+    smoke_result = tmp_path / "smoke" / name
+    smoke_result.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "status": "passed",
+        "ready": True,
+        "artifact_dir": f"D:/relief_story_smoke/{name}",
+    }
+    if prompt_id:
+        payload["prompt_id"] = prompt_id
+    smoke_result.write_text(json.dumps(payload), encoding="utf-8")
+    return smoke_result
+
+
+def _local_demo_summary_path(tmp_path: Path) -> Path:
+    local_demo_summary = tmp_path / "local_demo" / "local_demo_summary.json"
+    local_demo_summary.parent.mkdir(parents=True, exist_ok=True)
+    local_demo_summary.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "single_run": {"status": "completed", "artifact_dir": "D:/demo/run_demo"},
+                "batch": {"status": "completed", "summary": {"total": 2, "completed": 2}},
+                "external_calls": {
+                    "model_provider": "fake",
+                    "comfyui": False,
+                    "image_generation": False,
+                },
+                "restart_recovery": {"status": "completed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    return local_demo_summary
+
+
 def _valid_recovery_plan_path(tmp_path: Path, name: str, *, batch_id: str = "batch_real") -> Path:
     recovery_plan = tmp_path / "recovery" / name
     recovery_plan.parent.mkdir(parents=True, exist_ok=True)
@@ -225,6 +261,9 @@ def _passing_release_checks(
     batch_diagnose_report: Path | None = None,
     pipeline_schema_report: Path | None = None,
     pytest_stdout: Path | None = None,
+    dry_smoke_result: Path | None = None,
+    real_smoke_result: Path | None = None,
+    local_demo_summary: Path | None = None,
 ) -> list[dict[str, object]]:
     if comfyui_output_video is None:
         comfyui_output_video = validation_report.parent / "comfyui_output.mp4"
@@ -239,6 +278,16 @@ def _passing_release_checks(
         pipeline_schema_report = _pipeline_schema_report_path(validation_report.parent)
     if pytest_stdout is None:
         pytest_stdout = _pytest_stdout_path(validation_report.parent)
+    if dry_smoke_result is None:
+        dry_smoke_result = _smoke_result_path(validation_report.parent, "dry_smoke_result.json")
+    if real_smoke_result is None:
+        real_smoke_result = _smoke_result_path(
+            validation_report.parent,
+            "real_smoke_result.json",
+            prompt_id="prompt-real",
+        )
+    if local_demo_summary is None:
+        local_demo_summary = _local_demo_summary_path(validation_report.parent)
     checks = []
     for default_check in DEFAULT_ACCEPTANCE_MATRIX:
         check: dict[str, object] = {
@@ -270,6 +319,12 @@ def _passing_release_checks(
                 "stdout_path": str(pytest_stdout),
                 "exit_code": 0,
             }
+        if default_check["id"] == "local_demo":
+            check["details"] = {"source": str(local_demo_summary)}
+        if default_check["id"] == "comfyui_dry_smoke":
+            check["details"] = {"source": str(dry_smoke_result)}
+        if default_check["id"] == "comfyui_real_smoke":
+            check["details"] = {"source": str(real_smoke_result)}
         if default_check["id"] == "export":
             check["details"] = {
                 "validation_report": str(validation_report),
@@ -548,6 +603,90 @@ def test_build_acceptance_status_requires_full_release_matrix_for_partial_report
     assert "full_tests" in blocking_ids
     assert "single_run" in blocking_ids
     assert "run_full_tests" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_revalidates_preserved_smoke_result_source(tmp_path):
+    smoke_result_path = tmp_path / "smoke_result.json"
+    smoke_result_path.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "ready": True,
+                "prompt_id": "prompt-real",
+                "artifact_dir": "D:/relief_story_smoke/smoke_demo",
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = write_acceptance_report(
+        tmp_path / "report",
+        {
+            "mode": "smoke",
+            "status": "completed",
+            "sources": {"smoke_result": str(smoke_result_path)},
+        },
+    )
+    smoke_result_path.unlink()
+
+    status = build_acceptance_status(report_path)
+
+    smoke_check = next(check for check in status["blocking_checks"] if check["id"] == "comfyui_real_smoke")
+    assert status["ready_for_release"] is False
+    assert smoke_check["status"] == "fail"
+    assert smoke_check["evidence"] == f"missing smoke_result={smoke_result_path}"
+    assert "run_real_comfyui_smoke" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_revalidates_preserved_local_demo_source(tmp_path):
+    summary_path = tmp_path / "local_demo_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "single_run": {"status": "completed", "artifact_dir": "D:/demo/run_demo"},
+                "batch": {"status": "completed", "summary": {"total": 2, "completed": 2}},
+                "external_calls": {
+                    "model_provider": "fake",
+                    "comfyui": False,
+                    "image_generation": False,
+                },
+                "restart_recovery": {"status": "completed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = write_acceptance_report(
+        tmp_path / "report",
+        {
+            "mode": "offline_demo",
+            "status": "completed",
+            "sources": {"local_demo_summary": str(summary_path)},
+        },
+    )
+    summary_path.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "single_run": {"status": "completed", "artifact_dir": "D:/demo/run_demo"},
+                "batch": {"status": "completed", "summary": {"total": 2, "completed": 1}},
+                "external_calls": {
+                    "model_provider": "fake",
+                    "comfyui": False,
+                    "image_generation": False,
+                },
+                "restart_recovery": {"status": "completed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = build_acceptance_status(report_path)
+
+    demo_check = next(check for check in status["blocking_checks"] if check["id"] == "local_demo")
+    assert status["ready_for_release"] is False
+    assert demo_check["status"] == "fail"
+    assert "batch_completed=1/2" in demo_check["evidence"]
+    assert "run_local_demo" in status["suggested_actions"]
 
 
 def test_build_acceptance_status_lists_blocking_checks_from_existing_report(tmp_path):

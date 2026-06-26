@@ -220,6 +220,8 @@ export checks must point to still-valid package and zip validation reports. Exis
 Imported `smoke_result.json` and `local_demo_summary.json` evidence is parsed
 before the top-level bundle status is set, so a not-ready source file marks
 `local-acceptance` failed even when the command that produced it exited `0`.
+Preserved smoke and local-demo passes are re-read from their recorded source
+files, so deleted or changed source evidence cannot stay green.
 Preserved `video_paths` from an existing report are also rechecked before the
 top-level bundle status is set, so a stale or missing mp4 keeps the bundle
 failed instead of only appearing later as an `acceptance-status` blocker.

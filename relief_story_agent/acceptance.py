@@ -85,6 +85,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         video_paths=video_paths,
         mode=str(payload.get("mode") or "manual"),
     )
+    checks = refresh_source_file_evidence(checks)
     checks = refresh_comfyui_outputs_evidence(checks)
     checks = refresh_model_check_evidence(checks)
     checks = refresh_diagnose_evidence(checks)
@@ -128,6 +129,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
         )
+        checks = refresh_source_file_evidence(checks)
         checks = refresh_comfyui_outputs_evidence(checks)
         checks = refresh_model_check_evidence(checks)
         checks = refresh_diagnose_evidence(checks)
@@ -256,6 +258,87 @@ def refresh_video_evidence(
             "details": {"videos": []},
         },
     ]
+
+
+def refresh_source_file_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [_refreshed_source_file_check(check) for check in checks]
+
+
+def _refreshed_source_file_check(check: dict[str, Any]) -> dict[str, Any]:
+    check_id = str(check.get("id") or "")
+    if str(check.get("status") or "").lower() not in PASS_STATUSES:
+        return check
+    if check_id in {"comfyui_dry_smoke", "comfyui_real_smoke"}:
+        return _refreshed_smoke_source_check(check)
+    if check_id == "local_demo":
+        return _refreshed_local_demo_source_check(check)
+    return check
+
+
+def _refreshed_smoke_source_check(check: dict[str, Any]) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    source = _evidence_source_path(details)
+    if not source:
+        return _failed_source_check(check, "missing smoke_result source")
+    path = Path(source)
+    if not path.exists():
+        return _failed_source_check(check, f"missing smoke_result={path}", source=str(path))
+    refreshed = _check_from_smoke_result(path)
+    expected_id = str(check.get("id") or "")
+    refreshed_id = str(refreshed.get("id") or "")
+    if refreshed_id != expected_id:
+        return _failed_source_check(
+            check,
+            f"expected {expected_id}; source_produced={refreshed_id}; {refreshed.get('evidence') or ''}",
+            source=str(path),
+        )
+    return {
+        **check,
+        **refreshed,
+        "details": {**details, **(refreshed.get("details") or {})},
+    }
+
+
+def _refreshed_local_demo_source_check(check: dict[str, Any]) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    source = _evidence_source_path(details)
+    if not source:
+        return _failed_source_check(check, "missing local_demo_summary source")
+    path = Path(source)
+    if not path.exists():
+        return _failed_source_check(check, f"missing local_demo_summary={path}", source=str(path))
+    refreshed = _check_from_local_demo_summary(path)
+    return {
+        **check,
+        **refreshed,
+        "details": {**details, **(refreshed.get("details") or {})},
+    }
+
+
+def _evidence_source_path(details: dict[str, Any]) -> str:
+    return str(
+        details.get("source")
+        or details.get("smoke_result")
+        or details.get("smoke_result_path")
+        or details.get("local_demo_summary")
+        or details.get("local_demo_summary_path")
+        or ""
+    )
+
+
+def _failed_source_check(
+    check: dict[str, Any],
+    evidence: str,
+    *,
+    source: str = "",
+) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    return {
+        **check,
+        "status": "fail",
+        "evidence": evidence,
+        "details": {**details, **({"source": source} if source else {})},
+    }
 
 
 def refresh_comfyui_outputs_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:

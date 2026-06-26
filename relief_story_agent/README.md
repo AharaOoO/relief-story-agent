@@ -192,7 +192,8 @@ in the output directory, passed checks from that report are preserved unless the
 new local-acceptance run records the same check id again; existing `run_id`,
 `batch_id`, and video paths are carried forward too. Preserved export checks
 must point to still-valid package and zip validation reports for the same
-top-level `batch_id`.
+top-level `batch_id`. Preserved smoke and local-demo checks must also point to
+their still-valid `smoke_result.json` or `local_demo_summary.json` source files.
 If a preserved or newly recorded `single_run` pass has no video path evidence,
 `acceptance-status` adds a `video_files` blocker until a real local video path
 is recorded and validates. It also requires top-level `run_id` for
@@ -557,8 +558,8 @@ relief-story-agent acceptance `
   --output-dir "D:/relief_story_acceptance" `
   --mode "local_e2e" `
   --status "manual_pending" `
-  --check "full_tests=pass:361 passed" `
-  --check "comfyui_dry_smoke=pass:smoke_result.json without prompt id" `
+  --check "full_tests=manual_pending:run local-acceptance to attach pytest stdout" `
+  --check "comfyui_dry_smoke=manual_pending:attach smoke_result.json with --smoke-result" `
   --check "comfyui_real_smoke=manual_pending:" `
   --include-default-matrix `
   --notes "Add exact run ids, artifact dirs, video paths, and batch ids."
@@ -602,7 +603,9 @@ is not enough: `ready=false` or `valid=false` marks the check and generated
 acceptance status as failed. Imported source files such as `smoke_result.json`
 and `local_demo_summary.json` are also interpreted before the top-level
 `local-acceptance` status is set, so a not-ready smoke or demo summary cannot
-leave the bundle marked completed. Preserved video paths are revalidated at the
+leave the bundle marked completed. Preserved smoke and local-demo passes are
+re-read from their recorded source files, so deleted or changed source evidence
+cannot stay green. Preserved video paths are revalidated at the
 same point, so a stale local mp4 path fails the bundle before the report is
 written. Preserved export checks are also revalidated from their recorded
 `details.validation_report` and `details.zip_validation_report` paths, so a

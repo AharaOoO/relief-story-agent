@@ -117,6 +117,7 @@ eb3fe74 fix: revalidate preserved export evidence
 - `run_diagnose=pass` 和 `batch_diagnose=pass` 必须有 diagnose JSON，`kind` 匹配且 `ready=true`。
 - `pipeline_schema=pass` 必须有 pipeline-schema JSON，固定工序顺序和 invariants 必须匹配。
 - `full_tests=pass` 必须有 pytest stdout 和 exit code 证据；测试输出缺失、exit code 非 0 或出现 failed/errors 都会阻塞发布。
+- `comfyui_dry_smoke=pass`、`comfyui_real_smoke=pass` 和 `local_demo=pass` 必须能重新读取对应 `smoke_result.json` / `local_demo_summary.json` source；source 丢失或内容变坏会重新阻塞发布。
 - 旧 acceptance report 中保留的 pass 证据会被重新检查，不能靠过期文件或错误 batch 混过去。
 
 ## 6. 已完成能力清单

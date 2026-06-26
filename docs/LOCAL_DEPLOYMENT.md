@@ -228,9 +228,9 @@ relief-story-agent acceptance-status `
 
 HTTP equivalent for launchers and future UI shells:
 `GET /api/local/acceptance-status?report_path=...`.
-The status query always overlays the full release matrix. A report created for
-only smoke, local-demo, or another narrow check stays blocked until the missing
-release gates have evidence.
+Generated reports and the status query always overlay the full release matrix.
+A report created for only smoke, local-demo, or another narrow check stays
+blocked until the missing release gates have evidence.
 
 To query the whole local deployment state in one call, including the ComfyUI
 address box value, selected workflow path, and acceptance evidence blockers:
@@ -638,6 +638,9 @@ relief-story-agent acceptance `
   --include-default-matrix `
   --notes "Record exact run ids, batch ids, artifact dirs, video paths, and export paths."
 ```
+
+Generated reports always include the full release matrix; the flag remains
+accepted for older command snippets and explicit manual checklists.
 
 Do not mark the software complete until the acceptance matrix has real evidence
 for tests, dry smoke, real smoke, single run, batch run, restart recovery,

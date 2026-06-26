@@ -44,8 +44,10 @@ def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
     assert report["video_paths"] == ["D:/relief_story_runs/run_demo/output.mp4"]
     assert report["checks"][0]["id"] == "full_tests"
     assert report["checks"][0]["status"] == "pass"
+    assert report["summary"]["check_count"] == 14
     assert report["summary"]["by_status"]["pass"] == 1
-    assert report["summary"]["by_status"]["manual_pending"] == 1
+    assert report["summary"]["by_status"]["manual_pending"] == 12
+    assert report["summary"]["by_status"]["fail"] == 1
     assert report["summary"]["ready_for_release"] is False
 
     markdown = (tmp_path / "ACCEPTANCE_REPORT.md").read_text(encoding="utf-8")
@@ -151,7 +153,12 @@ def test_write_acceptance_report_can_collect_smoke_result(tmp_path):
     smoke_check = next(check for check in report["checks"] if check["id"] == "comfyui_real_smoke")
     assert smoke_check["status"] == "pass"
     assert smoke_check["evidence"] == "prompt_id=prompt-abc; artifact_dir=D:/relief_story_smoke/smoke_demo"
-    assert report["summary"]["ready_for_release"] is True
+    check_ids = {check["id"] for check in report["checks"]}
+    assert "full_tests" in check_ids
+    assert "single_run" in check_ids
+    assert report["summary"]["ready_for_release"] is False
+    assert report["summary"]["check_count"] == 13
+    assert report["summary"]["by_status"]["manual_pending"] == 12
 
 
 def test_write_acceptance_report_can_collect_local_demo_summary(tmp_path):

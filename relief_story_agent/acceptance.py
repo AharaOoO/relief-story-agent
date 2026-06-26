@@ -80,8 +80,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         video_paths=video_paths,
         mode=str(payload.get("mode") or "manual"),
     )
-    if payload.get("include_default_matrix"):
-        checks = _merge_default_matrix(checks)
+    checks = _merge_default_matrix(checks)
 
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),

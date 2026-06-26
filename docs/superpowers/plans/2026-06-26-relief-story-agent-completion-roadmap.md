@@ -327,6 +327,8 @@ relief-story-agent acceptance `
 Expected: omitting `--video-path` or pointing it at a missing/invalid video keeps
 the generated `video_files` check blocking and `acceptance-status`
 `ready_for_release=false`.
+The acceptance report itself includes the full release matrix, so this single
+step records only one gate while leaving the rest pending.
 
 Do not mark project complete yet.
 
@@ -585,8 +587,9 @@ relief-story-agent acceptance-status `
 ```
 
 Expected for final completion: `ready_for_release=true`.
-The status query overlays the full release matrix, so partial reports from
-smoke-only or local-demo-only checks must still show blocking checks.
+Generated reports and the status query overlay the full release matrix, so
+partial reports from smoke-only or local-demo-only checks must still show
+blocking checks.
 
 - [ ] **Step 3: Query local-readiness**
 

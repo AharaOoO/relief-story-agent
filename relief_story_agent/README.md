@@ -547,8 +547,10 @@ relief-story-agent acceptance `
 ```
 
 The command writes `acceptance_report.json` and `ACCEPTANCE_REPORT.md`.
+The report always includes the full release matrix; `--include-default-matrix`
+is kept for older scripts and for explicit manual commands. Its
 `summary.ready_for_release` is true only when the overall status and every
-recorded check are passing. The static checklist lives in
+required release check are passing. The static checklist lives in
 `docs/ACCEPTANCE_REPORT_TEMPLATE.md`; it should not be treated as complete until
 real ComfyUI smoke, single-run, batch, restart-recovery, export, and clean-setup
 evidence has been recorded.
@@ -577,9 +579,10 @@ relief-story-agent acceptance-status `
 
 The local API exposes the same read-only status at
 `GET /api/local/acceptance-status?report_path=...`.
-`acceptance-status` evaluates the full release matrix even when a report was
-created for a narrower smoke or manual check. Missing release gates are returned
-as blockers instead of allowing a partial report to become release-ready.
+Both generated reports and `acceptance-status` evaluate the full release matrix
+even when the command was created for a narrower smoke or manual check. Missing
+release gates are returned as blockers instead of allowing a partial report to
+become release-ready.
 
 ## ComfyUI / LTX 2.3 Workflows
 

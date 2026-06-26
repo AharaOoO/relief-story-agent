@@ -571,8 +571,8 @@ Invoke-RestMethod `
   -Body '{"export_dir":"D:/relief_story_exports/{batch_id}","save_report":true}'
 ```
 
-The export validator checks publish indexes, copied video files, zip checksum,
-and the validation report.
+The export validator checks publish indexes, copied video files, non-empty
+publish videos, zip checksum, and the validation report.
 
 CLI validation:
 

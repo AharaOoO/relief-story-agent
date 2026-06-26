@@ -364,7 +364,7 @@ relief-story-agent validate-export-zip `
 
 - `publish_index.json`
 - `publish_index.csv`
-- `publish_videos/`
+- `publish_videos/` 非空 publish 视频
 - zip
 - sha256
 - validation report `valid=true`

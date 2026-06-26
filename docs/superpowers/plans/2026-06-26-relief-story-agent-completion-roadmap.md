@@ -488,7 +488,7 @@ Expected:
 export_dir present
 publish_index.json present
 publish_index.csv present
-publish_videos folder present
+publish_videos folder present with non-empty publish videos
 zip_path present
 sha256 sidecar present
 ```

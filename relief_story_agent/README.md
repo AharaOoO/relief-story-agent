@@ -1119,7 +1119,11 @@ relief-story-agent validate-export `
 {"export_dir": "D:/relief_story_exports/batch_abc123", "save_report": true}
 ```
 
-The validator checks the export manifest, publish indexes, `publish_videos/`, every publish-ready video path referenced by `publish_index.json`, plus each publish video's recorded size and sha256 checksum. With `save_report: true`, it writes `validation_report.json` into the export directory.
+The validator checks the export manifest, publish indexes, `publish_videos/`,
+every publish-ready video path referenced by `publish_index.json`, that each
+publish video is non-empty, and each publish video's recorded size and sha256
+checksum. With `save_report: true`, it writes `validation_report.json` into the
+export directory.
 
 Validate the zip itself after transfer:
 

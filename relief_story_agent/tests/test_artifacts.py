@@ -910,3 +910,45 @@ def test_validate_batch_export_package_reports_publish_video_checksum_mismatch(t
     assert failed_checks[0]["details"]["run_id"] == "run_ready_checksum"
     assert failed_checks[0]["details"]["expected_size_bytes"] == len(b"original-video")
     assert failed_checks[0]["details"]["actual_size_bytes"] == len(b"corrupted-video")
+
+
+def test_validate_batch_export_package_reports_empty_publish_video(tmp_path):
+    ready_video = tmp_path / "run_ready" / "comfyui_outputs" / "empty.mp4"
+    ready_video.parent.mkdir(parents=True)
+    ready_video.write_bytes(b"")
+    ready = RunState(
+        run_id="run_ready_empty_video",
+        request=RunRequest(idea="ready empty", output_root=str(tmp_path)),
+        status="completed",
+        current_stage="completed",
+        script={"title": "Empty Video Story", "core_sentence": "soft core"},
+        comfyui_outputs=[
+            ComfyUIOutput(
+                prompt_id="prompt_ready",
+                filename="empty.mp4",
+                media_type="video",
+                local_path=str(ready_video),
+            )
+        ],
+    )
+    batch = BatchRunState(
+        batch_id="batch_validate_empty_video",
+        status="completed",
+        summary={"total": 1, "completed": 1},
+        items=[
+            BatchRunItem(index=0, run_id=ready.run_id, idea=ready.request.idea, status=ready.status, current_stage=ready.current_stage),
+        ],
+    )
+    exported = export_batch_artifact_package(
+        batch,
+        [ready],
+        export_root=tmp_path / "exports",
+        include_zip=False,
+    )
+    broken = validate_batch_export_package(exported["export_dir"])
+
+    assert broken["valid"] is False
+    failed_checks = [check for check in broken["checks"] if check["status"] == "failed"]
+    assert failed_checks[0]["name"] == "publish_video_non_empty"
+    assert failed_checks[0]["details"]["run_id"] == "run_ready_empty_video"
+    assert failed_checks[0]["details"]["size_bytes"] == 0

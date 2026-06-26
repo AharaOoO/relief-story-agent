@@ -390,6 +390,7 @@ def validate_batch_export_package(
                     },
                 )
             )
+            checks.append(_publish_video_non_empty_check(item, video_path))
             checks.append(_publish_video_checksum_check(item, video_path))
 
     if isinstance(manifest, dict) and isinstance(publish_index, dict):
@@ -497,6 +498,30 @@ def _publish_video_checksum_check(item: dict[str, Any], video_path: Path) -> dic
         "publish_video_checksum",
         "passed" if passed else "failed",
         "publish video checksum matches." if passed else "publish video checksum mismatch.",
+        details,
+    )
+
+
+def _publish_video_non_empty_check(item: dict[str, Any], video_path: Path) -> dict[str, Any]:
+    details = {
+        "path": str(video_path),
+        "run_id": str(item.get("run_id") or ""),
+        "title": str(item.get("title") or ""),
+        "size_bytes": 0,
+    }
+    if not video_path.exists() or not video_path.is_file():
+        return _check(
+            "publish_video_non_empty",
+            "skipped",
+            "publish video non-empty check skipped because the file is missing.",
+            details,
+        )
+    size_bytes = video_path.stat().st_size
+    details["size_bytes"] = size_bytes
+    return _check(
+        "publish_video_non_empty",
+        "passed" if size_bytes > 0 else "failed",
+        "publish video is non-empty." if size_bytes > 0 else "publish video is empty.",
         details,
     )
 

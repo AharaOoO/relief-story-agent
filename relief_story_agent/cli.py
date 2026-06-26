@@ -1161,11 +1161,14 @@ def _restart_recovery_details(
         details["restart_recovery_report"] = restart_recovery_report
     if restart_recovery_before_report:
         details["restart_recovery_before_report"] = restart_recovery_before_report
-        details["before_restart"] = _read_json_file(restart_recovery_before_report)
     if restart_recovery_after_report:
         details["restart_recovery_after_report"] = restart_recovery_after_report
-        details["after_restart"] = _read_json_file(restart_recovery_after_report)
-    if "before_restart" in details or "after_restart" in details:
+    if (
+        "before_restart" in details
+        or "after_restart" in details
+        or restart_recovery_before_report
+        or restart_recovery_after_report
+    ):
         details.setdefault("status", "completed")
     return details
 

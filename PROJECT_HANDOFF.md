@@ -136,6 +136,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - 视频证据校验不会只信扩展名；MP4/MOV/M4V、WebM/MKV、AVI 都需要匹配基础容器签名。
 - `single_run=pass` 必须同时记录真实本地视频路径；缺少 `--video-path` 时 `acceptance-status` 会保留 `video_files` 阻塞项并返回 `ready_for_release=false`。
 - `single_run=pass` 还必须有顶层 `run_id`；`batch_run`、`restart_recovery` 和 `export=pass` 必须有顶层 `batch_id`，否则会重新阻塞发布。
+- `restart_recovery=pass` 的 before/after recovery-plan 路径会在生成和刷新验收报告时重新读取；路径缺失、JSON 损坏、缺 summary 或 `batch_id` 不匹配都会变成 blocker，而不是 CLI traceback。
 - 旧报告里保留的 `export=pass` 会重新检查 `details.validation_report` 和 `details.zip_validation_report`；报告缺失、JSON 无效、`valid=false` 或报告里的 `batch_id` 与顶层 `batch_id` 不一致，都会重新阻塞发布。
 - `comfyui_outputs=pass` 也会重新检查结构化 `actual_outputs` 或 outputs report；下载视频路径缺失、已删除、为空或容器签名不可识别时都会重新阻塞发布。
 - `model_check=pass` 也会重新检查记录的 model-check JSON；只有 `--real-run`、非空且全部 pass 的 checks、并包含 `image_provider` 探针时才算发布证据。

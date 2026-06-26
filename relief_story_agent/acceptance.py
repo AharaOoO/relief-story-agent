@@ -1379,9 +1379,67 @@ def _restart_recovery_payload(details: dict[str, Any]) -> dict[str, Any]:
         except (OSError, json.JSONDecodeError):
             return {**base, "error": "invalid_recovery_report_json"}
         return {**base, "payload": payload}
+    before_path = details.get("restart_recovery_before_report") or details.get("before_report") or ""
+    after_path = details.get("restart_recovery_after_report") or details.get("after_report") or ""
+    if before_path or after_path:
+        return _restart_recovery_payload_from_plan_reports(
+            before_path,
+            after_path,
+            status=str(details.get("status") or "completed"),
+        )
     if "before_restart" in details or "after_restart" in details:
         return {"payload": details}
     return {"error": "missing_recovery_evidence"}
+
+
+def _restart_recovery_payload_from_plan_reports(
+    before_path: Any,
+    after_path: Any,
+    *,
+    status: str,
+) -> dict[str, Any]:
+    before = _recovery_plan_report_payload(before_path, label="before")
+    after = _recovery_plan_report_payload(after_path, label="after")
+    result = {
+        "before_report": {key: value for key, value in before.items() if key != "payload"},
+        "after_report": {key: value for key, value in after.items() if key != "payload"},
+    }
+    before_payload = before.get("payload")
+    after_payload = after.get("payload")
+    if before.get("error"):
+        return {**result, "error": str(before["error"])}
+    if after.get("error"):
+        return {**result, "error": str(after["error"])}
+    return {
+        **result,
+        "payload": {
+            "status": status,
+            "before_restart": before_payload,
+            "after_restart": after_payload,
+        },
+    }
+
+
+def _recovery_plan_report_payload(raw_path: Any, *, label: str) -> dict[str, Any]:
+    path_value = str(raw_path or "")
+    base = {
+        "path": path_value,
+        "exists": False,
+        "error": "",
+    }
+    if not path_value:
+        return {**base, "error": f"missing_{label}_restart_report"}
+    path = Path(path_value)
+    base["exists"] = path.exists() and path.is_file()
+    if not base["exists"]:
+        return {**base, "error": f"missing_{label}_restart_report"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {**base, "error": f"invalid_{label}_restart_report_json"}
+    if not isinstance(payload, dict):
+        return {**base, "error": f"invalid_{label}_restart_report_json"}
+    return {**base, "payload": payload}
 
 
 def _recovery_plan_batch_id(payload: Any) -> str:

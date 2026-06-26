@@ -110,7 +110,7 @@ eb3fe74 fix: revalidate preserved export evidence
 - `single_run=pass` 必须带顶层 `run_id` 和真实本地视频路径。
 - `batch_run=pass` 必须带顶层 `batch_id`，并且附上结构化 `batch-artifacts` JSON。
 - completed item 必须有 publish-ready 视频路径；failed item 必须有 `failed_stage` 和 `recommended_action.code`。
-- `restart_recovery=pass` 必须带 before/after recovery-plan JSON，两个文件都要有 summary，且 `batch_id` 匹配顶层 `batch_id`。
+- `restart_recovery=pass` 必须带 before/after recovery-plan JSON，两个文件都要有 summary，且 `batch_id` 匹配顶层 `batch_id`；before/after 路径会被重新读取，文件缺失或 JSON 损坏会变成 blocker，而不是 CLI traceback。
 - `export=pass` 必须有 export package validation report 和 zip validation report，且报告里的 `batch_id` 匹配顶层 `batch_id`。
 - `comfyui_outputs=pass` 必须有结构化 `actual_outputs` 或 outputs report，且下载视频路径仍然存在、非空并有可识别的视频容器签名。
 - `model_check=pass` 必须来自 `model-check --real-run` 的 JSON，checks 非空、全部 pass，且包含 `image_provider` 探针。

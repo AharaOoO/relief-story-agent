@@ -254,7 +254,10 @@ items include both `failed_stage` and `recommended_action.code`.
 `restart_recovery=pass` also needs structured before/after recovery-plan
 evidence, either from a combined `--restart-recovery-report` JSON file or from
 the two `--restart-recovery-before-report` and
-`--restart-recovery-after-report` files.
+`--restart-recovery-after-report` files. Paired before/after paths are re-read
+when the report is generated or refreshed; missing or corrupt JSON, missing
+summaries, or mismatched `batch_id` values keep the recovery gate blocked
+instead of crashing the CLI.
 
 To query a generated report without reading Markdown manually:
 

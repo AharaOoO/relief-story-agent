@@ -1868,6 +1868,47 @@ def test_cli_acceptance_attaches_restart_recovery_before_after_reports(tmp_path)
     assert restart_check["details"]["recovery_evidence"]["valid"] is True
 
 
+def test_cli_acceptance_reports_corrupt_restart_recovery_before_report(tmp_path):
+    before_report = tmp_path / "recovery" / "before_restart.json"
+    before_report.parent.mkdir(parents=True)
+    before_report.write_text("{not valid json", encoding="utf-8")
+    after_report = _valid_recovery_plan_path(tmp_path, "after_restart.json")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "acceptance",
+            "--output-dir",
+            str(tmp_path),
+            "--mode",
+            "restart_recovery",
+            "--status",
+            "completed",
+            "--batch-id",
+            "batch_real",
+            "--check",
+            "restart_recovery=pass:restart drill verified",
+            "--restart-recovery-before-report",
+            str(before_report),
+            "--restart-recovery-after-report",
+            str(after_report),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    assert "Traceback" not in completed.stderr
+    report = json.loads((tmp_path / "acceptance_report.json").read_text(encoding="utf-8"))
+    restart_check = next(check for check in report["checks"] if check["id"] == "restart_recovery")
+    assert restart_check["status"] == "fail"
+    assert restart_check["details"]["recovery_evidence"]["valid"] is False
+    assert restart_check["details"]["recovery_evidence"]["error"] == "invalid_before_restart_report_json"
+
+
 def test_cli_acceptance_status_reports_blockers(tmp_path):
     report_path = write_acceptance_report(
         tmp_path,

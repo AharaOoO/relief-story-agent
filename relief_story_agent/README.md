@@ -217,6 +217,9 @@ items and failed items that include `failed_stage` plus
 before/after recovery-plan evidence from
 `--restart-recovery-report` or the paired
 `--restart-recovery-before-report` / `--restart-recovery-after-report` flags.
+Paired before/after report paths are re-read during acceptance refresh; missing
+or corrupt JSON, missing summaries, or mismatched `batch_id` values keep the
+recovery gate blocked instead of crashing the CLI.
 
 You can also run the offline skeleton demo by itself:
 

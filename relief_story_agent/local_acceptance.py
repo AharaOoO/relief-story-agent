@@ -532,7 +532,15 @@ def _check_from_comfyui_outputs_command(
         and str(output.get("media_type") or "") == "video"
         and str(output.get("local_path") or "")
     ]
-    download_ready = not require_download or (downloaded_count > 0 and bool(video_paths))
+    video_file_checks = _local_video_file_checks(video_paths) if require_download else []
+    valid_video_paths = [
+        str(check["path"]) for check in video_file_checks if bool(check.get("valid"))
+    ]
+    download_ready = not require_download or (
+        downloaded_count > 0
+        and bool(video_file_checks)
+        and len(valid_video_paths) == len(video_file_checks)
+    )
     is_pass = command_result["exit_code"] == 0 and ready and video_count > 0 and download_ready
     return (
         {
@@ -553,10 +561,28 @@ def _check_from_comfyui_outputs_command(
                 "stderr_path": command_result["stderr_path"],
                 "status": str(payload.get("status") or ""),
                 "actual_outputs": actual_outputs,
+                "video_file_checks": video_file_checks,
             },
         },
-        video_paths,
+        valid_video_paths if require_download else video_paths,
     )
+
+
+def _local_video_file_checks(video_paths: list[str]) -> list[dict[str, Any]]:
+    checks = []
+    for path_value in video_paths:
+        path = Path(path_value)
+        exists = path.exists() and path.is_file()
+        size_bytes = path.stat().st_size if exists else 0
+        checks.append(
+            {
+                "path": path_value,
+                "exists": exists,
+                "size_bytes": size_bytes,
+                "valid": exists and size_bytes > 0,
+            }
+        )
+    return checks
 
 
 def _last_nonempty_line(text: str) -> str:

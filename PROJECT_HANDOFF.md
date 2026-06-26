@@ -132,7 +132,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `GET /api/local/doctor` 和 `relief-story-agent local-doctor`。
 - `POST /api/local/setup-bundle` 和 `relief-story-agent setup`。
 - `relief-story-agent local-demo`：无 API key、无 GPU 的 fake model 离线演练。
-- `relief-story-agent local-acceptance`：收集 compileall、pytest、model-check、diagnose、local-demo、smoke、comfyui-output 等证据。
+- `relief-story-agent local-acceptance`：收集 compileall、pytest、model-check、diagnose、local-demo、smoke、comfyui-output 等证据；ComfyUI 下载视频证据会检查本地文件存在且非空。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
 - `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。
 
@@ -397,7 +397,7 @@ relief-story-agent local-acceptance `
 - `ACCEPTANCE_REPORT.md`
 - `ready_for_release=true`
 
-`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
+`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在且非空时才会通过。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
 
 只有这一步和真实视频、真实 batch、真实导出都通过，才能说“除 UI 外基本完成”。
 

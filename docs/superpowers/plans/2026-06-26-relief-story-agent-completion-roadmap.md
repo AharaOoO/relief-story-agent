@@ -294,7 +294,7 @@ status=completed
 final storyboard exists
 grid image exists
 ComfyUI prompt id exists
-downloaded local video path exists
+downloaded local video path exists and is non-empty
 ```
 
 - [ ] **Step 5: If ComfyUI finishes but outputs are not recorded, test output refresh**

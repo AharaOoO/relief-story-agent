@@ -342,6 +342,116 @@ def test_run_local_acceptance_can_collect_comfyui_output_refresh(tmp_path):
     assert report["video_paths"] == [str(downloaded)]
 
 
+def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_missing(tmp_path):
+    missing_video = tmp_path / "outputs" / "missing.mp4"
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "ready": True,
+                        "prompt_ids": ["prompt_video"],
+                        "video_count": 1,
+                        "image_count": 0,
+                        "downloaded_count": 1,
+                        "actual_outputs": [
+                            {
+                                "prompt_id": "prompt_video",
+                                "filename": "missing.mp4",
+                                "media_type": "video",
+                                "local_path": str(missing_video),
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                "",
+            )
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        comfyui_output_prompt_id="prompt_video",
+        comfyui_output_endpoint="http://127.0.0.1:8188",
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert checks["comfyui_outputs"]["status"] == "fail"
+    assert checks["comfyui_outputs"]["details"]["video_file_checks"] == [
+        {"path": str(missing_video), "exists": False, "size_bytes": 0, "valid": False}
+    ]
+    assert report["video_paths"] == []
+
+
+def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_empty(tmp_path):
+    empty_video = tmp_path / "outputs" / "empty.mp4"
+    empty_video.parent.mkdir(parents=True)
+    empty_video.write_bytes(b"")
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "ready": True,
+                        "prompt_ids": ["prompt_video"],
+                        "video_count": 1,
+                        "image_count": 0,
+                        "downloaded_count": 1,
+                        "actual_outputs": [
+                            {
+                                "prompt_id": "prompt_video",
+                                "filename": "empty.mp4",
+                                "media_type": "video",
+                                "local_path": str(empty_video),
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                "",
+            )
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        comfyui_output_prompt_id="prompt_video",
+        comfyui_output_endpoint="http://127.0.0.1:8188",
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert checks["comfyui_outputs"]["status"] == "fail"
+    assert checks["comfyui_outputs"]["details"]["video_file_checks"] == [
+        {"path": str(empty_video), "exists": True, "size_bytes": 0, "valid": False}
+    ]
+    assert report["video_paths"] == []
+
+
 def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_path):
     acceptance_dir = tmp_path / "acceptance"
     write_acceptance_report(

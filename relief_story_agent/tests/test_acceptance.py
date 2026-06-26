@@ -113,6 +113,13 @@ def _pipeline_schema_report_path(
     return pipeline_schema_report
 
 
+def _pytest_stdout_path(tmp_path: Path, content: str = "414 passed in 71.02s\n") -> Path:
+    pytest_stdout = tmp_path / "tests" / "pytest.stdout.txt"
+    pytest_stdout.parent.mkdir(parents=True, exist_ok=True)
+    pytest_stdout.write_text(content, encoding="utf-8")
+    return pytest_stdout
+
+
 def _valid_recovery_plan_path(tmp_path: Path, name: str, *, batch_id: str = "batch_real") -> Path:
     recovery_plan = tmp_path / "recovery" / name
     recovery_plan.parent.mkdir(parents=True, exist_ok=True)
@@ -217,6 +224,7 @@ def _passing_release_checks(
     run_diagnose_report: Path | None = None,
     batch_diagnose_report: Path | None = None,
     pipeline_schema_report: Path | None = None,
+    pytest_stdout: Path | None = None,
 ) -> list[dict[str, object]]:
     if comfyui_output_video is None:
         comfyui_output_video = validation_report.parent / "comfyui_output.mp4"
@@ -229,6 +237,8 @@ def _passing_release_checks(
         batch_diagnose_report = _diagnose_report_path(validation_report.parent, kind="batch")
     if pipeline_schema_report is None:
         pipeline_schema_report = _pipeline_schema_report_path(validation_report.parent)
+    if pytest_stdout is None:
+        pytest_stdout = _pytest_stdout_path(validation_report.parent)
     checks = []
     for default_check in DEFAULT_ACCEPTANCE_MATRIX:
         check: dict[str, object] = {
@@ -254,6 +264,11 @@ def _passing_release_checks(
         if default_check["id"] == "pipeline_schema":
             check["details"] = {
                 "pipeline_schema_report": str(pipeline_schema_report),
+            }
+        if default_check["id"] == "full_tests":
+            check["details"] = {
+                "stdout_path": str(pytest_stdout),
+                "exit_code": 0,
             }
         if default_check["id"] == "export":
             check["details"] = {
@@ -307,15 +322,16 @@ def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
     assert report["batch_id"] == "batch_demo"
     assert report["video_paths"] == ["D:/relief_story_runs/run_demo/output.mp4"]
     assert report["checks"][0]["id"] == "full_tests"
-    assert report["checks"][0]["status"] == "pass"
+    assert report["checks"][0]["status"] == "fail"
+    assert report["checks"][0]["details"]["full_tests_evidence"]["error"] == "missing_pytest_stdout"
     assert report["summary"]["check_count"] == 15
-    assert report["summary"]["by_status"]["pass"] == 1
+    assert "pass" not in report["summary"]["by_status"]
     assert report["summary"]["by_status"]["manual_pending"] == 13
-    assert report["summary"]["by_status"]["fail"] == 1
+    assert report["summary"]["by_status"]["fail"] == 2
     assert report["summary"]["ready_for_release"] is False
 
     markdown = (tmp_path / "ACCEPTANCE_REPORT.md").read_text(encoding="utf-8")
-    assert "| full_tests | python -m pytest relief_story_agent/tests -q | pass | 238 passed |" in markdown
+    assert "| full_tests | python -m pytest relief_story_agent/tests -q | fail | full_tests_valid=false; exit_code=None; passed=0; failed=0; errors=0 |" in markdown
     assert "| comfyui_real_smoke | smoke_result.json, prompt id | manual_pending |  |" in markdown
 
 
@@ -568,9 +584,10 @@ def test_build_acceptance_status_lists_blocking_checks_from_existing_report(tmp_
     assert status["exists"] is True
     assert status["ready_for_release"] is False
     blocking_ids = [check["id"] for check in status["blocking_checks"]]
-    assert blocking_ids[:2] == ["comfyui_real_smoke", "single_run"]
+    assert blocking_ids[:3] == ["full_tests", "comfyui_real_smoke", "single_run"]
     assert "local_demo" in blocking_ids
     assert "export" in blocking_ids
+    assert "run_full_tests" in status["suggested_actions"]
     assert "run_real_comfyui_smoke" in status["suggested_actions"]
     assert "run_single_end_to_end" in status["suggested_actions"]
     assert "run_local_demo" in status["suggested_actions"]
@@ -595,7 +612,7 @@ def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
     status = build_acceptance_status(report_path)
 
     assert status["ready_for_release"] is False
-    assert status["summary"]["blocking_count"] == 13
+    assert status["summary"]["blocking_count"] == 14
     assert status["summary"]["check_count"] == 14
 
 
@@ -1167,6 +1184,81 @@ def test_build_acceptance_status_blocks_pipeline_schema_with_wrong_stage_order(t
     assert "verify_pipeline_schema" in status["suggested_actions"]
 
 
+def test_build_acceptance_status_blocks_full_tests_with_failed_pytest_output(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    pytest_stdout = _pytest_stdout_path(tmp_path, "1 failed, 413 passed in 72.00s\n")
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+                pytest_stdout=pytest_stdout,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    full_tests_check = next(check for check in status["blocking_checks"] if check["id"] == "full_tests")
+    assert status["ready_for_release"] is False
+    assert full_tests_check["status"] == "fail"
+    assert full_tests_check["details"]["full_tests_evidence"]["valid"] is False
+    assert full_tests_check["details"]["full_tests_evidence"]["error"] == "pytest_failures_reported"
+    assert "run_full_tests" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_blocks_full_tests_without_exit_code(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    pytest_stdout = _pytest_stdout_path(tmp_path)
+    checks = _passing_release_checks(
+        validation_report=validation_report,
+        zip_validation_report=zip_validation_report,
+        batch_artifacts_report=batch_artifacts_report,
+        restart_recovery_report=restart_recovery_report,
+        pytest_stdout=pytest_stdout,
+    )
+    for check in checks:
+        if check["id"] == "full_tests":
+            check["details"] = {"stdout_path": str(pytest_stdout)}
+            break
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": checks,
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    full_tests_check = next(check for check in status["blocking_checks"] if check["id"] == "full_tests")
+    assert status["ready_for_release"] is False
+    assert full_tests_check["status"] == "fail"
+    assert full_tests_check["details"]["full_tests_evidence"]["valid"] is False
+    assert full_tests_check["details"]["full_tests_evidence"]["error"] == "missing_pytest_exit_code"
+    assert "run_full_tests" in status["suggested_actions"]
+
+
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):
     video_path = tmp_path / "complete.mp4"
     video_path.write_bytes(_valid_mp4_bytes())
@@ -1559,5 +1651,7 @@ def test_cli_acceptance_status_reports_blockers(tmp_path):
     assert completed.returncode == 1
     body = json.loads(completed.stdout)
     assert body["ready_for_release"] is False
-    assert body["blocking_checks"][0]["id"] == "batch_run"
+    assert body["blocking_checks"][0]["id"] == "full_tests"
+    assert body["blocking_checks"][1]["id"] == "batch_run"
+    assert "run_full_tests" in body["suggested_actions"]
     assert "run_batch_end_to_end" in body["suggested_actions"]

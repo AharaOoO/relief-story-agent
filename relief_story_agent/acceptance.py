@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -88,6 +89,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
     checks = refresh_model_check_evidence(checks)
     checks = refresh_diagnose_evidence(checks)
     checks = refresh_pipeline_schema_evidence(checks)
+    checks = refresh_full_tests_evidence(checks)
     checks = refresh_batch_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_recovery_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
@@ -130,6 +132,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
         checks = refresh_model_check_evidence(checks)
         checks = refresh_diagnose_evidence(checks)
         checks = refresh_pipeline_schema_evidence(checks)
+        checks = refresh_full_tests_evidence(checks)
         checks = refresh_batch_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_recovery_evidence(checks, batch_id=str(report.get("batch_id") or ""))
@@ -751,6 +754,120 @@ def _pipeline_schema_payload(details: dict[str, Any]) -> dict[str, Any]:
     if "canonical_stage_order" in details or "invariants" in details:
         return {"payload": details}
     return {"error": "missing_pipeline_schema_evidence"}
+
+
+def refresh_full_tests_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _refreshed_full_tests_check(check)
+        if str(check.get("id") or "") == "full_tests"
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_full_tests_check(check: dict[str, Any]) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    test_evidence = _full_tests_evidence_status(details)
+    valid = bool(test_evidence["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"full_tests_valid={str(valid).lower()}; "
+            f"exit_code={test_evidence['exit_code']}; "
+            f"passed={test_evidence['passed_count']}; "
+            f"failed={test_evidence['failed_count']}; "
+            f"errors={test_evidence['error_count']}"
+        ),
+        "details": {
+            **details,
+            "full_tests_evidence": test_evidence,
+        },
+    }
+
+
+def _full_tests_evidence_status(details: dict[str, Any]) -> dict[str, Any]:
+    result = {
+        "valid": False,
+        "error": "",
+        "path": "",
+        "exists": False,
+        "exit_code": None,
+        "passed_count": 0,
+        "failed_count": 0,
+        "error_count": 0,
+    }
+    stdout_result = _full_tests_stdout(details)
+    result = {**result, **stdout_result}
+    stdout = stdout_result.get("stdout")
+    if not isinstance(stdout, str):
+        result.pop("stdout", None)
+        if not result["error"]:
+            result["error"] = "missing_pytest_stdout"
+        return result
+
+    raw_exit_code = details.get("exit_code")
+    exit_code = (
+        None
+        if "exit_code" not in details or raw_exit_code in (None, "")
+        else _safe_int(raw_exit_code, default=-1)
+    )
+    passed_count = _pytest_count(stdout, "passed")
+    failed_count = _pytest_count(stdout, "failed")
+    error_count = _pytest_count(stdout, "error") + _pytest_count(stdout, "errors")
+    error = ""
+    if exit_code is None:
+        error = "missing_pytest_exit_code"
+    elif exit_code != 0:
+        error = "pytest_exit_code_nonzero"
+    elif passed_count <= 0:
+        error = "missing_pytest_pass_count"
+    elif failed_count > 0:
+        error = "pytest_failures_reported"
+    elif error_count > 0:
+        error = "pytest_errors_reported"
+
+    result.update(
+        {
+            "valid": not error,
+            "error": error,
+            "exit_code": exit_code,
+            "passed_count": passed_count,
+            "failed_count": failed_count,
+            "error_count": error_count,
+        }
+    )
+    result.pop("stdout", None)
+    return result
+
+
+def _full_tests_stdout(details: dict[str, Any]) -> dict[str, Any]:
+    raw_path = (
+        details.get("pytest_stdout")
+        or details.get("stdout_path")
+        or details.get("report_path")
+        or ""
+    )
+    if raw_path:
+        path = Path(str(raw_path))
+        base = {"path": str(path), "exists": path.exists() and path.is_file()}
+        if not base["exists"]:
+            return {**base, "error": "missing_pytest_stdout"}
+        try:
+            stdout = path.read_text(encoding="utf-8")
+        except OSError:
+            return {**base, "error": "unreadable_pytest_stdout"}
+        return {**base, "stdout": stdout}
+    inline_stdout = details.get("stdout")
+    if isinstance(inline_stdout, str):
+        return {"stdout": inline_stdout}
+    return {"error": "missing_pytest_stdout"}
+
+
+def _pytest_count(stdout: str, label: str) -> int:
+    matches = re.findall(rf"(\d+)\s+{re.escape(label)}\b", stdout)
+    return sum(int(match) for match in matches)
 
 
 def refresh_batch_evidence(

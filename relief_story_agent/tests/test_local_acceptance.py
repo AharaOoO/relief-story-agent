@@ -112,7 +112,9 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     assert result["status"] == "completed"
     assert checks["compileall"]["status"] == "pass"
     assert checks["full_tests"]["status"] == "pass"
-    assert checks["full_tests"]["evidence"] == "exit_code=0; 318 passed in 52.91s"
+    assert checks["full_tests"]["evidence"] == (
+        "full_tests_valid=true; exit_code=0; passed=318; failed=0; errors=0"
+    )
     assert checks["pipeline_schema"]["status"] == "pass"
     assert checks["pipeline_schema"]["evidence"] == (
         "pipeline_schema_valid=true; stage_count=10; fixed_order=true; "

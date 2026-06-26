@@ -183,5 +183,9 @@ def test_api_local_acceptance_status_reads_report(tmp_path):
     body = response.json()
     assert body["exists"] is True
     assert body["ready_for_release"] is False
-    assert body["blocking_checks"][0]["id"] == "export"
+    blocking_ids = [check["id"] for check in body["blocking_checks"]]
+    assert blocking_ids[0] == "full_tests"
+    assert "export" in blocking_ids
+    assert body["blocking_checks"][0]["details"]["full_tests_evidence"]["error"] == "missing_pytest_stdout"
+    assert "run_full_tests" in body["suggested_actions"]
     assert "export_and_validate_batch" in body["suggested_actions"]

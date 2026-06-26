@@ -241,6 +241,8 @@ the image provider probe.
 diagnose JSON; their `kind` must match and `ready` must be true.
 `pipeline_schema=pass` is revalidated from the recorded pipeline-schema JSON,
 including the fixed stage order and invariants.
+`full_tests=pass` is revalidated from recorded pytest stdout and a zero exit
+code, so failed or missing test output blocks release.
 The same status refresh requires top-level `run_id` for `single_run=pass`, and
 top-level `batch_id` for `batch_run`, `restart_recovery`, and `export=pass`, so
 release-ready reports stay traceable to concrete run and batch records.

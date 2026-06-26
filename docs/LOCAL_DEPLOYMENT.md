@@ -122,6 +122,9 @@ error. Commands that validate local request schemas, including
 structured response for schema failures.
 The server startup entrypoint uses the same structured `invalid_request`
 response when `--model-config` cannot be loaded.
+If a CLI command that talks to the local API cannot reach the server, it returns
+a structured `api_error` JSON response with the HTTP method, URL, and error
+message instead of a Python traceback.
 
 ## 4. Check ComfyUI
 

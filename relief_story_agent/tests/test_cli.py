@@ -470,6 +470,39 @@ def test_cli_run_posts_request_to_api(tmp_path):
     assert recorded["json"] == {"idea": "cli run"}
 
 
+def test_cli_post_command_reports_api_connection_error_without_traceback(tmp_path):
+    request_path = tmp_path / "run.json"
+    request_path.write_text(json.dumps({"idea": "api missing"}), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "run",
+            "--server",
+            "http://127.0.0.1:9",
+            "--request",
+            str(request_path),
+            "--timeout-seconds",
+            "0.1",
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "api_error"
+    assert body["ready"] is False
+    assert body["method"] == "POST"
+    assert "/api/runs" in body["url"]
+    assert "Unable to reach API" in body["error"]
+
+
 def test_cli_run_reports_invalid_request_json_without_traceback(tmp_path):
     request_path = tmp_path / "run.json"
     request_path.write_text("{not valid json", encoding="utf-8")
@@ -702,6 +735,36 @@ def test_cli_run_status_gets_run_detail():
     recorded = server.requests[0]
     assert recorded["method"] == "GET"
     assert recorded["path"] == "/api/runs/run_cli"
+
+
+def test_cli_get_command_reports_api_connection_error_without_traceback():
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "run-status",
+            "--server",
+            "http://127.0.0.1:9",
+            "--run-id",
+            "run_missing_api",
+            "--timeout-seconds",
+            "0.1",
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "api_error"
+    assert body["ready"] is False
+    assert body["method"] == "GET"
+    assert "/api/runs/run_missing_api" in body["url"]
+    assert "Unable to reach API" in body["error"]
 
 
 def test_cli_runs_lists_runs_with_filters():

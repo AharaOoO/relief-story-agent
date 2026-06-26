@@ -151,6 +151,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `discover-comfyui-workflows` 的本地请求参数如果 schema 校验失败（例如 `--max-results 0`），也会返回结构化 `invalid_request` JSON，而不是 Python traceback。
 - `comfyui-outputs` 的请求 JSON 如果 schema 校验失败（例如缺少有效 `prompt_ids`），也会返回带 `path` 的结构化 `invalid_request` JSON，而不是缺少文件定位信息。
 - `diagnose` 与 `model-check --run-request` 的请求 JSON 如果 schema 校验失败，也会返回结构化 `invalid_request` JSON，而不是 Python traceback。
+- 通过本地 API 的 CLI GET/POST 命令如果连不上 server，会返回带 method、url 和错误信息的结构化 `api_error` JSON，而不是 Python traceback。
 - `relief-story-agent serve` / `relief-story-agent-server` 启动时如果 `--model-config` 无法加载，也会返回结构化 `invalid_request` JSON，方便 Windows 启动器显示文件级错误。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
 - `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。

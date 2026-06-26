@@ -454,6 +454,9 @@ traceback. Commands that validate local request schemas, including
 `connect-comfyui`, `discover-comfyui-workflows`, `comfyui-outputs`,
 `diagnose`, `model-check --run-request`, and `smoke-comfyui`, use the same
 structured response for schema failures.
+If a command that talks to the local API cannot reach the server, it returns a
+structured `api_error` JSON response with the HTTP method, URL, and error
+message instead of a Python traceback.
 
 Generate a local starter bundle for a non-developer machine:
 

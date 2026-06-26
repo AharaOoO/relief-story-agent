@@ -918,9 +918,13 @@ def _get_json_command(
     query: dict[str, str | int | bool] | None = None,
 ) -> int:
     url = _api_url(args.server, path, query or {})
-    with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
-        response = client.get(url)
-        result = response.json()
+    try:
+        with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
+            response = client.get(url)
+    except httpx.RequestError as exc:
+        result = _api_error_payload("GET", url, f"Unable to reach API: {exc}")
+        return _print_api_result(args, 503, result)
+    result = response.json()
     return _print_api_result(args, response.status_code, result)
 
 
@@ -933,11 +937,25 @@ def _post_json_command(
     fail_when_invalid: bool = False,
 ) -> int:
     url = _api_url(args.server, path, query or {})
-    with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
-        response = client.post(url, json=payload)
-        result = response.json()
+    try:
+        with httpx.Client(timeout=args.timeout_seconds, trust_env=False) as client:
+            response = client.post(url, json=payload)
+    except httpx.RequestError as exc:
+        result = _api_error_payload("POST", url, f"Unable to reach API: {exc}")
+        return _print_api_result(args, 503, result)
+    result = response.json()
     status_code = 400 if fail_when_invalid and result.get("valid") is False else response.status_code
     return _print_api_result(args, status_code, result)
+
+
+def _api_error_payload(method: str, url: str, error: str) -> dict[str, Any]:
+    return {
+        "status": "api_error",
+        "ready": False,
+        "method": method,
+        "url": url,
+        "error": error,
+    }
 
 
 def _print_api_result(args: argparse.Namespace, status_code: int, result: dict) -> int:

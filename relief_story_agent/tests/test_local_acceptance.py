@@ -779,6 +779,72 @@ def test_run_local_acceptance_fails_when_preserved_export_validation_report_is_s
     assert any(check["id"] == "export" for check in status["blocking_checks"])
 
 
+def test_run_local_acceptance_fails_when_preserved_comfyui_output_video_is_stale(tmp_path):
+    acceptance_dir = tmp_path / "acceptance"
+    acceptance_dir.mkdir()
+    missing_video = tmp_path / "outputs" / "deleted.mp4"
+    (acceptance_dir / "acceptance_report.json").write_text(
+        json.dumps(
+            {
+                "mode": "local_acceptance",
+                "status": "completed",
+                "checks": [
+                    {
+                        "id": "comfyui_outputs",
+                        "status": "pass",
+                        "required_evidence": (
+                            "comfyui-outputs JSON, ready=true, video_count>0, "
+                            "openable downloaded video path"
+                        ),
+                        "evidence": "ready=true; video_count=1; downloaded_count=1",
+                        "details": {
+                            "status": "ready",
+                            "ready": True,
+                            "video_count": 1,
+                            "downloaded_count": 1,
+                            "actual_outputs": [
+                                {
+                                    "prompt_id": "prompt_video",
+                                    "filename": "deleted.mp4",
+                                    "media_type": "video",
+                                    "local_path": str(missing_video),
+                                }
+                            ],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "408 passed in 69.75s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        acceptance_dir,
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    status = json.loads(Path(result["acceptance_status"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
+    assert checks["comfyui_outputs"]["status"] == "fail"
+    assert checks["comfyui_outputs"]["details"]["comfyui_outputs_evidence"]["error"] == "invalid_downloaded_videos"
+    assert any(check["id"] == "comfyui_outputs" for check in status["blocking_checks"])
+
+
 def test_run_local_acceptance_fails_when_preserved_restart_recovery_lacks_evidence(tmp_path):
     acceptance_dir = tmp_path / "acceptance"
     acceptance_dir.mkdir()

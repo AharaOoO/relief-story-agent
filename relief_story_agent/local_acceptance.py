@@ -13,6 +13,7 @@ from .acceptance import (
     build_acceptance_status,
     checks_from_sources,
     refresh_batch_evidence,
+    refresh_comfyui_outputs_evidence,
     refresh_export_evidence,
     refresh_identity_evidence,
     refresh_recovery_evidence,
@@ -326,6 +327,7 @@ def run_local_acceptance(
         video_paths=video_paths,
         mode="local_acceptance",
     )
+    status_checks = refresh_comfyui_outputs_evidence(status_checks)
     status_checks = refresh_batch_evidence(status_checks, batch_id=preserved_batch_id)
     status_checks = refresh_export_evidence(status_checks, batch_id=preserved_batch_id)
     status_checks = refresh_recovery_evidence(status_checks, batch_id=preserved_batch_id)
@@ -340,6 +342,7 @@ def run_local_acceptance(
         and _executed_checks_pass(status_checks)
         else "failed"
     )
+    checks = refresh_comfyui_outputs_evidence(checks)
     checks = refresh_batch_evidence(checks, batch_id=preserved_batch_id)
     checks = refresh_export_evidence(checks, batch_id=preserved_batch_id)
     checks = refresh_recovery_evidence(checks, batch_id=preserved_batch_id)

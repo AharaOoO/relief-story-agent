@@ -20,6 +20,37 @@ def _valid_mp4_bytes() -> bytes:
     return _mp4_box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2") + _mp4_box(b"moov", b"\x00")
 
 
+def _valid_export_report_paths(tmp_path: Path) -> tuple[Path, Path]:
+    validation_report = tmp_path / "exports" / "batch_real" / "validation_report.json"
+    validation_report.parent.mkdir(parents=True)
+    validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
+    zip_validation_report = tmp_path / "exports" / "batch_real.zip.validation.json"
+    zip_validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
+    return validation_report, zip_validation_report
+
+
+def _passing_release_checks(
+    *,
+    validation_report: Path,
+    zip_validation_report: Path,
+) -> list[dict[str, object]]:
+    checks = []
+    for default_check in DEFAULT_ACCEPTANCE_MATRIX:
+        check: dict[str, object] = {
+            "id": default_check["id"],
+            "status": "pass",
+            "required_evidence": default_check["required_evidence"],
+            "evidence": "verified",
+        }
+        if default_check["id"] == "export":
+            check["details"] = {
+                "validation_report": str(validation_report),
+                "zip_validation_report": str(zip_validation_report),
+            }
+        checks.append(check)
+    return checks
+
+
 def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
     report_path = write_acceptance_report(
         tmp_path,
@@ -380,10 +411,8 @@ def test_build_acceptance_status_reports_failed_overall_status_as_blocker(tmp_pa
 def test_build_acceptance_status_revalidates_stale_export_validation_reports(tmp_path):
     video_path = tmp_path / "complete.mp4"
     video_path.write_bytes(_valid_mp4_bytes())
-    missing_export_report = tmp_path / "exports" / "batch_real" / "validation_report.json"
-    zip_validation_report = tmp_path / "exports" / "batch_real.zip.validation.json"
-    zip_validation_report.parent.mkdir(parents=True)
-    zip_validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
+    missing_export_report = tmp_path / "exports" / "batch_missing" / "validation_report.json"
+    _, zip_validation_report = _valid_export_report_paths(tmp_path)
     checks = [
         {
             "id": default_check["id"],
@@ -409,6 +438,8 @@ def test_build_acceptance_status_revalidates_stale_export_validation_reports(tmp
     report_path = write_acceptance_report(
         tmp_path,
         {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
             "mode": "local_acceptance",
             "status": "completed",
             "video_paths": [str(video_path)],
@@ -425,11 +456,69 @@ def test_build_acceptance_status_revalidates_stale_export_validation_reports(tmp
     assert "export_and_validate_batch" in status["suggested_actions"]
 
 
+def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    single_run_check = next(check for check in status["blocking_checks"] if check["id"] == "single_run")
+    assert status["ready_for_release"] is False
+    assert single_run_check["status"] == "fail"
+    assert single_run_check["evidence"] == "missing run_id for single_run acceptance"
+    assert "run_single_end_to_end" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_blocks_batch_release_checks_without_batch_id(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    blocking_ids = [check["id"] for check in status["blocking_checks"]]
+    assert status["ready_for_release"] is False
+    assert "batch_run" in blocking_ids
+    assert "restart_recovery" in blocking_ids
+    assert "export" in blocking_ids
+    assert "run_batch_end_to_end" in status["suggested_actions"]
+    assert "run_restart_recovery_drill" in status["suggested_actions"]
+    assert "export_and_validate_batch" in status["suggested_actions"]
+
+
 def test_build_acceptance_status_blocks_single_run_without_video_evidence(tmp_path):
     report_path = tmp_path / "acceptance_report.json"
     report_path.write_text(
         json.dumps(
             {
+                "run_id": "run_real",
                 "mode": "single_run",
                 "status": "completed",
                 "video_paths": [],
@@ -460,6 +549,7 @@ def test_build_acceptance_status_revalidates_stale_video_file_check(tmp_path):
     report_path.write_text(
         json.dumps(
             {
+                "run_id": "run_real",
                 "mode": "single_run",
                 "status": "completed",
                 "video_paths": [str(missing_video)],
@@ -508,6 +598,7 @@ def test_build_acceptance_status_rejects_stale_video_pass_without_video_paths(tm
     report_path.write_text(
         json.dumps(
             {
+                "run_id": "run_real",
                 "mode": "single_run",
                 "status": "completed",
                 "video_paths": [],

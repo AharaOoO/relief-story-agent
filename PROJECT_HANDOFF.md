@@ -135,6 +135,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `relief-story-agent local-acceptance`：收集 compileall、pytest、pipeline-schema 固定工序、model-check、diagnose、local-demo、smoke、comfyui-output 等证据；ComfyUI 下载视频证据会检查本地文件存在、非空且有可识别的视频容器。
 - 视频证据校验不会只信扩展名；MP4/MOV/M4V、WebM/MKV、AVI 都需要匹配基础容器签名。
 - `single_run=pass` 必须同时记录真实本地视频路径；缺少 `--video-path` 时 `acceptance-status` 会保留 `video_files` 阻塞项并返回 `ready_for_release=false`。
+- `single_run=pass` 还必须有顶层 `run_id`；`batch_run`、`restart_recovery` 和 `export=pass` 必须有顶层 `batch_id`，否则会重新阻塞发布。
 - 旧报告里保留的 `export=pass` 会重新检查 `details.validation_report` 和 `details.zip_validation_report`；报告缺失、JSON 无效或 `valid=false` 都会重新阻塞发布。
 - `acceptance` 生成报告时会写入完整发布矩阵，`acceptance-status` 读取旧报告时也会补齐缺失检查；只记录 smoke 或局部手工检查的报告不会被误判为 release-ready。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
@@ -403,7 +404,7 @@ relief-story-agent local-acceptance `
 - `ACCEPTANCE_REPORT.md`
 - `ready_for_release=true`
 
-`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。导入的 `smoke_result.json` / `local_demo_summary.json` 会先转成检查项再计算顶层 status，source 文件不 ready 时不会留下 completed 包。保留下来的 `video_paths` 也会在计算顶层 status 前按当前磁盘状态重新检查，旧 mp4 丢失或不可打开时不会留下 completed 包。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项；如果报告已有 `video_paths`，`local-acceptance` 和 `acceptance-status` 都不信任旧的 `video_files=pass`。`acceptance` 和 `acceptance-status` 都会补齐完整发布矩阵，缺失的 P2-P6 证据都会保持阻塞；报告顶层 status 不是 completed 时，即使单项检查都 pass，也会返回 `overall_status` 阻塞项。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
+`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。导入的 `smoke_result.json` / `local_demo_summary.json` 会先转成检查项再计算顶层 status，source 文件不 ready 时不会留下 completed 包。保留下来的 `video_paths` 也会在计算顶层 status 前按当前磁盘状态重新检查，旧 mp4 丢失或不可打开时不会留下 completed 包。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项；如果报告已有 `video_paths`，`local-acceptance` 和 `acceptance-status` 都不信任旧的 `video_files=pass`。`single_run=pass` 缺顶层 `run_id`，或 `batch_run` / `restart_recovery` / `export=pass` 缺顶层 `batch_id`，都会重新阻塞发布。`acceptance` 和 `acceptance-status` 都会补齐完整发布矩阵，缺失的 P2-P6 证据都会保持阻塞；报告顶层 status 不是 completed 时，即使单项检查都 pass，也会返回 `overall_status` 阻塞项。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
 
 只有这一步和真实视频、真实 batch、真实导出都通过，才能说“除 UI 外基本完成”。
 

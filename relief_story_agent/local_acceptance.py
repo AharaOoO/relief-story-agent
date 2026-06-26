@@ -13,6 +13,7 @@ from .acceptance import (
     build_acceptance_status,
     checks_from_sources,
     refresh_export_evidence,
+    refresh_identity_evidence,
     refresh_video_evidence,
     write_acceptance_report,
 )
@@ -324,6 +325,11 @@ def run_local_acceptance(
         mode="local_acceptance",
     )
     status_checks = refresh_export_evidence(status_checks)
+    status_checks = refresh_identity_evidence(
+        status_checks,
+        run_id=preserved_run_id,
+        batch_id=preserved_batch_id,
+    )
     status = (
         "completed"
         if all(item["exit_code"] == 0 for item in commands)
@@ -331,6 +337,11 @@ def run_local_acceptance(
         else "failed"
     )
     checks = refresh_export_evidence(checks)
+    checks = refresh_identity_evidence(
+        checks,
+        run_id=preserved_run_id,
+        batch_id=preserved_batch_id,
+    )
     report_path = write_acceptance_report(
         target_dir,
         {

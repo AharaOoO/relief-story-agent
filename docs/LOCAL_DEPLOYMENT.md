@@ -230,6 +230,9 @@ For `single_run` acceptance, a passing `single_run` check must include at least
 one recorded video path. If it does not, `acceptance-status` reports a
 `video_files` blocker and `ready_for_release=false`. Existing `video_paths` are
 rechecked on disk each time `acceptance-status` reads the report.
+The same status refresh requires top-level `run_id` for `single_run=pass`, and
+top-level `batch_id` for `batch_run`, `restart_recovery`, and `export=pass`, so
+release-ready reports stay traceable to concrete run and batch records.
 
 To query a generated report without reading Markdown manually:
 

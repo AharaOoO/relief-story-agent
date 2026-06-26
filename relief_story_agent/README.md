@@ -194,7 +194,9 @@ new local-acceptance run records the same check id again; existing `run_id`,
 must point to still-valid package and zip validation reports.
 If a preserved or newly recorded `single_run` pass has no video path evidence,
 `acceptance-status` adds a `video_files` blocker until a real local video path
-is recorded and validates. When an existing report has `video_paths`,
+is recorded and validates. It also requires top-level `run_id` for
+`single_run=pass`, and top-level `batch_id` for `batch_run`,
+`restart_recovery`, and `export=pass`. When an existing report has `video_paths`,
 `local-acceptance` and `acceptance-status` both recheck those files on disk
 instead of trusting a stale `video_files=pass` entry.
 
@@ -565,8 +567,10 @@ real ComfyUI smoke, single-run, batch, restart-recovery, export, and clean-setup
 evidence has been recorded.
 For `single_run` acceptance, a passing `single_run` check must include at least
 one `--video-path`; otherwise `video_files` stays failed and
-`acceptance-status` keeps `ready_for_release=false`. Existing video paths are
-revalidated each time `acceptance-status` reads a report.
+`acceptance-status` keeps `ready_for_release=false`. It must also include
+`--run-id`; batch, restart-recovery, and export checks that pass must keep a
+top-level `batch_id`. Existing video paths are revalidated each time
+`acceptance-status` reads a report.
 
 To collect compile/test output and optional smoke evidence automatically, use
 `relief-story-agent local-acceptance`. It preserves raw command output under

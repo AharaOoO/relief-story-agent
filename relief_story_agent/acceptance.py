@@ -85,6 +85,11 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         mode=str(payload.get("mode") or "manual"),
     )
     checks = refresh_export_evidence(checks)
+    checks = refresh_identity_evidence(
+        checks,
+        run_id=str(payload.get("run_id") or ""),
+        batch_id=str(payload.get("batch_id") or ""),
+    )
     checks = _merge_default_matrix(checks)
 
     report = {
@@ -116,6 +121,11 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             mode=str(report.get("mode") or ""),
         )
         checks = refresh_export_evidence(checks)
+        checks = refresh_identity_evidence(
+            checks,
+            run_id=str(report.get("run_id") or ""),
+            batch_id=str(report.get("batch_id") or ""),
+        )
         checks = _merge_default_matrix(checks)
         summary = _build_summary({**report, "checks": checks})
         ready_for_release = bool(summary.get("ready_for_release"))
@@ -292,6 +302,50 @@ def _validation_report_path(raw_path: Any) -> str:
     if isinstance(raw_path, dict):
         return str(raw_path.get("path") or "")
     return str(raw_path or "")
+
+
+def refresh_identity_evidence(
+    checks: list[dict[str, Any]],
+    *,
+    run_id: str,
+    batch_id: str,
+) -> list[dict[str, Any]]:
+    return [
+        _refreshed_identity_check(check, run_id=run_id, batch_id=batch_id)
+        if str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_identity_check(
+    check: dict[str, Any],
+    *,
+    run_id: str,
+    batch_id: str,
+) -> dict[str, Any]:
+    check_id = str(check.get("id") or "")
+    if check_id == "single_run" and not run_id:
+        return _identity_blocker_check(check, "missing run_id for single_run acceptance")
+    if check_id in {"batch_run", "restart_recovery", "export"} and not batch_id:
+        return _identity_blocker_check(check, f"missing batch_id for {check_id} acceptance")
+    return check
+
+
+def _identity_blocker_check(check: dict[str, Any], evidence: str) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    return {
+        **check,
+        "status": "fail",
+        "evidence": evidence,
+        "details": {
+            **details,
+            "identity_check": {
+                "valid": False,
+                "reason": evidence,
+            },
+        },
+    }
 
 
 def _merge_default_matrix(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:

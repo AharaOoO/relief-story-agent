@@ -84,6 +84,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         video_paths=video_paths,
         mode=str(payload.get("mode") or "manual"),
     )
+    checks = refresh_export_evidence(checks)
     checks = _merge_default_matrix(checks)
 
     report = {
@@ -114,6 +115,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
         )
+        checks = refresh_export_evidence(checks)
         checks = _merge_default_matrix(checks)
         summary = _build_summary({**report, "checks": checks})
         ready_for_release = bool(summary.get("ready_for_release"))
@@ -229,6 +231,67 @@ def refresh_video_evidence(
             "details": {"videos": []},
         },
     ]
+
+
+def refresh_export_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _refreshed_export_check(check)
+        if str(check.get("id") or "") == "export"
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_export_check(check: dict[str, Any]) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    validation_report = _validation_report_status(details.get("validation_report"))
+    zip_validation_report = _validation_report_status(details.get("zip_validation_report"))
+    valid = bool(validation_report["valid"] and zip_validation_report["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"validation_report_valid={str(bool(validation_report['valid'])).lower()}; "
+            f"zip_validation_report_valid={str(bool(zip_validation_report['valid'])).lower()}"
+        ),
+        "details": {
+            **details,
+            "validation_report": validation_report,
+            "zip_validation_report": zip_validation_report,
+        },
+    }
+
+
+def _validation_report_status(raw_path: Any) -> dict[str, Any]:
+    path_value = _validation_report_path(raw_path)
+    result = {
+        "path": path_value,
+        "exists": False,
+        "valid": False,
+        "error": "",
+    }
+    if not path_value:
+        return {**result, "error": "missing_report_path"}
+    path = Path(path_value)
+    result["exists"] = path.exists() and path.is_file()
+    if not result["exists"]:
+        return {**result, "error": "missing_report"}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {**result, "error": "invalid_report_json"}
+    return {
+        **result,
+        "valid": bool(payload.get("valid")),
+        "reported_valid": bool(payload.get("valid")),
+    }
+
+
+def _validation_report_path(raw_path: Any) -> str:
+    if isinstance(raw_path, dict):
+        return str(raw_path.get("path") or "")
+    return str(raw_path or "")
 
 
 def _merge_default_matrix(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:

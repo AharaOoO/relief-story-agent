@@ -188,9 +188,10 @@ is used with download evidence, the reported video `local_path` must exist on
 disk, be non-empty, and have a recognized video container before the ComfyUI
 output check can pass; the validator checks container signatures instead of
 trusting the filename extension. If an `acceptance_report.json` already exists
-in the output directory, passed checks from that report are preserved unless the new
-local-acceptance run records the same check id again; existing `run_id`,
-`batch_id`, and video paths are carried forward too.
+in the output directory, passed checks from that report are preserved unless the
+new local-acceptance run records the same check id again; existing `run_id`,
+`batch_id`, and video paths are carried forward too. Preserved export checks
+must point to still-valid package and zip validation reports.
 If a preserved or newly recorded `single_run` pass has no video path evidence,
 `acceptance-status` adds a `video_files` blocker until a real local video path
 is recorded and validates. When an existing report has `video_paths`,
@@ -579,7 +580,9 @@ and `local_demo_summary.json` are also interpreted before the top-level
 `local-acceptance` status is set, so a not-ready smoke or demo summary cannot
 leave the bundle marked completed. Preserved video paths are revalidated at the
 same point, so a stale local mp4 path fails the bundle before the report is
-written.
+written. Preserved export checks are also revalidated from their recorded
+`details.validation_report` and `details.zip_validation_report` paths, so a
+missing or invalid export package cannot stay green.
 
 To inspect an existing report from scripts, another AI reviewer, or a future UI,
 use:

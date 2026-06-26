@@ -12,6 +12,7 @@ from .acceptance import (
     PASS_STATUSES,
     build_acceptance_status,
     checks_from_sources,
+    refresh_export_evidence,
     refresh_video_evidence,
     write_acceptance_report,
 )
@@ -322,12 +323,14 @@ def run_local_acceptance(
         video_paths=video_paths,
         mode="local_acceptance",
     )
+    status_checks = refresh_export_evidence(status_checks)
     status = (
         "completed"
         if all(item["exit_code"] == 0 for item in commands)
         and _executed_checks_pass(status_checks)
         else "failed"
     )
+    checks = refresh_export_evidence(checks)
     report_path = write_acceptance_report(
         target_dir,
         {

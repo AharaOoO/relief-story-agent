@@ -135,6 +135,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `relief-story-agent local-acceptance`：收集 compileall、pytest、pipeline-schema 固定工序、model-check、diagnose、local-demo、smoke、comfyui-output 等证据；ComfyUI 下载视频证据会检查本地文件存在、非空且有可识别的视频容器。
 - 视频证据校验不会只信扩展名；MP4/MOV/M4V、WebM/MKV、AVI 都需要匹配基础容器签名。
 - `single_run=pass` 必须同时记录真实本地视频路径；缺少 `--video-path` 时 `acceptance-status` 会保留 `video_files` 阻塞项并返回 `ready_for_release=false`。
+- 旧报告里保留的 `export=pass` 会重新检查 `details.validation_report` 和 `details.zip_validation_report`；报告缺失、JSON 无效或 `valid=false` 都会重新阻塞发布。
 - `acceptance` 生成报告时会写入完整发布矩阵，`acceptance-status` 读取旧报告时也会补齐缺失检查；只记录 smoke 或局部手工检查的报告不会被误判为 release-ready。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
 - `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。

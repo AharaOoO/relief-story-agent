@@ -214,7 +214,8 @@ filename extension. The `pipeline_schema` check must pass to prove the fixed
 canonical stage order and invariants are still intact. Re-running `local-acceptance` in
 the same output directory preserves
 previously passed checks, such as `single_run`, `batch_run`, `restart_recovery`,
-and `export`, unless the new run records the same check id again; existing
+and `export`, unless the new run records the same check id again; preserved
+export checks must point to still-valid package and zip validation reports. Existing
 `run_id`, `batch_id`, and video paths are also carried forward.
 Imported `smoke_result.json` and `local_demo_summary.json` evidence is parsed
 before the top-level bundle status is set, so a not-ready source file marks
@@ -222,6 +223,9 @@ before the top-level bundle status is set, so a not-ready source file marks
 Preserved `video_paths` from an existing report are also rechecked before the
 top-level bundle status is set, so a stale or missing mp4 keeps the bundle
 failed instead of only appearing later as an `acceptance-status` blocker.
+Preserved export checks are revalidated from their recorded
+`details.validation_report` and `details.zip_validation_report` paths, so stale
+export evidence also keeps the bundle failed.
 For `single_run` acceptance, a passing `single_run` check must include at least
 one recorded video path. If it does not, `acceptance-status` reports a
 `video_files` blocker and `ready_for_release=false`. Existing `video_paths` are

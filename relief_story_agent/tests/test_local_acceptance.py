@@ -647,6 +647,14 @@ def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_unopenable(
 
 def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_path):
     acceptance_dir = tmp_path / "acceptance"
+    video_path = tmp_path / "runs" / "run_real" / "output.mp4"
+    video_path.parent.mkdir(parents=True)
+    video_path.write_bytes(MINIMAL_MP4_BYTES)
+    export_validation_report = tmp_path / "exports" / "batch_real" / "validation_report.json"
+    export_validation_report.parent.mkdir(parents=True)
+    export_validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
+    zip_validation_report = tmp_path / "exports" / "batch_real.zip.validation.json"
+    zip_validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
     write_acceptance_report(
         acceptance_dir,
         {
@@ -659,16 +667,20 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
                     "id": "single_run",
                     "status": "pass",
                     "required_evidence": "run artifact dir, downloaded video path",
-                    "evidence": "run_id=run_real; video=D:/runs/run_real/output.mp4",
+                    "evidence": f"run_id=run_real; video={video_path}",
                 },
                 {
                     "id": "export",
                     "status": "pass",
                     "required_evidence": "publish index, zip, sha256",
                     "evidence": "export_dir=D:/exports/batch_real; valid=true",
+                    "details": {
+                        "validation_report": str(export_validation_report),
+                        "zip_validation_report": str(zip_validation_report),
+                    },
                 },
             ],
-            "video_paths": ["D:/runs/run_real/output.mp4"],
+            "video_paths": [str(video_path)],
         },
     )
 
@@ -695,10 +707,69 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
     assert report["batch_id"] == "batch_real"
     assert checks["full_tests"]["status"] == "pass"
     assert checks["single_run"]["status"] == "pass"
-    assert checks["single_run"]["evidence"] == "run_id=run_real; video=D:/runs/run_real/output.mp4"
+    assert checks["single_run"]["evidence"] == f"run_id=run_real; video={video_path}"
     assert checks["export"]["status"] == "pass"
-    assert checks["export"]["evidence"] == "export_dir=D:/exports/batch_real; valid=true"
-    assert "D:/runs/run_real/output.mp4" in report["video_paths"]
+    assert checks["export"]["evidence"] == "validation_report_valid=true; zip_validation_report_valid=true"
+    assert str(video_path) in report["video_paths"]
+
+
+def test_run_local_acceptance_fails_when_preserved_export_validation_report_is_stale(tmp_path):
+    acceptance_dir = tmp_path / "acceptance"
+    acceptance_dir.mkdir()
+    video_path = tmp_path / "runs" / "run_real" / "output.mp4"
+    video_path.parent.mkdir(parents=True)
+    video_path.write_bytes(MINIMAL_MP4_BYTES)
+    stale_export_report = tmp_path / "exports" / "batch_real" / "validation_report.json"
+    (acceptance_dir / "acceptance_report.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_real",
+                "batch_id": "batch_real",
+                "mode": "local_acceptance",
+                "status": "completed",
+                "video_paths": [str(video_path)],
+                "checks": [
+                    {
+                        "id": "export",
+                        "status": "pass",
+                        "required_evidence": "publish index, zip, sha256",
+                        "evidence": "export_dir=D:/exports/batch_real; valid=true",
+                        "details": {
+                            "validation_report": str(stale_export_report),
+                            "zip_validation_report": "",
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "388 passed in 66.43s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        acceptance_dir,
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    status = json.loads(Path(result["acceptance_status"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
+    assert checks["export"]["status"] == "fail"
+    assert checks["export"]["details"]["validation_report"]["exists"] is False
+    assert any(check["id"] == "export" for check in status["blocking_checks"])
 
 
 def test_run_local_acceptance_fails_when_preserved_video_path_is_stale(tmp_path):

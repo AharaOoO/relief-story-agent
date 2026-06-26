@@ -12,6 +12,14 @@ from relief_story_agent.acceptance import (
 )
 
 
+def _mp4_box(kind: bytes, payload: bytes = b"") -> bytes:
+    return (len(payload) + 8).to_bytes(4, "big") + kind + payload
+
+
+def _valid_mp4_bytes() -> bytes:
+    return _mp4_box(b"ftyp", b"isom\x00\x00\x02\x00isomiso2") + _mp4_box(b"moov", b"\x00")
+
+
 def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
     report_path = write_acceptance_report(
         tmp_path,
@@ -341,7 +349,7 @@ def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
 
 def test_build_acceptance_status_reports_failed_overall_status_as_blocker(tmp_path):
     video_path = tmp_path / "complete.webm"
-    video_path.write_bytes(b"video")
+    video_path.write_bytes(b"\x1a\x45\xdf\xa3\x42\x82\x84webm\x00")
     report_path = write_acceptance_report(
         tmp_path,
         {
@@ -367,6 +375,54 @@ def test_build_acceptance_status_reports_failed_overall_status_as_blocker(tmp_pa
     assert status["blocking_checks"][0]["status"] == "fail"
     assert status["blocking_checks"][0]["evidence"] == "status=failed"
     assert "rerun_local_acceptance" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_revalidates_stale_export_validation_reports(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    missing_export_report = tmp_path / "exports" / "batch_real" / "validation_report.json"
+    zip_validation_report = tmp_path / "exports" / "batch_real.zip.validation.json"
+    zip_validation_report.parent.mkdir(parents=True)
+    zip_validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
+    checks = [
+        {
+            "id": default_check["id"],
+            "status": "pass",
+            "required_evidence": default_check["required_evidence"],
+            "evidence": "verified",
+        }
+        for default_check in DEFAULT_ACCEPTANCE_MATRIX
+        if default_check["id"] != "export"
+    ]
+    checks.append(
+        {
+            "id": "export",
+            "status": "pass",
+            "required_evidence": "publish index, zip, sha256",
+            "evidence": "export_dir=D:/exports/batch_real; valid=true",
+            "details": {
+                "validation_report": str(missing_export_report),
+                "zip_validation_report": str(zip_validation_report),
+            },
+        }
+    )
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": checks,
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    export_check = next(check for check in status["blocking_checks"] if check["id"] == "export")
+    assert status["ready_for_release"] is False
+    assert export_check["status"] == "fail"
+    assert export_check["details"]["validation_report"]["exists"] is False
+    assert "export_and_validate_batch" in status["suggested_actions"]
 
 
 def test_build_acceptance_status_blocks_single_run_without_video_evidence(tmp_path):

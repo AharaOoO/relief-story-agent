@@ -29,10 +29,51 @@ def _valid_export_report_paths(tmp_path: Path) -> tuple[Path, Path]:
     return validation_report, zip_validation_report
 
 
+def _valid_restart_recovery_report_path(tmp_path: Path, *, batch_id: str = "batch_real") -> Path:
+    recovery_report = tmp_path / "recovery" / f"{batch_id}_restart_recovery.json"
+    recovery_report.parent.mkdir(parents=True)
+    recovery_report.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "before_restart": {
+                    "batch_id": batch_id,
+                    "summary": {"total_items": 1, "auto_retryable_count": 1},
+                    "items": [{"run_id": "run_retry", "safe_to_auto_execute": True}],
+                },
+                "after_restart": {
+                    "batch_id": batch_id,
+                    "summary": {"total_items": 1, "auto_retryable_count": 1},
+                    "items": [{"run_id": "run_retry", "safe_to_auto_execute": True}],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return recovery_report
+
+
+def _valid_recovery_plan_path(tmp_path: Path, name: str, *, batch_id: str = "batch_real") -> Path:
+    recovery_plan = tmp_path / "recovery" / name
+    recovery_plan.parent.mkdir(parents=True, exist_ok=True)
+    recovery_plan.write_text(
+        json.dumps(
+            {
+                "batch_id": batch_id,
+                "summary": {"total_items": 1, "auto_retryable_count": 1},
+                "items": [{"run_id": "run_retry", "safe_to_auto_execute": True}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return recovery_plan
+
+
 def _passing_release_checks(
     *,
     validation_report: Path,
     zip_validation_report: Path,
+    restart_recovery_report: Path | None = None,
 ) -> list[dict[str, object]]:
     checks = []
     for default_check in DEFAULT_ACCEPTANCE_MATRIX:
@@ -46,6 +87,10 @@ def _passing_release_checks(
             check["details"] = {
                 "validation_report": str(validation_report),
                 "zip_validation_report": str(zip_validation_report),
+            }
+        if default_check["id"] == "restart_recovery" and restart_recovery_report:
+            check["details"] = {
+                "restart_recovery_report": str(restart_recovery_report),
             }
         checks.append(check)
     return checks
@@ -495,6 +540,71 @@ def test_build_acceptance_status_blocks_export_report_for_different_batch(tmp_pa
     assert export_check["details"]["validation_report"]["batch_id_matches"] is False
 
 
+def test_build_acceptance_status_blocks_restart_recovery_pass_without_structured_evidence(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    restart_check = next(
+        check for check in status["blocking_checks"] if check["id"] == "restart_recovery"
+    )
+    assert status["ready_for_release"] is False
+    assert restart_check["status"] == "fail"
+    assert restart_check["details"]["recovery_evidence"]["valid"] is False
+    assert restart_check["details"]["recovery_evidence"]["error"] == "missing_recovery_evidence"
+    assert "run_restart_recovery_drill" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_accepts_restart_recovery_report_for_same_batch(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                restart_recovery_report=restart_recovery_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    restart_check = next(
+        check for check in report["checks"] if check["id"] == "restart_recovery"
+    )
+
+    assert status["ready_for_release"] is True
+    assert restart_check["status"] == "pass"
+    assert restart_check["details"]["recovery_evidence"]["valid"] is True
+    assert restart_check["details"]["recovery_evidence"]["before_batch_id"] == "batch_real"
+    assert restart_check["details"]["recovery_evidence"]["after_batch_id"] == "batch_real"
+
+
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):
     video_path = tmp_path / "complete.mp4"
     video_path.write_bytes(_valid_mp4_bytes())
@@ -702,6 +812,78 @@ def test_cli_acceptance_writes_report(tmp_path):
     assert report["run_id"] == "run_demo"
     assert report["checks"][0]["id"] == "full_tests"
     assert any(check["id"] == "restart_recovery" for check in report["checks"])
+
+
+def test_cli_acceptance_attaches_restart_recovery_report(tmp_path):
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "acceptance",
+            "--output-dir",
+            str(tmp_path),
+            "--mode",
+            "restart_recovery",
+            "--status",
+            "completed",
+            "--batch-id",
+            "batch_real",
+            "--check",
+            "restart_recovery=pass:restart drill verified",
+            "--restart-recovery-report",
+            str(restart_recovery_report),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    report = json.loads((tmp_path / "acceptance_report.json").read_text(encoding="utf-8"))
+    restart_check = next(check for check in report["checks"] if check["id"] == "restart_recovery")
+    assert restart_check["status"] == "pass"
+    assert restart_check["details"]["restart_recovery_report"] == str(restart_recovery_report)
+    assert restart_check["details"]["recovery_evidence"]["valid"] is True
+
+
+def test_cli_acceptance_attaches_restart_recovery_before_after_reports(tmp_path):
+    before_report = _valid_recovery_plan_path(tmp_path, "before_restart.json")
+    after_report = _valid_recovery_plan_path(tmp_path, "after_restart.json")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "acceptance",
+            "--output-dir",
+            str(tmp_path),
+            "--mode",
+            "restart_recovery",
+            "--status",
+            "completed",
+            "--batch-id",
+            "batch_real",
+            "--check",
+            "restart_recovery=pass:restart drill verified",
+            "--restart-recovery-before-report",
+            str(before_report),
+            "--restart-recovery-after-report",
+            str(after_report),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    report = json.loads((tmp_path / "acceptance_report.json").read_text(encoding="utf-8"))
+    restart_check = next(check for check in report["checks"] if check["id"] == "restart_recovery")
+    assert restart_check["status"] == "pass"
+    assert restart_check["details"]["restart_recovery_before_report"] == str(before_report)
+    assert restart_check["details"]["restart_recovery_after_report"] == str(after_report)
+    assert restart_check["details"]["recovery_evidence"]["valid"] is True
 
 
 def test_cli_acceptance_status_reports_blockers(tmp_path):

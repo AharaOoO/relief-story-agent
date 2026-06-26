@@ -234,6 +234,10 @@ rechecked on disk each time `acceptance-status` reads the report.
 The same status refresh requires top-level `run_id` for `single_run=pass`, and
 top-level `batch_id` for `batch_run`, `restart_recovery`, and `export=pass`, so
 release-ready reports stay traceable to concrete run and batch records.
+`restart_recovery=pass` also needs structured before/after recovery-plan
+evidence, either from a combined `--restart-recovery-report` JSON file or from
+the two `--restart-recovery-before-report` and
+`--restart-recovery-after-report` files.
 
 To query a generated report without reading Markdown manually:
 
@@ -530,15 +534,19 @@ Use `batch-timeline` for launcher/UI progress cards: it reports total batch perc
 
 ## 10. Recovery Drill
 
-Stop the API while a batch is queued or running. Start it again with the same
-`--state-dir`, then inspect:
+Before stopping the API, capture the recovery plan while the batch is queued or
+running:
 
 ```powershell
 relief-story-agent recovery-plan `
   --server "http://127.0.0.1:8891" `
   --batch-id "{batch_id}" `
-  --pretty
+  --pretty > "D:/relief_story_acceptance/recovery_before_restart.json"
+```
 
+Stop the API, start it again with the same `--state-dir`, then inspect:
+
+```powershell
 relief-story-agent scheduler `
   --server "http://127.0.0.1:8891" `
   --pretty
@@ -547,6 +555,11 @@ relief-story-agent batch-status `
   --server "http://127.0.0.1:8891" `
   --batch-id "{batch_id}" `
   --pretty
+
+relief-story-agent recovery-plan `
+  --server "http://127.0.0.1:8891" `
+  --batch-id "{batch_id}" `
+  --pretty > "D:/relief_story_acceptance/recovery_after_restart.json"
 ```
 
 HTTP equivalent:
@@ -565,6 +578,25 @@ relief-story-agent recover-batch `
   --dry-run `
   --pretty
 ```
+
+Record the recovery gate with the saved before/after recovery-plan files:
+
+```powershell
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "restart_recovery" `
+  --status "manual_pending" `
+  --batch-id "{batch_id}" `
+  --check "restart_recovery=pass:batch {batch_id} survived restart and recovery-plan was queryable" `
+  --restart-recovery-before-report "D:/relief_story_acceptance/recovery_before_restart.json" `
+  --restart-recovery-after-report "D:/relief_story_acceptance/recovery_after_restart.json" `
+  --include-default-matrix `
+  --pretty
+```
+
+`acceptance-status` keeps `restart_recovery=pass` blocked unless the recorded
+before and after recovery plans both exist, parse as JSON, include summaries,
+and match the acceptance report's top-level `batch_id`.
 
 HTTP equivalent:
 

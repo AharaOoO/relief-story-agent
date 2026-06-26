@@ -85,6 +85,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         mode=str(payload.get("mode") or "manual"),
     )
     checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
+    checks = refresh_recovery_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_identity_evidence(
         checks,
         run_id=str(payload.get("run_id") or ""),
@@ -121,6 +122,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             mode=str(report.get("mode") or ""),
         )
         checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
+        checks = refresh_recovery_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_identity_evidence(
             checks,
             run_id=str(report.get("run_id") or ""),
@@ -360,6 +362,152 @@ def _batch_id_from_zip_path(path: Path) -> str:
     if name.endswith(".zip"):
         return name[: -len(".zip")]
     return path.stem
+
+
+def refresh_recovery_evidence(
+    checks: list[dict[str, Any]],
+    *,
+    batch_id: str = "",
+) -> list[dict[str, Any]]:
+    return [
+        _refreshed_restart_recovery_check(check, batch_id=batch_id)
+        if str(check.get("id") or "") == "restart_recovery"
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_restart_recovery_check(
+    check: dict[str, Any],
+    *,
+    batch_id: str,
+) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    recovery_evidence = _restart_recovery_evidence_status(details, expected_batch_id=batch_id)
+    valid = bool(recovery_evidence["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"recovery_evidence_valid={str(valid).lower()}; "
+            f"before_batch_id_matches={str(bool(recovery_evidence['before_batch_id_matches'])).lower()}; "
+            f"after_batch_id_matches={str(bool(recovery_evidence['after_batch_id_matches'])).lower()}"
+        ),
+        "details": {
+            **details,
+            "recovery_evidence": recovery_evidence,
+        },
+    }
+
+
+def _restart_recovery_evidence_status(
+    details: dict[str, Any],
+    *,
+    expected_batch_id: str = "",
+) -> dict[str, Any]:
+    result = {
+        "valid": False,
+        "error": "",
+        "path": "",
+        "exists": False,
+        "expected_batch_id": expected_batch_id,
+        "status": "",
+        "has_before_restart": False,
+        "has_after_restart": False,
+        "before_batch_id": "",
+        "after_batch_id": "",
+        "before_batch_id_matches": False,
+        "after_batch_id_matches": False,
+        "before_summary_present": False,
+        "after_summary_present": False,
+    }
+    if not expected_batch_id:
+        result["error"] = "missing_expected_batch_id"
+        return result
+
+    payload_result = _restart_recovery_payload(details)
+    result = {**result, **payload_result}
+    payload = payload_result.get("payload")
+    if not isinstance(payload, dict):
+        result.pop("payload", None)
+        if not result["error"]:
+            result["error"] = "missing_recovery_evidence"
+        return result
+
+    status = str(payload.get("status") or "")
+    before_restart = payload.get("before_restart") or {}
+    after_restart = payload.get("after_restart") or {}
+    before_batch_id = _recovery_plan_batch_id(before_restart)
+    after_batch_id = _recovery_plan_batch_id(after_restart)
+    before_summary_present = bool(
+        isinstance(before_restart, dict) and isinstance(before_restart.get("summary"), dict)
+    )
+    after_summary_present = bool(
+        isinstance(after_restart, dict) and isinstance(after_restart.get("summary"), dict)
+    )
+    before_batch_id_matches = before_batch_id == expected_batch_id
+    after_batch_id_matches = after_batch_id == expected_batch_id
+    error = ""
+    if status.lower() not in PASS_STATUSES:
+        error = "recovery_status_not_completed"
+    elif not isinstance(before_restart, dict) or not before_restart:
+        error = "missing_before_restart_plan"
+    elif not isinstance(after_restart, dict) or not after_restart:
+        error = "missing_after_restart_plan"
+    elif not before_summary_present:
+        error = "missing_before_restart_summary"
+    elif not after_summary_present:
+        error = "missing_after_restart_summary"
+    elif not before_batch_id_matches or not after_batch_id_matches:
+        error = "batch_id_mismatch"
+
+    valid = not error
+    result.update(
+        {
+            "valid": valid,
+            "error": error,
+            "status": status,
+            "has_before_restart": isinstance(before_restart, dict) and bool(before_restart),
+            "has_after_restart": isinstance(after_restart, dict) and bool(after_restart),
+            "before_batch_id": before_batch_id,
+            "after_batch_id": after_batch_id,
+            "before_batch_id_matches": before_batch_id_matches,
+            "after_batch_id_matches": after_batch_id_matches,
+            "before_summary_present": before_summary_present,
+            "after_summary_present": after_summary_present,
+        }
+    )
+    result.pop("payload", None)
+    return result
+
+
+def _restart_recovery_payload(details: dict[str, Any]) -> dict[str, Any]:
+    raw_path = (
+        details.get("restart_recovery_report")
+        or details.get("recovery_report")
+        or details.get("report_path")
+        or ""
+    )
+    if raw_path:
+        path = Path(str(raw_path))
+        base = {"path": str(path), "exists": path.exists() and path.is_file()}
+        if not base["exists"]:
+            return {**base, "error": "missing_recovery_report"}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {**base, "error": "invalid_recovery_report_json"}
+        return {**base, "payload": payload}
+    if "before_restart" in details or "after_restart" in details:
+        return {"payload": details}
+    return {"error": "missing_recovery_evidence"}
+
+
+def _recovery_plan_batch_id(payload: Any) -> str:
+    if not isinstance(payload, dict):
+        return ""
+    return str(payload.get("batch_id") or "")
 
 
 def refresh_identity_evidence(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlencode
 
 import httpx
@@ -313,6 +314,21 @@ def main(argv: list[str] | None = None) -> int:
         action="append",
         default=[],
         help="Check in id=status[:evidence] format. Repeat for multiple checks.",
+    )
+    acceptance_parser.add_argument(
+        "--restart-recovery-report",
+        default="",
+        help="JSON report with before_restart and after_restart recovery plans for restart_recovery evidence.",
+    )
+    acceptance_parser.add_argument(
+        "--restart-recovery-before-report",
+        default="",
+        help="JSON recovery-plan output captured before the API restart.",
+    )
+    acceptance_parser.add_argument(
+        "--restart-recovery-after-report",
+        default="",
+        help="JSON recovery-plan output captured after the API restart.",
     )
     acceptance_parser.add_argument("--smoke-result", default="", help="Optional smoke_result.json path to import.")
     acceptance_parser.add_argument(
@@ -900,6 +916,12 @@ def _acceptance(args: argparse.Namespace) -> int:
     sources = {}
     if args.smoke_result:
         sources["smoke_result"] = args.smoke_result
+    checks = _attach_restart_recovery_report(
+        [_parse_check_arg(value) for value in args.check],
+        restart_recovery_report=args.restart_recovery_report,
+        restart_recovery_before_report=args.restart_recovery_before_report,
+        restart_recovery_after_report=args.restart_recovery_after_report,
+    )
     report_path = write_acceptance_report(
         args.output_dir,
         {
@@ -908,7 +930,7 @@ def _acceptance(args: argparse.Namespace) -> int:
             "mode": args.mode,
             "status": args.status,
             "video_paths": args.video_path,
-            "checks": [_parse_check_arg(value) for value in args.check],
+            "checks": checks,
             "sources": sources,
             "include_default_matrix": args.include_default_matrix,
             "notes": args.notes,
@@ -950,6 +972,82 @@ def _local_acceptance(args: argparse.Namespace) -> int:
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0 if result.get("status") == "completed" else 1
+
+
+def _attach_restart_recovery_report(
+    checks: list[dict[str, str]],
+    *,
+    restart_recovery_report: str,
+    restart_recovery_before_report: str = "",
+    restart_recovery_after_report: str = "",
+) -> list[dict[str, Any]]:
+    restart_details = _restart_recovery_details(
+        restart_recovery_report=restart_recovery_report,
+        restart_recovery_before_report=restart_recovery_before_report,
+        restart_recovery_after_report=restart_recovery_after_report,
+    )
+    if not restart_details:
+        return checks
+    attached: list[dict[str, Any]] = []
+    found = False
+    for check in checks:
+        if check.get("id") != "restart_recovery":
+            attached.append(check)
+            continue
+        found = True
+        details = check.get("details") if isinstance(check.get("details"), dict) else {}
+        attached.append(
+            {
+                **check,
+                "details": {
+                    **details,
+                    **restart_details,
+                },
+            }
+        )
+    if found:
+        return attached
+    return [
+        *attached,
+        {
+            "id": "restart_recovery",
+            "status": "pass",
+            "required_evidence": "recovery-plan before/after restart",
+            "evidence": _restart_recovery_evidence_text(restart_details),
+            "details": restart_details,
+        },
+    ]
+
+
+def _restart_recovery_details(
+    *,
+    restart_recovery_report: str,
+    restart_recovery_before_report: str,
+    restart_recovery_after_report: str,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {}
+    if restart_recovery_report:
+        details["restart_recovery_report"] = restart_recovery_report
+    if restart_recovery_before_report:
+        details["restart_recovery_before_report"] = restart_recovery_before_report
+        details["before_restart"] = _read_json_file(restart_recovery_before_report)
+    if restart_recovery_after_report:
+        details["restart_recovery_after_report"] = restart_recovery_after_report
+        details["after_restart"] = _read_json_file(restart_recovery_after_report)
+    if "before_restart" in details or "after_restart" in details:
+        details.setdefault("status", "completed")
+    return details
+
+
+def _restart_recovery_evidence_text(details: dict[str, Any]) -> str:
+    if details.get("restart_recovery_report"):
+        return f"restart_recovery_report={details['restart_recovery_report']}"
+    parts = []
+    if details.get("restart_recovery_before_report"):
+        parts.append(f"before={details['restart_recovery_before_report']}")
+    if details.get("restart_recovery_after_report"):
+        parts.append(f"after={details['restart_recovery_after_report']}")
+    return "; ".join(parts)
 
 
 def _parse_check_arg(value: str) -> dict[str, str]:

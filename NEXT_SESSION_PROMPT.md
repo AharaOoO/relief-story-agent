@@ -57,6 +57,7 @@ chief_screenwriter
 - `local_comfyui_smoke` 已实现，不要重复造。
 - 已新增 `GET /api/local/readiness` 和 `relief-story-agent local-readiness`，它是未来 UI/启动器“填 ComfyUI 地址后一键检查本地部署”的后端入口。
 - `local-acceptance` 会记录 `pipeline_schema`，用来证明固定工序顺序和关键 invariants 没有漂移。
+- `restart_recovery=pass` 需要 before/after recovery-plan JSON 证据，可用 `--restart-recovery-before-report` / `--restart-recovery-after-report` 写入验收报告。
 - 不要自动生成 ComfyUI 节点图，只使用用户本地已有 ComfyUI 整合包和用户提供的 workflow。
 - 不要 `git add .`，因为 `D:\codex工作区` 下还有其他项目。只提交 relief-story-agent 相关文件。
 

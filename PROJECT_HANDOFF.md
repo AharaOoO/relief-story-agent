@@ -324,14 +324,18 @@ relief-story-agent batch `
 
 步骤：
 
-1. batch queued/running 时停止 API。
-2. 用同一 `--state-dir` 重启 API。
-3. 调：
+1. batch queued/running 时先保存 before-restart recovery plan。
+2. 停止 API。
+3. 用同一 `--state-dir` 重启 API。
+4. 调：
 
 ```powershell
-relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty
+relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/recovery_before_restart.json"
+# Stop and restart the API with the same --state-dir, then:
 relief-story-agent scheduler --pretty
 relief-story-agent batch-status --batch-id "{batch_id}" --pretty
+relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/recovery_after_restart.json"
+relief-story-agent recover-batch --batch-id "{batch_id}" --dry-run --pretty
 ```
 
 验收标准：
@@ -340,6 +344,22 @@ relief-story-agent batch-status --batch-id "{batch_id}" --pretty
 - queued/running/expired work 有明确 recovery plan。
 - safe recovery action 可 dry-run。
 - 不盲目重新提交 ComfyUI 已接受任务。
+- `restart_recovery=pass` 必须带结构化 before/after recovery-plan 证据，且两个 plan 的 `batch_id` 都要匹配顶层 `batch_id`。
+
+记录验收时使用：
+
+```powershell
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "restart_recovery" `
+  --status "manual_pending" `
+  --batch-id "{batch_id}" `
+  --check "restart_recovery=pass:batch {batch_id} survived restart and recovery-plan was queryable" `
+  --restart-recovery-before-report "D:/relief_story_acceptance/recovery_before_restart.json" `
+  --restart-recovery-after-report "D:/relief_story_acceptance/recovery_after_restart.json" `
+  --include-default-matrix `
+  --pretty
+```
 
 ### P5：导出与校验
 
@@ -404,7 +424,7 @@ relief-story-agent local-acceptance `
 - `ACCEPTANCE_REPORT.md`
 - `ready_for_release=true`
 
-`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。导入的 `smoke_result.json` / `local_demo_summary.json` 会先转成检查项再计算顶层 status，source 文件不 ready 时不会留下 completed 包。保留下来的 `video_paths` 也会在计算顶层 status 前按当前磁盘状态重新检查，旧 mp4 丢失或不可打开时不会留下 completed 包。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项；如果报告已有 `video_paths`，`local-acceptance` 和 `acceptance-status` 都不信任旧的 `video_files=pass`。`single_run=pass` 缺顶层 `run_id`，或 `batch_run` / `restart_recovery` / `export=pass` 缺顶层 `batch_id`，都会重新阻塞发布；`export=pass` 还会要求包验证报告和 zip 验证报告的 `batch_id` 与顶层 `batch_id` 一致。`acceptance` 和 `acceptance-status` 都会补齐完整发布矩阵，缺失的 P2-P6 证据都会保持阻塞；报告顶层 status 不是 completed 时，即使单项检查都 pass，也会返回 `overall_status` 阻塞项。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
+`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。导入的 `smoke_result.json` / `local_demo_summary.json` 会先转成检查项再计算顶层 status，source 文件不 ready 时不会留下 completed 包。保留下来的 `video_paths` 也会在计算顶层 status 前按当前磁盘状态重新检查，旧 mp4 丢失或不可打开时不会留下 completed 包。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项；如果报告已有 `video_paths`，`local-acceptance` 和 `acceptance-status` 都不信任旧的 `video_files=pass`。`single_run=pass` 缺顶层 `run_id`，或 `batch_run` / `restart_recovery` / `export=pass` 缺顶层 `batch_id`，都会重新阻塞发布；`restart_recovery=pass` 还会要求 before/after recovery-plan 证据存在、JSON 有效、有 summary，且两个 plan 的 `batch_id` 与顶层 `batch_id` 一致；`export=pass` 还会要求包验证报告和 zip 验证报告的 `batch_id` 与顶层 `batch_id` 一致。`acceptance` 和 `acceptance-status` 都会补齐完整发布矩阵，缺失的 P2-P6 证据都会保持阻塞；报告顶层 status 不是 completed 时，即使单项检查都 pass，也会返回 `overall_status` 阻塞项。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
 
 只有这一步和真实视频、真实 batch、真实导出都通过，才能说“除 UI 外基本完成”。
 

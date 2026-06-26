@@ -199,7 +199,10 @@ is recorded and validates. It also requires top-level `run_id` for
 `single_run=pass`, and top-level `batch_id` for `batch_run`,
 `restart_recovery`, and `export=pass`. When an existing report has `video_paths`,
 `local-acceptance` and `acceptance-status` both recheck those files on disk
-instead of trusting a stale `video_files=pass` entry.
+instead of trusting a stale `video_files=pass` entry. `restart_recovery=pass`
+also needs structured before/after recovery-plan evidence from
+`--restart-recovery-report` or the paired
+`--restart-recovery-before-report` / `--restart-recovery-after-report` flags.
 
 You can also run the offline skeleton demo by itself:
 
@@ -983,7 +986,9 @@ POST /api/batches/{batch_id}/recover
 CLI equivalent:
 
 ```powershell
-relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty
+relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/recovery_before_restart.json"
+# Stop and restart the API with the same --state-dir, then:
+relief-story-agent recovery-plan --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/recovery_after_restart.json"
 relief-story-agent recover-batch --batch-id "{batch_id}" --dry-run --pretty
 relief-story-agent batch-health --batch-id "{batch_id}" --pretty
 ```
@@ -1001,6 +1006,24 @@ You can restrict execution to specific action codes:
 ```
 
 The recovery executor only runs items marked `safe_to_auto_execute`. Manual blockers are returned in `skipped` with a reason, so a launcher can show exactly which templates, workflow maps, quality gates, or prompt-audit issues still need human attention.
+
+Record restart recovery acceptance with the structured recovery-plan evidence:
+
+```powershell
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "restart_recovery" `
+  --status "manual_pending" `
+  --batch-id "{batch_id}" `
+  --check "restart_recovery=pass:batch {batch_id} survived restart and recovery-plan was queryable" `
+  --restart-recovery-before-report "D:/relief_story_acceptance/recovery_before_restart.json" `
+  --restart-recovery-after-report "D:/relief_story_acceptance/recovery_after_restart.json" `
+  --include-default-matrix `
+  --pretty
+```
+
+`acceptance-status` blocks `restart_recovery=pass` if those plans are missing,
+invalid, lack summaries, or do not match the top-level `batch_id`.
 
 Batch diagnostic endpoints (`/timeline`, `/artifacts`, `/recovery-plan`, and `/health`) tolerate missing child run state files when the batch state still exists. Missing children are returned as `inspect_missing_run` items instead of hiding the whole batch behind a 404, which makes restart and local file-damage drills easier to debug.
 

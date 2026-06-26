@@ -777,6 +777,56 @@ def test_run_local_acceptance_fails_when_preserved_export_validation_report_is_s
     assert any(check["id"] == "export" for check in status["blocking_checks"])
 
 
+def test_run_local_acceptance_fails_when_preserved_restart_recovery_lacks_evidence(tmp_path):
+    acceptance_dir = tmp_path / "acceptance"
+    acceptance_dir.mkdir()
+    (acceptance_dir / "acceptance_report.json").write_text(
+        json.dumps(
+            {
+                "run_id": "run_real",
+                "batch_id": "batch_real",
+                "mode": "local_acceptance",
+                "status": "completed",
+                "checks": [
+                    {
+                        "id": "restart_recovery",
+                        "status": "pass",
+                        "required_evidence": "recovery-plan before/after restart",
+                        "evidence": "manual note says restart worked",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "388 passed in 66.43s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        acceptance_dir,
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    status = json.loads(Path(result["acceptance_status"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
+    assert checks["restart_recovery"]["status"] == "fail"
+    assert checks["restart_recovery"]["details"]["recovery_evidence"]["error"] == "missing_recovery_evidence"
+    assert any(check["id"] == "restart_recovery" for check in status["blocking_checks"])
+
+
 def test_run_local_acceptance_fails_when_preserved_video_path_is_stale(tmp_path):
     acceptance_dir = tmp_path / "acceptance"
     missing_video = tmp_path / "deleted.mp4"

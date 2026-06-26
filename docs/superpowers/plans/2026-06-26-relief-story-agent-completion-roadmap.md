@@ -416,6 +416,12 @@ Use `manual_pending` until restart recovery and export also pass.
 
 Use the `batch_id` from Task 5.
 
+- [ ] **Step 1.5: Capture before-restart recovery plan**
+
+```powershell
+relief-story-agent recovery-plan --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/recovery_before_restart.json"
+```
+
 - [ ] **Step 2: Stop the API process**
 
 Use Ctrl+C in the server terminal.
@@ -435,9 +441,9 @@ relief-story-agent serve `
 - [ ] **Step 4: Inspect recovery**
 
 ```powershell
-relief-story-agent recovery-plan --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty
 relief-story-agent scheduler --server "http://127.0.0.1:8891" --pretty
 relief-story-agent batch-status --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty
+relief-story-agent recovery-plan --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/recovery_after_restart.json"
 ```
 
 Expected: no lost batch, no missing child run crash, explicit recovery actions.
@@ -463,11 +469,15 @@ relief-story-agent acceptance `
   --status "manual_pending" `
   --batch-id "{batch_id}" `
   --check "restart_recovery=pass:batch {batch_id} survived restart and recovery-plan was queryable" `
+  --restart-recovery-before-report "D:/relief_story_acceptance/recovery_before_restart.json" `
+  --restart-recovery-after-report "D:/relief_story_acceptance/recovery_after_restart.json" `
   --include-default-matrix `
   --pretty
 ```
 
-Keep final status pending until all checks pass.
+Keep final status pending until all checks pass. `acceptance-status` should keep
+`restart_recovery=pass` blocked if the before/after recovery-plan evidence is
+missing, invalid, lacks summaries, or references a different `batch_id`.
 
 ## Task 7: Export And Validate
 

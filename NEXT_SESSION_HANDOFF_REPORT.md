@@ -120,7 +120,7 @@ eb3fe74 fix: revalidate preserved export evidence
 - `comfyui_dry_smoke=pass`、`comfyui_real_smoke=pass` 和 `local_demo=pass` 必须能重新读取对应 `smoke_result.json` / `local_demo_summary.json` source；source 丢失或内容变坏会重新阻塞发布。
 - 旧 acceptance report 中保留的 pass 证据会被重新检查，不能靠过期文件或错误 batch 混过去。
 - 损坏的 `acceptance_report.json` 会作为 `acceptance_report` blocker 返回，不能让 `acceptance-status` 崩溃或误判 ready。
-- 本地 CLI 读取请求 JSON 时，文件缺失、JSON 损坏或顶层不是 object 会返回结构化 `invalid_request` JSON，而不是 Python traceback。
+- 本地 CLI 读取请求 JSON 或模型配置 JSON 时，文件缺失、JSON 损坏或顶层不是 object 会返回结构化 `invalid_request` JSON，而不是 Python traceback。
 
 ## 6. 已完成能力清单
 

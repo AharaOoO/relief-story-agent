@@ -30,6 +30,8 @@ class ModelConfigRegistry:
     ) -> "ModelConfigRegistry":
         source = Path(path)
         payload = json.loads(source.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Model config registry must be a JSON object")
         raw_profiles = payload.get("profiles") or {}
         raw_stages = payload.get("stages") or {}
         if not isinstance(raw_profiles, dict) or not isinstance(raw_stages, dict):

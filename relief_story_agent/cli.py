@@ -642,7 +642,7 @@ def _comfyui_outputs(args: argparse.Namespace) -> int:
 def _diagnose(args: argparse.Namespace) -> int:
     payload = _read_json_file(args.request)
     registry = (
-        ModelConfigRegistry.from_file(args.model_config)
+        _load_model_config_registry(args.model_config)
         if args.model_config
         else ModelConfigRegistry()
     )
@@ -692,7 +692,7 @@ def _template_check(args: argparse.Namespace) -> int:
 
 
 def _model_check(args: argparse.Namespace) -> int:
-    registry = ModelConfigRegistry.from_file(args.model_config)
+    registry = _load_model_config_registry(args.model_config)
     image_config = None
     if args.run_request:
         request_payload = _read_json_file(args.run_request)
@@ -958,6 +958,15 @@ def _read_json_file(path: str) -> dict:
     if not isinstance(payload, dict):
         raise CliInputError(path, "Invalid JSON file: top-level value must be an object")
     return payload
+
+
+def _load_model_config_registry(path: str) -> ModelConfigRegistry:
+    try:
+        return ModelConfigRegistry.from_file(path)
+    except OSError as exc:
+        raise CliInputError(path, f"Unable to read model config: {exc}") from exc
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise CliInputError(path, f"Invalid model config: {exc}") from exc
 
 
 def _setup(args: argparse.Namespace) -> int:

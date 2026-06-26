@@ -238,6 +238,33 @@ def test_cli_model_check_writes_machine_readable_output(tmp_path):
     assert body["checks"][0]["profile"] == "local"
 
 
+def test_cli_model_check_reports_invalid_model_config_without_traceback(tmp_path):
+    config_path = tmp_path / "models.json"
+    config_path.write_text("{not valid json", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "model-check",
+            "--model-config",
+            str(config_path),
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == str(config_path)
+    assert "Invalid model config" in body["error"]
+
+
 def test_cli_model_check_can_include_run_request_image_provider(tmp_path):
     config_path = tmp_path / "models.json"
     config_path.write_text(

@@ -342,6 +342,7 @@ def validate_batch_export_zip(
                 )
             )
     result = {
+        "batch_id": _batch_id_from_export_zip_path(path),
         "zip_path": str(path),
         "zip_size_bytes": actual_size,
         "zip_sha256": actual_sha256,
@@ -411,7 +412,9 @@ def validate_batch_export_package(
             )
         )
 
+    batch_id = _batch_id_from_export_package(root, manifest, publish_index)
     result = {
+        "batch_id": batch_id,
         "export_dir": str(root),
         "valid": all(check["status"] != "failed" for check in checks),
         "summary": {
@@ -426,6 +429,22 @@ def validate_batch_export_package(
     if save_report:
         _write_validation_report(root / "validation_report.json", result)
     return result
+
+
+def _batch_id_from_export_package(root: Path, manifest: Any, publish_index: Any) -> str:
+    for payload in (publish_index, manifest):
+        if isinstance(payload, dict):
+            batch_id = str(payload.get("batch_id") or "")
+            if batch_id:
+                return batch_id
+    return root.name
+
+
+def _batch_id_from_export_zip_path(path: Path) -> str:
+    name = path.name
+    if name.endswith(".zip"):
+        return name[: -len(".zip")]
+    return path.stem
 
 
 def _write_validation_report(path: Path, result: dict[str, Any]) -> None:

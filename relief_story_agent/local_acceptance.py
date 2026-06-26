@@ -324,7 +324,7 @@ def run_local_acceptance(
         video_paths=video_paths,
         mode="local_acceptance",
     )
-    status_checks = refresh_export_evidence(status_checks)
+    status_checks = refresh_export_evidence(status_checks, batch_id=preserved_batch_id)
     status_checks = refresh_identity_evidence(
         status_checks,
         run_id=preserved_run_id,
@@ -336,7 +336,7 @@ def run_local_acceptance(
         and _executed_checks_pass(status_checks)
         else "failed"
     )
-    checks = refresh_export_evidence(checks)
+    checks = refresh_export_evidence(checks, batch_id=preserved_batch_id)
     checks = refresh_identity_evidence(
         checks,
         run_id=preserved_run_id,

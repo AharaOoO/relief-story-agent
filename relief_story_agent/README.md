@@ -191,7 +191,8 @@ trusting the filename extension. If an `acceptance_report.json` already exists
 in the output directory, passed checks from that report are preserved unless the
 new local-acceptance run records the same check id again; existing `run_id`,
 `batch_id`, and video paths are carried forward too. Preserved export checks
-must point to still-valid package and zip validation reports.
+must point to still-valid package and zip validation reports for the same
+top-level `batch_id`.
 If a preserved or newly recorded `single_run` pass has no video path evidence,
 `acceptance-status` adds a `video_files` blocker until a real local video path
 is recorded and validates. It also requires top-level `run_id` for
@@ -586,7 +587,7 @@ leave the bundle marked completed. Preserved video paths are revalidated at the
 same point, so a stale local mp4 path fails the bundle before the report is
 written. Preserved export checks are also revalidated from their recorded
 `details.validation_report` and `details.zip_validation_report` paths, so a
-missing or invalid export package cannot stay green.
+missing, invalid, or different-batch export package cannot stay green.
 
 To inspect an existing report from scripts, another AI reviewer, or a future UI,
 use:
@@ -1160,7 +1161,7 @@ The validator checks the export manifest, publish indexes, `publish_videos/`,
 every publish-ready video path referenced by `publish_index.json`, that each
 publish video is non-empty with a recognized video container signature, and each publish
 video's recorded size and sha256 checksum. With `save_report: true`, it writes
-`validation_report.json` into the export directory.
+`validation_report.json` into the export directory with the resolved `batch_id`.
 
 Validate the zip itself after transfer:
 
@@ -1177,6 +1178,10 @@ relief-story-agent validate-export-zip `
   --save-report `
   --pretty
 ```
+
+Saved package and zip validation reports include their resolved `batch_id`.
+`local-acceptance` and `acceptance-status` compare that value with the
+acceptance report's top-level `batch_id` before allowing `export=pass`.
 
 ```json
 {

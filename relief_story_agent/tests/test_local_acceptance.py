@@ -709,7 +709,12 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
     assert checks["single_run"]["status"] == "pass"
     assert checks["single_run"]["evidence"] == f"run_id=run_real; video={video_path}"
     assert checks["export"]["status"] == "pass"
-    assert checks["export"]["evidence"] == "validation_report_valid=true; zip_validation_report_valid=true"
+    assert checks["export"]["evidence"] == (
+        "validation_report_valid=true; zip_validation_report_valid=true; "
+        "validation_report_batch_id_matches=true; zip_validation_report_batch_id_matches=true"
+    )
+    assert checks["export"]["details"]["validation_report"]["reported_batch_id"] == "batch_real"
+    assert checks["export"]["details"]["zip_validation_report"]["reported_batch_id"] == "batch_real"
     assert str(video_path) in report["video_paths"]
 
 

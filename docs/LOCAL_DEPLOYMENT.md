@@ -225,7 +225,8 @@ top-level bundle status is set, so a stale or missing mp4 keeps the bundle
 failed instead of only appearing later as an `acceptance-status` blocker.
 Preserved export checks are revalidated from their recorded
 `details.validation_report` and `details.zip_validation_report` paths, so stale
-export evidence also keeps the bundle failed.
+export evidence also keeps the bundle failed. Both reports must describe the
+same `batch_id` as the top-level acceptance report.
 For `single_run` acceptance, a passing `single_run` check must include at least
 one recorded video path. If it does not, `acceptance-status` reports a
 `video_files` blocker and `ready_for_release=false`. Existing `video_paths` are
@@ -623,6 +624,10 @@ relief-story-agent validate-export-zip `
   --save-report `
   --pretty
 ```
+
+Saved package and zip validation reports include their resolved `batch_id`.
+`local-acceptance` and `acceptance-status` compare that value with the
+acceptance report's top-level `batch_id` before allowing `export=pass`.
 
 The CLI uses direct local HTTP for these API calls and ignores environment proxy
 settings, which avoids accidental proxy failures for `127.0.0.1`.

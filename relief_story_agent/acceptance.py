@@ -84,7 +84,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         video_paths=video_paths,
         mode=str(payload.get("mode") or "manual"),
     )
-    checks = refresh_export_evidence(checks)
+    checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_identity_evidence(
         checks,
         run_id=str(payload.get("run_id") or ""),
@@ -120,7 +120,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
         )
-        checks = refresh_export_evidence(checks)
+        checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_identity_evidence(
             checks,
             run_id=str(report.get("run_id") or ""),
@@ -243,9 +243,13 @@ def refresh_video_evidence(
     ]
 
 
-def refresh_export_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def refresh_export_evidence(
+    checks: list[dict[str, Any]],
+    *,
+    batch_id: str = "",
+) -> list[dict[str, Any]]:
     return [
-        _refreshed_export_check(check)
+        _refreshed_export_check(check, batch_id=batch_id)
         if str(check.get("id") or "") == "export"
         and str(check.get("status") or "").lower() in PASS_STATUSES
         else check
@@ -253,17 +257,25 @@ def refresh_export_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]
     ]
 
 
-def _refreshed_export_check(check: dict[str, Any]) -> dict[str, Any]:
+def _refreshed_export_check(check: dict[str, Any], *, batch_id: str) -> dict[str, Any]:
     details = check.get("details") if isinstance(check.get("details"), dict) else {}
-    validation_report = _validation_report_status(details.get("validation_report"))
-    zip_validation_report = _validation_report_status(details.get("zip_validation_report"))
+    validation_report = _validation_report_status(
+        details.get("validation_report"),
+        expected_batch_id=batch_id,
+    )
+    zip_validation_report = _validation_report_status(
+        details.get("zip_validation_report"),
+        expected_batch_id=batch_id,
+    )
     valid = bool(validation_report["valid"] and zip_validation_report["valid"])
     return {
         **check,
         "status": "pass" if valid else "fail",
         "evidence": (
             f"validation_report_valid={str(bool(validation_report['valid'])).lower()}; "
-            f"zip_validation_report_valid={str(bool(zip_validation_report['valid'])).lower()}"
+            f"zip_validation_report_valid={str(bool(zip_validation_report['valid'])).lower()}; "
+            f"validation_report_batch_id_matches={str(bool(validation_report['batch_id_matches'])).lower()}; "
+            f"zip_validation_report_batch_id_matches={str(bool(zip_validation_report['batch_id_matches'])).lower()}"
         ),
         "details": {
             **details,
@@ -273,13 +285,16 @@ def _refreshed_export_check(check: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _validation_report_status(raw_path: Any) -> dict[str, Any]:
+def _validation_report_status(raw_path: Any, *, expected_batch_id: str = "") -> dict[str, Any]:
     path_value = _validation_report_path(raw_path)
     result = {
         "path": path_value,
         "exists": False,
         "valid": False,
         "error": "",
+        "expected_batch_id": expected_batch_id,
+        "reported_batch_id": "",
+        "batch_id_matches": False,
     }
     if not path_value:
         return {**result, "error": "missing_report_path"}
@@ -291,10 +306,22 @@ def _validation_report_status(raw_path: Any) -> dict[str, Any]:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {**result, "error": "invalid_report_json"}
+    reported_batch_id = _validation_report_batch_id(payload, path)
+    batch_id_matches = bool(expected_batch_id and reported_batch_id == expected_batch_id)
+    error = ""
+    if not expected_batch_id:
+        error = "missing_expected_batch_id"
+    elif not reported_batch_id:
+        error = "missing_report_batch_id"
+    elif not batch_id_matches:
+        error = "batch_id_mismatch"
     return {
         **result,
-        "valid": bool(payload.get("valid")),
+        "valid": bool(payload.get("valid")) and batch_id_matches,
         "reported_valid": bool(payload.get("valid")),
+        "reported_batch_id": reported_batch_id,
+        "batch_id_matches": batch_id_matches,
+        "error": error,
     }
 
 
@@ -302,6 +329,37 @@ def _validation_report_path(raw_path: Any) -> str:
     if isinstance(raw_path, dict):
         return str(raw_path.get("path") or "")
     return str(raw_path or "")
+
+
+def _validation_report_batch_id(payload: Any, path: Path) -> str:
+    if isinstance(payload, dict):
+        direct_batch_id = str(payload.get("batch_id") or "")
+        if direct_batch_id:
+            return direct_batch_id
+        export_dir = str(payload.get("export_dir") or "")
+        if export_dir:
+            return Path(export_dir).name
+        zip_path = str(payload.get("zip_path") or "")
+        if zip_path:
+            return _batch_id_from_zip_path(Path(zip_path))
+    return _batch_id_from_validation_report_path(path)
+
+
+def _batch_id_from_validation_report_path(path: Path) -> str:
+    name = path.name
+    zip_report_suffix = ".zip.validation.json"
+    if name.endswith(zip_report_suffix):
+        return name[: -len(zip_report_suffix)]
+    if name == "validation_report.json":
+        return path.parent.name
+    return ""
+
+
+def _batch_id_from_zip_path(path: Path) -> str:
+    name = path.name
+    if name.endswith(".zip"):
+        return name[: -len(".zip")]
+    return path.stem
 
 
 def refresh_identity_evidence(

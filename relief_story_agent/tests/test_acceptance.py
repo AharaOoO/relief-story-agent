@@ -456,6 +456,45 @@ def test_build_acceptance_status_revalidates_stale_export_validation_reports(tmp
     assert "export_and_validate_batch" in status["suggested_actions"]
 
 
+def test_build_acceptance_status_blocks_export_report_for_different_batch(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    validation_report.write_text(
+        json.dumps(
+            {
+                "valid": True,
+                "batch_id": "batch_other",
+                "export_dir": str(tmp_path / "exports" / "batch_other"),
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    export_check = next(check for check in status["blocking_checks"] if check["id"] == "export")
+    assert status["ready_for_release"] is False
+    assert export_check["status"] == "fail"
+    assert export_check["details"]["validation_report"]["expected_batch_id"] == "batch_real"
+    assert export_check["details"]["validation_report"]["reported_batch_id"] == "batch_other"
+    assert export_check["details"]["validation_report"]["batch_id_matches"] is False
+
+
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):
     video_path = tmp_path / "complete.mp4"
     video_path.write_bytes(_valid_mp4_bytes())

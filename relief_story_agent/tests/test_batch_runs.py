@@ -914,8 +914,10 @@ def test_api_validates_batch_export_package(tmp_path):
     assert body["valid"] is True
     assert body["summary"]["failed"] == 0
     assert body["report_path"].endswith("validation_report.json")
+    assert body["batch_id"] == "batch_export_validate"
     report = json.loads(Path(body["report_path"]).read_text(encoding="utf-8"))
     assert report["valid"] is True
+    assert report["batch_id"] == "batch_export_validate"
     assert report["export_dir"] == body["export_dir"]
 
 
@@ -980,6 +982,8 @@ def test_api_detects_export_zip_checksum_mismatch(tmp_path):
     assert "zip_sha256" in failed
     assert "zip_size" in failed
     assert body["report_path"].endswith("batch_export_zip_validate.zip.validation.json")
+    assert body["batch_id"] == "batch_export_zip_validate"
     report = json.loads(Path(body["report_path"]).read_text(encoding="utf-8"))
     assert report["valid"] is False
+    assert report["batch_id"] == "batch_export_zip_validate"
     assert report["zip_path"] == body["zip_path"]

@@ -592,7 +592,9 @@ The local API exposes the same read-only status at
 Both generated reports and `acceptance-status` evaluate the full release matrix
 even when the command was created for a narrower smoke or manual check. Missing
 release gates are returned as blockers instead of allowing a partial report to
-become release-ready.
+become release-ready. A failed or pending report-level status is also returned
+as an `overall_status` blocker, so a bundle cannot look actionless when all
+individual checks are stale-passing.
 
 ## ComfyUI / LTX 2.3 Workflows
 

@@ -5,7 +5,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from relief_story_agent.acceptance import build_acceptance_status, write_acceptance_report
+from relief_story_agent.acceptance import (
+    DEFAULT_ACCEPTANCE_MATRIX,
+    build_acceptance_status,
+    write_acceptance_report,
+)
 
 
 def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
@@ -333,6 +337,36 @@ def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
     assert status["ready_for_release"] is False
     assert status["summary"]["blocking_count"] == 13
     assert status["summary"]["check_count"] == 14
+
+
+def test_build_acceptance_status_reports_failed_overall_status_as_blocker(tmp_path):
+    video_path = tmp_path / "complete.webm"
+    video_path.write_bytes(b"video")
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "local_acceptance",
+            "status": "failed",
+            "video_paths": [str(video_path)],
+            "checks": [
+                {
+                    "id": default_check["id"],
+                    "status": "pass",
+                    "required_evidence": default_check["required_evidence"],
+                    "evidence": "verified",
+                }
+                for default_check in DEFAULT_ACCEPTANCE_MATRIX
+            ],
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    assert status["ready_for_release"] is False
+    assert status["blocking_checks"][0]["id"] == "overall_status"
+    assert status["blocking_checks"][0]["status"] == "fail"
+    assert status["blocking_checks"][0]["evidence"] == "status=failed"
+    assert "rerun_local_acceptance" in status["suggested_actions"]
 
 
 def test_build_acceptance_status_blocks_single_run_without_video_evidence(tmp_path):

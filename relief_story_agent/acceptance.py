@@ -133,6 +133,18 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
         for check in checks
         if str(check.get("status") or "").lower() not in PASS_STATUSES
     ]
+    overall_status = str(report.get("status") or "missing")
+    if path.exists() and overall_status.lower() not in PASS_STATUSES:
+        blocking_checks.insert(
+            0,
+            {
+                "id": "overall_status",
+                "required_evidence": "acceptance report top-level status is completed",
+                "status": "fail",
+                "evidence": f"status={overall_status}",
+                "details": {"status": overall_status},
+            },
+        )
     ready_for_release = ready_for_release and not blocking_checks
     return {
         "report_path": str(path),
@@ -252,6 +264,7 @@ def _acceptance_status_actions(
         "comfyui_real_smoke": "run_real_comfyui_smoke",
         "comfyui_outputs": "check_comfyui_outputs",
         "video_files": "verify_video_files",
+        "overall_status": "rerun_local_acceptance",
         "model_check": "configure_and_check_models",
         "run_diagnose": "fix_run_preflight",
         "batch_diagnose": "fix_batch_preflight",

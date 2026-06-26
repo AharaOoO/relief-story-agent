@@ -84,6 +84,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         video_paths=video_paths,
         mode=str(payload.get("mode") or "manual"),
     )
+    checks = refresh_comfyui_outputs_evidence(checks)
     checks = refresh_batch_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_recovery_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
@@ -122,6 +123,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
         )
+        checks = refresh_comfyui_outputs_evidence(checks)
         checks = refresh_batch_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_recovery_evidence(checks, batch_id=str(report.get("batch_id") or ""))
@@ -245,6 +247,157 @@ def refresh_video_evidence(
             "details": {"videos": []},
         },
     ]
+
+
+def refresh_comfyui_outputs_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _refreshed_comfyui_outputs_check(check)
+        if str(check.get("id") or "") == "comfyui_outputs"
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_comfyui_outputs_check(check: dict[str, Any]) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    output_evidence = _comfyui_outputs_evidence_status(details)
+    valid = bool(output_evidence["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"comfyui_outputs_valid={str(valid).lower()}; "
+            f"ready={str(bool(output_evidence['ready'])).lower()}; "
+            f"video_count={output_evidence['video_count']}; "
+            f"downloaded_videos_valid="
+            f"{output_evidence['valid_downloaded_video_count']}/{output_evidence['downloaded_video_count']}"
+        ),
+        "details": {
+            **details,
+            "comfyui_outputs_evidence": output_evidence,
+        },
+    }
+
+
+def _comfyui_outputs_evidence_status(details: dict[str, Any]) -> dict[str, Any]:
+    result = {
+        "valid": False,
+        "error": "",
+        "path": "",
+        "exists": False,
+        "ready": False,
+        "status": "",
+        "video_count": 0,
+        "downloaded_count": 0,
+        "video_output_count": 0,
+        "downloaded_video_count": 0,
+        "valid_downloaded_video_count": 0,
+        "actual_outputs": [],
+        "video_file_checks": [],
+    }
+    payload_result = _comfyui_outputs_payload(details)
+    result = {**result, **payload_result}
+    payload = payload_result.get("payload")
+    if not isinstance(payload, dict):
+        result.pop("payload", None)
+        if not result["error"]:
+            result["error"] = "missing_comfyui_outputs_evidence"
+        return result
+
+    status = str(payload.get("status") or "")
+    ready = _comfyui_outputs_ready(payload)
+    actual_outputs = payload.get("actual_outputs") or []
+    if not isinstance(actual_outputs, list):
+        actual_outputs = []
+    video_outputs = [
+        output
+        for output in actual_outputs
+        if isinstance(output, dict) and _is_comfyui_video_output(output)
+    ]
+    video_paths = [
+        str(output.get("local_path") or "")
+        for output in video_outputs
+        if str(output.get("local_path") or "")
+    ]
+    video_file_checks = [check_local_video_file(path_value) for path_value in video_paths]
+    valid_downloaded_video_count = sum(1 for check in video_file_checks if check["valid"])
+    video_count = _safe_int(payload.get("video_count"), default=len(video_outputs))
+    downloaded_count = _safe_int(payload.get("downloaded_count"), default=len(video_paths))
+
+    error = ""
+    if not ready:
+        error = "comfyui_outputs_not_ready"
+    elif video_count <= 0:
+        error = "missing_video_outputs"
+    elif not video_outputs:
+        error = "missing_actual_video_outputs"
+    elif downloaded_count <= 0 or not video_paths:
+        error = "missing_downloaded_video_paths"
+    elif valid_downloaded_video_count != len(video_file_checks):
+        error = "invalid_downloaded_videos"
+
+    result.update(
+        {
+            "valid": not error,
+            "error": error,
+            "ready": ready,
+            "status": status,
+            "video_count": video_count,
+            "downloaded_count": downloaded_count,
+            "video_output_count": len(video_outputs),
+            "downloaded_video_count": len(video_file_checks),
+            "valid_downloaded_video_count": valid_downloaded_video_count,
+            "actual_outputs": video_outputs,
+            "video_file_checks": video_file_checks,
+        }
+    )
+    result.pop("payload", None)
+    return result
+
+
+def _comfyui_outputs_payload(details: dict[str, Any]) -> dict[str, Any]:
+    raw_path = (
+        details.get("comfyui_outputs_report")
+        or details.get("comfyui_output_report")
+        or details.get("outputs_report")
+        or details.get("report_path")
+        or ""
+    )
+    if raw_path:
+        path = Path(str(raw_path))
+        base = {"path": str(path), "exists": path.exists() and path.is_file()}
+        if not base["exists"]:
+            return {**base, "error": "missing_comfyui_outputs_report"}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {**base, "error": "invalid_comfyui_outputs_report_json"}
+        return {**base, "payload": payload}
+    if "actual_outputs" in details or "ready" in details or "video_count" in details:
+        return {"payload": details}
+    return {"error": "missing_comfyui_outputs_evidence"}
+
+
+def _comfyui_outputs_ready(payload: dict[str, Any]) -> bool:
+    if "ready" in payload:
+        return bool(payload.get("ready"))
+    return str(payload.get("status") or "").lower() == "ready"
+
+
+def _is_comfyui_video_output(output: dict[str, Any]) -> bool:
+    media_type = str(output.get("media_type") or "").lower()
+    if media_type == "video":
+        return True
+    filename = str(output.get("filename") or "")
+    return Path(filename).suffix.lower() in {".mp4", ".mov", ".webm", ".mkv", ".avi"}
+
+
+def _safe_int(value: Any, *, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
 
 
 def refresh_batch_evidence(

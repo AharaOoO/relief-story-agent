@@ -199,7 +199,10 @@ is recorded and validates. It also requires top-level `run_id` for
 `single_run=pass`, and top-level `batch_id` for `batch_run`,
 `restart_recovery`, and `export=pass`. When an existing report has `video_paths`,
 `local-acceptance` and `acceptance-status` both recheck those files on disk
-instead of trusting a stale `video_files=pass` entry. `batch_run=pass` needs
+instead of trusting a stale `video_files=pass` entry. `comfyui_outputs=pass` is
+also revalidated from structured `actual_outputs` details or a recorded outputs
+report, and at least one downloaded video path must still pass container
+validation. `batch_run=pass` needs
 structured `--batch-artifacts-report` evidence with publish-ready completed
 items and failed items that include `failed_stage` plus
 `recommended_action.code`. `restart_recovery=pass` also needs structured

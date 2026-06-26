@@ -126,13 +126,37 @@ def _batch_artifacts_report_path_with_failed_publish_ready_item(tmp_path: Path) 
     return batch_report
 
 
+def _comfyui_outputs_details(video_path: Path) -> dict[str, object]:
+    return {
+        "status": "ready",
+        "ready": True,
+        "video_count": 1,
+        "downloaded_count": 1,
+        "actual_outputs": [
+            {
+                "prompt_id": "prompt_video",
+                "node_id": "10",
+                "filename": video_path.name,
+                "subfolder": "",
+                "type": "output",
+                "media_type": "video",
+                "local_path": str(video_path),
+            }
+        ],
+    }
+
+
 def _passing_release_checks(
     *,
     validation_report: Path,
     zip_validation_report: Path,
     batch_artifacts_report: Path | None = None,
     restart_recovery_report: Path | None = None,
+    comfyui_output_video: Path | None = None,
 ) -> list[dict[str, object]]:
+    if comfyui_output_video is None:
+        comfyui_output_video = validation_report.parent / "comfyui_output.mp4"
+        comfyui_output_video.write_bytes(_valid_mp4_bytes())
     checks = []
     for default_check in DEFAULT_ACCEPTANCE_MATRIX:
         check: dict[str, object] = {
@@ -141,6 +165,8 @@ def _passing_release_checks(
             "required_evidence": default_check["required_evidence"],
             "evidence": "verified",
         }
+        if default_check["id"] == "comfyui_outputs":
+            check["details"] = _comfyui_outputs_details(comfyui_output_video)
         if default_check["id"] == "export":
             check["details"] = {
                 "validation_report": str(validation_report),
@@ -827,6 +853,42 @@ def test_build_acceptance_status_blocks_failed_publish_ready_batch_item(tmp_path
     assert batch_check["status"] == "fail"
     assert batch_check["details"]["batch_evidence"]["error"] == "invalid_batch_items"
     assert batch_check["details"]["batch_evidence"]["invalid_items"][0]["reason"] == "publish_ready_status_not_completed"
+
+
+def test_build_acceptance_status_blocks_comfyui_outputs_with_missing_downloaded_video(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    missing_comfyui_video = tmp_path / "missing" / "comfyui_output.mp4"
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+                comfyui_output_video=missing_comfyui_video,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    comfyui_check = next(check for check in status["blocking_checks"] if check["id"] == "comfyui_outputs")
+    assert status["ready_for_release"] is False
+    assert comfyui_check["status"] == "fail"
+    assert comfyui_check["details"]["comfyui_outputs_evidence"]["valid"] is False
+    assert comfyui_check["details"]["comfyui_outputs_evidence"]["error"] == "invalid_downloaded_videos"
+    assert comfyui_check["details"]["comfyui_outputs_evidence"]["video_file_checks"][0]["exists"] is False
+    assert "check_comfyui_outputs" in status["suggested_actions"]
 
 
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):

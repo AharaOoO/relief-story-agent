@@ -451,7 +451,9 @@ def test_run_local_acceptance_can_collect_comfyui_output_refresh(tmp_path):
 
     assert result["status"] == "completed"
     assert checks["comfyui_outputs"]["status"] == "pass"
-    assert checks["comfyui_outputs"]["evidence"] == "ready=true; video_count=1; downloaded_count=1; prompt_ids=prompt_video"
+    assert checks["comfyui_outputs"]["evidence"] == (
+        "comfyui_outputs_valid=true; ready=true; video_count=1; downloaded_videos_valid=1/1"
+    )
     assert report["video_paths"] == [str(downloaded)]
 
 

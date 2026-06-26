@@ -378,7 +378,7 @@ Record `batch_id`.
 relief-story-agent batch-status --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty
 relief-story-agent batch-timeline --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty
 relief-story-agent batch-health --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty
-relief-story-agent batch-artifacts --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty
+relief-story-agent batch-artifacts --server "http://127.0.0.1:8891" --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/batch_artifacts.json"
 ```
 
 Expected: completed items have publish-ready outputs; failures have explicit failed stage and recommended action.
@@ -396,11 +396,16 @@ relief-story-agent acceptance `
   --status "manual_pending" `
   --batch-id "{batch_id}" `
   --check "batch_run=pass:batch {batch_id} produced item summaries and publish-ready outputs" `
+  --batch-artifacts-report "D:/relief_story_acceptance/batch_artifacts.json" `
   --include-default-matrix `
   --pretty
 ```
 
 Use `manual_pending` until restart recovery and export also pass.
+`acceptance-status` should keep `batch_run=pass` blocked if the batch artifacts
+report is missing, invalid, references a different `batch_id`, has no items, has
+completed items without publish-ready video paths, or has failed items without
+both `failed_stage` and `recommended_action.code`.
 
 ## Task 6: Restart Recovery Drill
 

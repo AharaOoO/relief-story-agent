@@ -199,8 +199,11 @@ is recorded and validates. It also requires top-level `run_id` for
 `single_run=pass`, and top-level `batch_id` for `batch_run`,
 `restart_recovery`, and `export=pass`. When an existing report has `video_paths`,
 `local-acceptance` and `acceptance-status` both recheck those files on disk
-instead of trusting a stale `video_files=pass` entry. `restart_recovery=pass`
-also needs structured before/after recovery-plan evidence from
+instead of trusting a stale `video_files=pass` entry. `batch_run=pass` needs
+structured `--batch-artifacts-report` evidence with publish-ready completed
+items and failed items that include `failed_stage` plus
+`recommended_action.code`. `restart_recovery=pass` also needs structured
+before/after recovery-plan evidence from
 `--restart-recovery-report` or the paired
 `--restart-recovery-before-report` / `--restart-recovery-after-report` flags.
 
@@ -1123,6 +1126,22 @@ CLI equivalent:
 ```powershell
 relief-story-agent run-artifacts --run-id "{run_id}" --pretty
 relief-story-agent batch-artifacts --batch-id "{batch_id}" --pretty
+```
+
+For batch-run acceptance, save the batch artifact index and attach it to the
+acceptance report:
+
+```powershell
+relief-story-agent batch-artifacts --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/batch_artifacts.json"
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "batch_run" `
+  --status "manual_pending" `
+  --batch-id "{batch_id}" `
+  --check "batch_run=pass:batch {batch_id} produced item summaries and publish-ready outputs" `
+  --batch-artifacts-report "D:/relief_story_acceptance/batch_artifacts.json" `
+  --include-default-matrix `
+  --pretty
 ```
 
 Completed runs with `output_root` write `00_manifest.json` plus:

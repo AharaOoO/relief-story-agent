@@ -69,10 +69,48 @@ def _valid_recovery_plan_path(tmp_path: Path, name: str, *, batch_id: str = "bat
     return recovery_plan
 
 
+def _valid_batch_artifacts_report_path(tmp_path: Path, *, batch_id: str = "batch_real") -> Path:
+    batch_report = tmp_path / "batch" / f"{batch_id}_artifacts.json"
+    batch_report.parent.mkdir(parents=True, exist_ok=True)
+    batch_report.write_text(
+        json.dumps(
+            {
+                "batch_id": batch_id,
+                "status": "partial_failed",
+                "publish_ready_count": 1,
+                "audit_summary": {
+                    "total_items": 2,
+                    "publish_ready_count": 1,
+                    "failed_count": 1,
+                },
+                "items": [
+                    {
+                        "run_id": "run_ready",
+                        "status": "completed",
+                        "publish_ready": True,
+                        "primary_video_path": "D:/relief_story_runs/run_ready/output.mp4",
+                        "recommended_action": {"code": "publish"},
+                    },
+                    {
+                        "run_id": "run_failed",
+                        "status": "failed",
+                        "failed_stage": "gpt_prompt_audit",
+                        "publish_ready": False,
+                        "recommended_action": {"code": "manual_review_prompt_audit"},
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return batch_report
+
+
 def _passing_release_checks(
     *,
     validation_report: Path,
     zip_validation_report: Path,
+    batch_artifacts_report: Path | None = None,
     restart_recovery_report: Path | None = None,
 ) -> list[dict[str, object]]:
     checks = []
@@ -87,6 +125,10 @@ def _passing_release_checks(
             check["details"] = {
                 "validation_report": str(validation_report),
                 "zip_validation_report": str(zip_validation_report),
+            }
+        if default_check["id"] == "batch_run" and batch_artifacts_report:
+            check["details"] = {
+                "batch_artifacts_report": str(batch_artifacts_report),
             }
         if default_check["id"] == "restart_recovery" and restart_recovery_report:
             check["details"] = {
@@ -575,6 +617,42 @@ def test_build_acceptance_status_accepts_restart_recovery_report_for_same_batch(
     video_path = tmp_path / "complete.mp4"
     video_path.write_bytes(_valid_mp4_bytes())
     validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    restart_check = next(
+        check for check in report["checks"] if check["id"] == "restart_recovery"
+    )
+
+    assert status["ready_for_release"] is True
+    assert restart_check["status"] == "pass"
+    assert restart_check["details"]["recovery_evidence"]["valid"] is True
+    assert restart_check["details"]["recovery_evidence"]["before_batch_id"] == "batch_real"
+    assert restart_check["details"]["recovery_evidence"]["after_batch_id"] == "batch_real"
+
+
+def test_build_acceptance_status_blocks_batch_run_pass_without_structured_evidence(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
     restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
     report_path = write_acceptance_report(
         tmp_path,
@@ -593,16 +671,48 @@ def test_build_acceptance_status_accepts_restart_recovery_report_for_same_batch(
     )
 
     status = build_acceptance_status(report_path)
-    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
-    restart_check = next(
-        check for check in report["checks"] if check["id"] == "restart_recovery"
+
+    batch_check = next(check for check in status["blocking_checks"] if check["id"] == "batch_run")
+    assert status["ready_for_release"] is False
+    assert batch_check["status"] == "fail"
+    assert batch_check["details"]["batch_evidence"]["valid"] is False
+    assert batch_check["details"]["batch_evidence"]["error"] == "missing_batch_evidence"
+    assert "run_batch_end_to_end" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_accepts_batch_artifacts_report_for_same_batch(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+            ),
+        },
     )
 
+    status = build_acceptance_status(report_path)
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    batch_check = next(check for check in report["checks"] if check["id"] == "batch_run")
+
     assert status["ready_for_release"] is True
-    assert restart_check["status"] == "pass"
-    assert restart_check["details"]["recovery_evidence"]["valid"] is True
-    assert restart_check["details"]["recovery_evidence"]["before_batch_id"] == "batch_real"
-    assert restart_check["details"]["recovery_evidence"]["after_batch_id"] == "batch_real"
+    assert batch_check["status"] == "pass"
+    assert batch_check["details"]["batch_evidence"]["valid"] is True
+    assert batch_check["details"]["batch_evidence"]["reported_batch_id"] == "batch_real"
+    assert batch_check["details"]["batch_evidence"]["item_count"] == 2
+    assert batch_check["details"]["batch_evidence"]["publish_ready_count"] == 1
 
 
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):
@@ -846,6 +956,40 @@ def test_cli_acceptance_attaches_restart_recovery_report(tmp_path):
     assert restart_check["status"] == "pass"
     assert restart_check["details"]["restart_recovery_report"] == str(restart_recovery_report)
     assert restart_check["details"]["recovery_evidence"]["valid"] is True
+
+
+def test_cli_acceptance_attaches_batch_artifacts_report(tmp_path):
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "acceptance",
+            "--output-dir",
+            str(tmp_path),
+            "--mode",
+            "batch_run",
+            "--status",
+            "completed",
+            "--batch-id",
+            "batch_real",
+            "--check",
+            "batch_run=pass:batch produced item summaries",
+            "--batch-artifacts-report",
+            str(batch_artifacts_report),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    report = json.loads((tmp_path / "acceptance_report.json").read_text(encoding="utf-8"))
+    batch_check = next(check for check in report["checks"] if check["id"] == "batch_run")
+    assert batch_check["status"] == "pass"
+    assert batch_check["details"]["batch_artifacts_report"] == str(batch_artifacts_report)
+    assert batch_check["details"]["batch_evidence"]["valid"] is True
 
 
 def test_cli_acceptance_attaches_restart_recovery_before_after_reports(tmp_path):

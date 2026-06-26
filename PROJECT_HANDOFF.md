@@ -317,6 +317,22 @@ relief-story-agent batch `
 - 批量汇总正确
 - 失败项可诊断，可重试或进入 manual blocker
 - 成功项进入 publish-ready
+- `batch_run=pass` 必须带 `batch-artifacts` JSON 证据，且报告的 `batch_id` 匹配顶层 `batch_id`；完成项要有 publish-ready 视频路径，失败项要有 `failed_stage` 和 `recommended_action.code`。
+
+记录验收时使用：
+
+```powershell
+relief-story-agent batch-artifacts --batch-id "{batch_id}" --pretty > "D:/relief_story_acceptance/batch_artifacts.json"
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "batch_run" `
+  --status "manual_pending" `
+  --batch-id "{batch_id}" `
+  --check "batch_run=pass:batch {batch_id} produced item summaries and publish-ready outputs" `
+  --batch-artifacts-report "D:/relief_story_acceptance/batch_artifacts.json" `
+  --include-default-matrix `
+  --pretty
+```
 
 ### P4：重启恢复演练
 

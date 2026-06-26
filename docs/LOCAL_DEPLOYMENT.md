@@ -234,6 +234,9 @@ rechecked on disk each time `acceptance-status` reads the report.
 The same status refresh requires top-level `run_id` for `single_run=pass`, and
 top-level `batch_id` for `batch_run`, `restart_recovery`, and `export=pass`, so
 release-ready reports stay traceable to concrete run and batch records.
+`batch_run=pass` also needs a structured batch-artifacts report, supplied with
+`--batch-artifacts-report`, where completed items are publish-ready and failed
+items include both `failed_stage` and `recommended_action.code`.
 `restart_recovery=pass` also needs structured before/after recovery-plan
 evidence, either from a combined `--restart-recovery-report` JSON file or from
 the two `--restart-recovery-before-report` and

@@ -316,6 +316,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Check in id=status[:evidence] format. Repeat for multiple checks.",
     )
     acceptance_parser.add_argument(
+        "--batch-artifacts-report",
+        default="",
+        help="JSON batch-artifacts output with item summaries for batch_run evidence.",
+    )
+    acceptance_parser.add_argument(
         "--restart-recovery-report",
         default="",
         help="JSON report with before_restart and after_restart recovery plans for restart_recovery evidence.",
@@ -916,8 +921,12 @@ def _acceptance(args: argparse.Namespace) -> int:
     sources = {}
     if args.smoke_result:
         sources["smoke_result"] = args.smoke_result
-    checks = _attach_restart_recovery_report(
+    checks = _attach_batch_artifacts_report(
         [_parse_check_arg(value) for value in args.check],
+        batch_artifacts_report=args.batch_artifacts_report,
+    )
+    checks = _attach_restart_recovery_report(
+        checks,
         restart_recovery_report=args.restart_recovery_report,
         restart_recovery_before_report=args.restart_recovery_before_report,
         restart_recovery_after_report=args.restart_recovery_after_report,
@@ -972,6 +981,46 @@ def _local_acceptance(args: argparse.Namespace) -> int:
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0 if result.get("status") == "completed" else 1
+
+
+def _attach_batch_artifacts_report(
+    checks: list[dict[str, str]],
+    *,
+    batch_artifacts_report: str,
+) -> list[dict[str, Any]]:
+    if not batch_artifacts_report:
+        return checks
+    attached: list[dict[str, Any]] = []
+    found = False
+    for check in checks:
+        if check.get("id") != "batch_run":
+            attached.append(check)
+            continue
+        found = True
+        details = check.get("details") if isinstance(check.get("details"), dict) else {}
+        attached.append(
+            {
+                **check,
+                "details": {
+                    **details,
+                    "batch_artifacts_report": batch_artifacts_report,
+                },
+            }
+        )
+    if found:
+        return attached
+    return [
+        *attached,
+        {
+            "id": "batch_run",
+            "status": "pass",
+            "required_evidence": "batch id, item summaries",
+            "evidence": f"batch_artifacts_report={batch_artifacts_report}",
+            "details": {
+                "batch_artifacts_report": batch_artifacts_report,
+            },
+        },
+    ]
 
 
 def _attach_restart_recovery_report(

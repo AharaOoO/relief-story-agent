@@ -827,6 +827,55 @@ def test_run_local_acceptance_fails_when_preserved_restart_recovery_lacks_eviden
     assert any(check["id"] == "restart_recovery" for check in status["blocking_checks"])
 
 
+def test_run_local_acceptance_fails_when_preserved_batch_run_lacks_evidence(tmp_path):
+    acceptance_dir = tmp_path / "acceptance"
+    acceptance_dir.mkdir()
+    (acceptance_dir / "acceptance_report.json").write_text(
+        json.dumps(
+            {
+                "batch_id": "batch_real",
+                "mode": "local_acceptance",
+                "status": "completed",
+                "checks": [
+                    {
+                        "id": "batch_run",
+                        "status": "pass",
+                        "required_evidence": "batch id, item summaries",
+                        "evidence": "manual note says batch worked",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "398 passed in 67.45s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        acceptance_dir,
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    status = json.loads(Path(result["acceptance_status"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
+    assert checks["batch_run"]["status"] == "fail"
+    assert checks["batch_run"]["details"]["batch_evidence"]["error"] == "missing_batch_evidence"
+    assert any(check["id"] == "batch_run" for check in status["blocking_checks"])
+
+
 def test_run_local_acceptance_fails_when_preserved_video_path_is_stale(tmp_path):
     acceptance_dir = tmp_path / "acceptance"
     missing_video = tmp_path / "deleted.mp4"

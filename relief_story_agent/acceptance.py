@@ -84,6 +84,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         video_paths=video_paths,
         mode=str(payload.get("mode") or "manual"),
     )
+    checks = refresh_batch_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_recovery_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_identity_evidence(
@@ -121,6 +122,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
         )
+        checks = refresh_batch_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_recovery_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_identity_evidence(
@@ -243,6 +245,156 @@ def refresh_video_evidence(
             "details": {"videos": []},
         },
     ]
+
+
+def refresh_batch_evidence(
+    checks: list[dict[str, Any]],
+    *,
+    batch_id: str = "",
+) -> list[dict[str, Any]]:
+    return [
+        _refreshed_batch_run_check(check, batch_id=batch_id)
+        if str(check.get("id") or "") == "batch_run"
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_batch_run_check(check: dict[str, Any], *, batch_id: str) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    batch_evidence = _batch_evidence_status(details, expected_batch_id=batch_id)
+    valid = bool(batch_evidence["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"batch_evidence_valid={str(valid).lower()}; "
+            f"batch_id_matches={str(bool(batch_evidence['batch_id_matches'])).lower()}; "
+            f"items={batch_evidence['item_count']}; "
+            f"publish_ready={batch_evidence['publish_ready_count']}"
+        ),
+        "details": {
+            **details,
+            "batch_evidence": batch_evidence,
+        },
+    }
+
+
+def _batch_evidence_status(details: dict[str, Any], *, expected_batch_id: str = "") -> dict[str, Any]:
+    result = {
+        "valid": False,
+        "error": "",
+        "path": "",
+        "exists": False,
+        "expected_batch_id": expected_batch_id,
+        "reported_batch_id": "",
+        "batch_id_matches": False,
+        "status": "",
+        "item_count": 0,
+        "publish_ready_count": 0,
+        "failed_count": 0,
+        "invalid_items": [],
+    }
+    if not expected_batch_id:
+        result["error"] = "missing_expected_batch_id"
+        return result
+
+    payload_result = _batch_evidence_payload(details)
+    result = {**result, **payload_result}
+    payload = payload_result.get("payload")
+    if not isinstance(payload, dict):
+        result.pop("payload", None)
+        if not result["error"]:
+            result["error"] = "missing_batch_evidence"
+        return result
+
+    reported_batch_id = str(payload.get("batch_id") or "")
+    status = str(payload.get("status") or "")
+    items = payload.get("items") or []
+    if not isinstance(items, list):
+        items = []
+    invalid_items = _invalid_batch_items(items)
+    publish_ready_count = sum(1 for item in items if isinstance(item, dict) and item.get("publish_ready"))
+    failed_count = sum(1 for item in items if isinstance(item, dict) and str(item.get("status") or "") == "failed")
+    batch_id_matches = reported_batch_id == expected_batch_id
+    error = ""
+    if status not in {"completed", "partial_failed"}:
+        error = "batch_status_not_completed"
+    elif not items:
+        error = "missing_batch_items"
+    elif not reported_batch_id:
+        error = "missing_report_batch_id"
+    elif not batch_id_matches:
+        error = "batch_id_mismatch"
+    elif invalid_items:
+        error = "invalid_batch_items"
+
+    result.update(
+        {
+            "valid": not error,
+            "error": error,
+            "reported_batch_id": reported_batch_id,
+            "batch_id_matches": batch_id_matches,
+            "status": status,
+            "item_count": len(items),
+            "publish_ready_count": publish_ready_count,
+            "failed_count": failed_count,
+            "invalid_items": invalid_items,
+        }
+    )
+    result.pop("payload", None)
+    return result
+
+
+def _batch_evidence_payload(details: dict[str, Any]) -> dict[str, Any]:
+    raw_path = (
+        details.get("batch_artifacts_report")
+        or details.get("batch_run_report")
+        or details.get("batch_status_report")
+        or ""
+    )
+    if raw_path:
+        path = Path(str(raw_path))
+        base = {"path": str(path), "exists": path.exists() and path.is_file()}
+        if not base["exists"]:
+            return {**base, "error": "missing_batch_report"}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {**base, "error": "invalid_batch_report_json"}
+        return {**base, "payload": payload}
+    if "items" in details:
+        return {"payload": details}
+    return {"error": "missing_batch_evidence"}
+
+
+def _invalid_batch_items(items: list[Any]) -> list[dict[str, Any]]:
+    invalid: list[dict[str, Any]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            invalid.append({"index": index, "reason": "item_not_object"})
+            continue
+        run_id = str(item.get("run_id") or "")
+        status = str(item.get("status") or "")
+        publish_ready = bool(item.get("publish_ready"))
+        primary_video_path = str(item.get("primary_video_path") or "")
+        failed_stage = str(item.get("failed_stage") or "")
+        action_code = str((item.get("recommended_action") or {}).get("code") or "")
+        if not run_id:
+            invalid.append({"index": index, "reason": "missing_run_id"})
+        if publish_ready:
+            if not primary_video_path:
+                invalid.append({"index": index, "run_id": run_id, "reason": "publish_ready_missing_video"})
+            continue
+        if status == "failed":
+            if not failed_stage:
+                invalid.append({"index": index, "run_id": run_id, "reason": "failed_item_missing_failed_stage"})
+            if not action_code:
+                invalid.append({"index": index, "run_id": run_id, "reason": "failed_item_missing_recommended_action"})
+            continue
+        invalid.append({"index": index, "run_id": run_id, "reason": "item_not_publish_ready_or_failed"})
+    return invalid
 
 
 def refresh_export_evidence(

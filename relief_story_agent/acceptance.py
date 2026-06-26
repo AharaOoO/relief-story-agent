@@ -75,13 +75,11 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
     video_paths = _string_list(payload.get("video_paths") or [])
     checks = [_normalize_check(check) for check in payload.get("checks") or []]
     checks.extend(_checks_from_sources(payload.get("sources") or {}))
-    if video_paths:
-        checks.append(_check_from_video_paths(video_paths))
-    else:
-        checks = _require_single_run_video_evidence(
-            checks,
-            mode=str(payload.get("mode") or "manual"),
-        )
+    checks = _refresh_video_evidence(
+        checks,
+        video_paths=video_paths,
+        mode=str(payload.get("mode") or "manual"),
+    )
     if payload.get("include_default_matrix"):
         checks = _merge_default_matrix(checks)
 
@@ -108,8 +106,9 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
     if path.exists():
         report = json.loads(path.read_text(encoding="utf-8"))
         checks = [_normalize_check(check) for check in report.get("checks") or []]
-        checks = _require_single_run_video_evidence(
+        checks = _refresh_video_evidence(
             checks,
+            video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
         )
         summary = report.get("summary") or _build_summary({**report, "checks": checks})
@@ -185,13 +184,18 @@ def _check_from_video_paths(video_paths: list[str]) -> dict[str, Any]:
     }
 
 
-def _require_single_run_video_evidence(
+def _refresh_video_evidence(
     checks: list[dict[str, Any]],
     *,
+    video_paths: list[str],
     mode: str,
 ) -> list[dict[str, Any]]:
-    if any(str(check.get("id") or "") == "video_files" for check in checks):
-        return checks
+    checks_without_video = [
+        check for check in checks if str(check.get("id") or "") != "video_files"
+    ]
+    if video_paths:
+        return [*checks_without_video, _check_from_video_paths(video_paths)]
+
     single_run_passed = any(
         str(check.get("id") or "") == "single_run"
         and str(check.get("status") or "").lower() in PASS_STATUSES
@@ -200,7 +204,7 @@ def _require_single_run_video_evidence(
     if mode != "single_run" and not single_run_passed:
         return checks
     return [
-        *checks,
+        *checks_without_video,
         {
             "id": "video_files",
             "required_evidence": "local video files exist, are non-empty, and are openable",

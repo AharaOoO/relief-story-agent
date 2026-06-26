@@ -398,7 +398,7 @@ relief-story-agent local-acceptance `
 - `ACCEPTANCE_REPORT.md`
 - `ready_for_release=true`
 
-`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
+`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项；如果报告已有 `video_paths`，`acceptance-status` 会按当前磁盘状态重新检查，不信任旧的 `video_files=pass`。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
 
 只有这一步和真实视频、真实 batch、真实导出都通过，才能说“除 UI 外基本完成”。
 

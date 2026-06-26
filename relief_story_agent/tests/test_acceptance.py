@@ -321,6 +321,90 @@ def test_build_acceptance_status_blocks_single_run_without_video_evidence(tmp_pa
     assert "verify_video_files" in status["suggested_actions"]
 
 
+def test_build_acceptance_status_revalidates_stale_video_file_check(tmp_path):
+    missing_video = tmp_path / "deleted.mp4"
+    report_path = tmp_path / "acceptance_report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "mode": "single_run",
+                "status": "completed",
+                "video_paths": [str(missing_video)],
+                "checks": [
+                    {
+                        "id": "single_run",
+                        "status": "pass",
+                        "required_evidence": "run artifact dir, openable downloaded video path",
+                        "evidence": "run completed",
+                    },
+                    {
+                        "id": "video_files",
+                        "status": "pass",
+                        "required_evidence": "local video files exist, are non-empty, and are openable",
+                        "evidence": "valid_videos=1/1",
+                        "details": {
+                            "videos": [
+                                {
+                                    "path": str(missing_video),
+                                    "exists": True,
+                                    "size_bytes": 1024,
+                                    "openable": True,
+                                    "valid": True,
+                                }
+                            ]
+                        },
+                    },
+                ],
+                "summary": {"ready_for_release": True, "check_count": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = build_acceptance_status(report_path)
+
+    assert status["ready_for_release"] is False
+    video_check = status["blocking_checks"][0]
+    assert video_check["id"] == "video_files"
+    assert video_check["status"] == "fail"
+    assert video_check["details"]["videos"][0]["exists"] is False
+
+
+def test_build_acceptance_status_rejects_stale_video_pass_without_video_paths(tmp_path):
+    report_path = tmp_path / "acceptance_report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "mode": "single_run",
+                "status": "completed",
+                "video_paths": [],
+                "checks": [
+                    {
+                        "id": "single_run",
+                        "status": "pass",
+                        "required_evidence": "run artifact dir, openable downloaded video path",
+                        "evidence": "run completed",
+                    },
+                    {
+                        "id": "video_files",
+                        "status": "pass",
+                        "required_evidence": "local video files exist, are non-empty, and are openable",
+                        "evidence": "valid_videos=1/1",
+                    },
+                ],
+                "summary": {"ready_for_release": True, "check_count": 2},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = build_acceptance_status(report_path)
+
+    assert status["ready_for_release"] is False
+    assert status["blocking_checks"][0]["id"] == "video_files"
+    assert status["blocking_checks"][0]["evidence"] == "missing video_paths for single_run acceptance"
+
+
 def test_cli_acceptance_writes_report(tmp_path):
     completed = subprocess.run(
         [

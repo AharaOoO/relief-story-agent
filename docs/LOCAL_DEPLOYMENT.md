@@ -215,7 +215,8 @@ and `export`, unless the new run records the same check id again; existing
 `run_id`, `batch_id`, and video paths are also carried forward.
 For `single_run` acceptance, a passing `single_run` check must include at least
 one recorded video path. If it does not, `acceptance-status` reports a
-`video_files` blocker and `ready_for_release=false`.
+`video_files` blocker and `ready_for_release=false`. Existing `video_paths` are
+rechecked on disk each time `acceptance-status` reads the report.
 
 To query a generated report without reading Markdown manually:
 

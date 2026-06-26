@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from relief_story_agent import cli
+from relief_story_agent.acceptance import write_acceptance_report
 from relief_story_agent.local_acceptance import run_local_acceptance
 
 
@@ -339,6 +340,56 @@ def test_run_local_acceptance_can_collect_comfyui_output_refresh(tmp_path):
     assert checks["comfyui_outputs"]["status"] == "pass"
     assert checks["comfyui_outputs"]["evidence"] == "ready=true; video_count=1; downloaded_count=1; prompt_ids=prompt_video"
     assert report["video_paths"] == [str(downloaded)]
+
+
+def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_path):
+    acceptance_dir = tmp_path / "acceptance"
+    write_acceptance_report(
+        acceptance_dir,
+        {
+            "mode": "single_and_export",
+            "status": "completed",
+            "checks": [
+                {
+                    "id": "single_run",
+                    "status": "pass",
+                    "required_evidence": "run artifact dir, downloaded video path",
+                    "evidence": "run_id=run_real; video=D:/runs/run_real/output.mp4",
+                },
+                {
+                    "id": "export",
+                    "status": "pass",
+                    "required_evidence": "publish index, zip, sha256",
+                    "evidence": "export_dir=D:/exports/batch_real; valid=true",
+                },
+            ],
+            "video_paths": ["D:/runs/run_real/output.mp4"],
+        },
+    )
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "365 passed in 68.54s\n", "")
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        acceptance_dir,
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert checks["full_tests"]["status"] == "pass"
+    assert checks["single_run"]["status"] == "pass"
+    assert checks["single_run"]["evidence"] == "run_id=run_real; video=D:/runs/run_real/output.mp4"
+    assert checks["export"]["status"] == "pass"
+    assert checks["export"]["evidence"] == "export_dir=D:/exports/batch_real; valid=true"
+    assert "D:/runs/run_real/output.mp4" in report["video_paths"]
 
 
 def test_run_local_acceptance_marks_failed_commands(tmp_path):

@@ -206,7 +206,10 @@ raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
 acceptance reports plus `acceptance_status.json`. When both model config and
 run request are provided, the collected `model-check` evidence also covers the
 configured image provider. Use `--model-check-real-run` only for the final
-evidence pass after real model API keys are configured.
+evidence pass after real model API keys are configured. Re-running
+`local-acceptance` in the same output directory preserves previously passed
+checks, such as `single_run`, `batch_run`, `restart_recovery`, and `export`,
+unless the new run records the same check id again.
 
 To query a generated report without reading Markdown manually:
 
@@ -610,7 +613,9 @@ relief-story-agent local-acceptance `
 
 The command writes `local_acceptance_summary.json`, raw command output files,
 `acceptance_report.json`, `acceptance_status.json`, and
-`ACCEPTANCE_REPORT.md`.
+`ACCEPTANCE_REPORT.md`. Existing passed checks in the same output directory are
+carried forward so the final bundle can combine manual evidence entered earlier
+with the fresh command outputs.
 
 For manual evidence entry:
 

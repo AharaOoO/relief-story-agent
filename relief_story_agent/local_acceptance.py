@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .acceptance import build_acceptance_status, write_acceptance_report
+from .acceptance import PASS_STATUSES, build_acceptance_status, write_acceptance_report
 
 
 CommandRunner = Callable[[list[str]], subprocess.CompletedProcess[str]]
@@ -49,6 +49,9 @@ def run_local_acceptance(
     checks: list[dict[str, Any]] = []
     sources: dict[str, str] = {}
     video_paths: list[str] = []
+    existing_report = _load_existing_acceptance_report(target_dir / "acceptance_report.json")
+    preserved_checks = _preserved_passed_checks(existing_report)
+    preserved_video_paths = _report_video_paths(existing_report)
 
     compile_result = _execute_and_record(
         "compileall",
@@ -275,6 +278,8 @@ def run_local_acceptance(
         checks.append(output_check)
         video_paths.extend(refreshed_video_paths)
 
+    checks = _merge_preserved_checks(checks, preserved_checks)
+    video_paths = _dedupe_strings([*preserved_video_paths, *video_paths])
     status = (
         "completed"
         if all(item["exit_code"] == 0 for item in commands)
@@ -321,6 +326,65 @@ def run_local_acceptance(
         "summary": str(summary_path),
         "command_output_dir": str(output_root),
     }
+
+
+def _load_existing_acceptance_report(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _preserved_passed_checks(report: dict[str, Any]) -> list[dict[str, Any]]:
+    checks = report.get("checks") or []
+    if not isinstance(checks, list):
+        return []
+    preserved = []
+    for check in checks:
+        if not isinstance(check, dict):
+            continue
+        status = str(check.get("status") or "").lower()
+        if status in PASS_STATUSES:
+            preserved.append(dict(check))
+    return preserved
+
+
+def _report_video_paths(report: dict[str, Any]) -> list[str]:
+    value = report.get("video_paths") or []
+    if isinstance(value, (str, bytes)):
+        return [str(value)]
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item)]
+
+
+def _merge_preserved_checks(
+    current_checks: list[dict[str, Any]],
+    preserved_checks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    current_ids = {str(check.get("id") or "") for check in current_checks}
+    merged = list(current_checks)
+    for check in preserved_checks:
+        check_id = str(check.get("id") or "")
+        if not check_id or check_id in current_ids:
+            continue
+        merged.append(check)
+        current_ids.add(check_id)
+    return merged
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
 
 
 def _execute_and_record(

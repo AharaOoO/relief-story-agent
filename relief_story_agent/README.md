@@ -176,7 +176,9 @@ evidence to the same report. When both model config and run request are
 provided, local acceptance passes the run request into `model-check` so the
 four-grid image provider is covered by the model readiness evidence. Use
 `--model-check-real-run` in the final evidence pass so the same report records
-the real text-model and image-provider probes.
+the real text-model and image-provider probes. If an `acceptance_report.json`
+already exists in the output directory, passed checks from that report are
+preserved unless the new local-acceptance run records the same check id again.
 
 You can also run the offline skeleton demo by itself:
 

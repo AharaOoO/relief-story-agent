@@ -172,7 +172,9 @@ This writes command stdout/stderr files, `local_acceptance_summary.json`,
 `acceptance_report.json`, `acceptance_status.json`, and
 `ACCEPTANCE_REPORT.md`. Optional config/request arguments add `model-check`, run
 diagnose, batch diagnose, smoke, and standalone ComfyUI output-download
-evidence to the same report. When both model config and run request are
+evidence to the same report. It also records a `pipeline_schema` check from
+`relief-story-agent pipeline-schema`, covering the fixed canonical stage order
+and invariants. When both model config and run request are
 provided, local acceptance passes the run request into `model-check` so the
 four-grid image provider is covered by the model readiness evidence. Use
 `--model-check-real-run` in the final evidence pass so the same report records

@@ -199,8 +199,8 @@ relief-story-agent local-acceptance `
   --pretty
 ```
 
-This runs `compileall`, full tests, optional `model-check`, run/batch
-`diagnose`, optional offline `local-demo`, optional `smoke-comfyui`, and
+This runs `compileall`, full tests, `pipeline-schema`, optional `model-check`,
+run/batch `diagnose`, optional offline `local-demo`, optional `smoke-comfyui`, and
 optional standalone ComfyUI output refresh/download evidence, stores
 raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
 acceptance reports plus `acceptance_status.json`. When both model config and
@@ -209,7 +209,9 @@ configured image provider. Use `--model-check-real-run` only for the final
 evidence pass after real model API keys are configured. When ComfyUI output
 download evidence is collected, the reported video `local_path` must point to
 an existing non-empty file with a recognized video container before that check
-can pass. Re-running `local-acceptance` in the same output directory preserves
+can pass. The `pipeline_schema` check must pass to prove the fixed canonical
+stage order and invariants are still intact. Re-running `local-acceptance` in
+the same output directory preserves
 previously passed checks, such as `single_run`, `batch_run`, `restart_recovery`,
 and `export`, unless the new run records the same check id again; existing
 `run_id`, `batch_id`, and video paths are also carried forward.
@@ -643,5 +645,5 @@ Generated reports always include the full release matrix; the flag remains
 accepted for older command snippets and explicit manual checklists.
 
 Do not mark the software complete until the acceptance matrix has real evidence
-for tests, dry smoke, real smoke, single run, batch run, restart recovery,
-export validation, and fresh setup.
+for tests, pipeline schema, dry smoke, real smoke, single run, batch run,
+restart recovery, export validation, and fresh setup.

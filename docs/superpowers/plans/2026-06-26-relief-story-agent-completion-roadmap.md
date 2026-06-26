@@ -578,6 +578,9 @@ D:/relief_story_acceptance/acceptance_status.json
 D:/relief_story_acceptance/ACCEPTANCE_REPORT.md
 ```
 
+Expected report checks include `pipeline_schema=pass`, proving the canonical
+stage order and invariants from `relief-story-agent pipeline-schema`.
+
 - [ ] **Step 2: Query acceptance status**
 
 ```powershell
@@ -644,6 +647,7 @@ Use narrower paths if only docs changed.
 The non-UI backend can be called complete only when all of these have evidence:
 
 - Full tests pass.
+- `pipeline_schema=pass` proves the fixed canonical stage order and invariants.
 - `model-check --real-run` passes for Gemini, DeepSeek, GPT text, and image provider.
 - Single run completes with a local video file.
 - Batch of at least 3, preferably 5, items completes or produces safe, explicit blockers.

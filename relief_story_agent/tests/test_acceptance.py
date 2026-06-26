@@ -44,9 +44,9 @@ def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
     assert report["video_paths"] == ["D:/relief_story_runs/run_demo/output.mp4"]
     assert report["checks"][0]["id"] == "full_tests"
     assert report["checks"][0]["status"] == "pass"
-    assert report["summary"]["check_count"] == 14
+    assert report["summary"]["check_count"] == 15
     assert report["summary"]["by_status"]["pass"] == 1
-    assert report["summary"]["by_status"]["manual_pending"] == 12
+    assert report["summary"]["by_status"]["manual_pending"] == 13
     assert report["summary"]["by_status"]["fail"] == 1
     assert report["summary"]["ready_for_release"] is False
 
@@ -157,8 +157,8 @@ def test_write_acceptance_report_can_collect_smoke_result(tmp_path):
     assert "full_tests" in check_ids
     assert "single_run" in check_ids
     assert report["summary"]["ready_for_release"] is False
-    assert report["summary"]["check_count"] == 13
-    assert report["summary"]["by_status"]["manual_pending"] == 12
+    assert report["summary"]["check_count"] == 14
+    assert report["summary"]["by_status"]["manual_pending"] == 13
 
 
 def test_write_acceptance_report_can_collect_local_demo_summary(tmp_path):
@@ -216,6 +216,7 @@ def test_write_acceptance_report_can_include_default_matrix(tmp_path):
 
     assert "full_tests" in check_ids
     assert "local_demo" in check_ids
+    assert "pipeline_schema" in check_ids
     assert "model_check" in check_ids
     assert "run_diagnose" in check_ids
     assert "batch_diagnose" in check_ids
@@ -231,7 +232,7 @@ def test_build_acceptance_status_reports_missing_report_with_default_matrix(tmp_
 
     assert status["exists"] is False
     assert status["ready_for_release"] is False
-    assert status["summary"]["check_count"] == 13
+    assert status["summary"]["check_count"] == 14
     assert status["blocking_checks"][0]["id"] == "full_tests"
     assert status["suggested_actions"][0] == "run_local_acceptance"
 
@@ -262,7 +263,7 @@ def test_build_acceptance_status_requires_full_release_matrix_for_partial_report
 
     blocking_ids = [check["id"] for check in status["blocking_checks"]]
     assert status["ready_for_release"] is False
-    assert status["summary"]["check_count"] == 13
+    assert status["summary"]["check_count"] == 14
     assert "comfyui_real_smoke" not in blocking_ids
     assert "full_tests" in blocking_ids
     assert "single_run" in blocking_ids
@@ -330,8 +331,8 @@ def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
     status = build_acceptance_status(report_path)
 
     assert status["ready_for_release"] is False
-    assert status["summary"]["blocking_count"] == 12
-    assert status["summary"]["check_count"] == 13
+    assert status["summary"]["blocking_count"] == 13
+    assert status["summary"]["check_count"] == 14
 
 
 def test_build_acceptance_status_blocks_single_run_without_video_evidence(tmp_path):

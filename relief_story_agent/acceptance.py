@@ -18,6 +18,10 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
         "required_evidence": "python -m pytest relief_story_agent/tests -q output",
     },
     {
+        "id": "pipeline_schema",
+        "required_evidence": "pipeline-schema JSON with fixed canonical stage order and invariants",
+    },
+    {
         "id": "local_demo",
         "required_evidence": "local_demo_summary.json, fake model run and batch artifacts",
     },
@@ -242,6 +246,7 @@ def _acceptance_status_actions(
         actions.append("run_local_acceptance")
     action_by_check = {
         "full_tests": "run_full_tests",
+        "pipeline_schema": "verify_pipeline_schema",
         "local_demo": "run_local_demo",
         "comfyui_dry_smoke": "run_smoke_dry_run",
         "comfyui_real_smoke": "run_real_comfyui_smoke",

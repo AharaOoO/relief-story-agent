@@ -14,6 +14,19 @@ from .video_validation import check_local_video_file
 
 CommandRunner = Callable[[list[str]], subprocess.CompletedProcess[str]]
 
+EXPECTED_RELEASE_STAGE_ORDER = [
+    "chief_screenwriter",
+    "deepseek_polish",
+    "quality_gate",
+    "gpt_prompt_writer",
+    "gpt_prompt_audit",
+    "gpt_prompt_reviser",
+    "final_prompts",
+    "four_grid_asset",
+    "artifacts",
+    "comfyui",
+]
+
 
 def run_local_acceptance(
     output_dir: str | Path,
@@ -83,6 +96,17 @@ def run_local_acceptance(
             required_evidence="python -m pytest relief_story_agent/tests -q output",
         )
     )
+
+    pipeline_schema_result = _execute_and_record(
+        "pipeline_schema",
+        [python, "-m", "relief_story_agent.cli", "pipeline-schema"],
+        cwd=cwd,
+        output_root=output_root,
+        runner=runner,
+        timeout_seconds=command_timeout_seconds,
+    )
+    commands.append(pipeline_schema_result)
+    checks.append(_check_from_pipeline_schema_command(pipeline_schema_result))
 
     if include_local_demo:
         demo_output_dir = target_dir / "local_demo"
@@ -567,6 +591,56 @@ def _check_from_comfyui_outputs_command(
         },
         valid_video_paths if require_download else video_paths,
     )
+
+
+def _check_from_pipeline_schema_command(command_result: dict[str, Any]) -> dict[str, Any]:
+    required_evidence = "pipeline-schema JSON with fixed canonical stage order and invariants"
+    try:
+        payload = json.loads(str(command_result.get("stdout") or ""))
+    except json.JSONDecodeError:
+        return _check_from_command(
+            command_result,
+            check_id="pipeline_schema",
+            required_evidence=required_evidence,
+            extra_evidence="invalid pipeline-schema JSON stdout",
+        )
+
+    stage_order = [str(item) for item in payload.get("canonical_stage_order") or []]
+    invariants = payload.get("invariants") if isinstance(payload.get("invariants"), dict) else {}
+    fixed_order = invariants.get("fixed_order") is True
+    prompt_reviser_attempts = invariants.get("prompt_reviser_max_auto_attempts")
+    quality_gate_after = str(invariants.get("quality_gate_after") or "")
+    comfyui_workflow_generation = str(invariants.get("comfyui_workflow_generation") or "")
+    checks_pass = (
+        command_result["exit_code"] == 0
+        and stage_order == EXPECTED_RELEASE_STAGE_ORDER
+        and fixed_order
+        and prompt_reviser_attempts == 1
+        and quality_gate_after == "deepseek_polish"
+        and comfyui_workflow_generation == "never"
+    )
+    return {
+        "id": "pipeline_schema",
+        "required_evidence": required_evidence,
+        "status": "pass" if checks_pass else "fail",
+        "evidence": (
+            f"stage_count={len(stage_order)}; "
+            f"fixed_order={str(fixed_order).lower()}; "
+            f"prompt_reviser_max_auto_attempts={prompt_reviser_attempts}; "
+            f"quality_gate_after={quality_gate_after}; "
+            f"comfyui_workflow_generation={comfyui_workflow_generation}"
+        ),
+        "details": {
+            "command": command_result["command"],
+            "cwd": command_result["cwd"],
+            "exit_code": command_result["exit_code"],
+            "stdout_path": command_result["stdout_path"],
+            "stderr_path": command_result["stderr_path"],
+            "expected_stage_order": EXPECTED_RELEASE_STAGE_ORDER,
+            "actual_stage_order": stage_order,
+            "invariants": invariants,
+        },
+    }
 
 
 def _local_video_file_checks(video_paths: list[str]) -> list[dict[str, Any]]:

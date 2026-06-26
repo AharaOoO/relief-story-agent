@@ -15,6 +15,39 @@ MINIMAL_MP4_BYTES = (
     b"\x00\x00\x00\tmoov\x00"
 )
 
+EXPECTED_STAGE_ORDER = [
+    "chief_screenwriter",
+    "deepseek_polish",
+    "quality_gate",
+    "gpt_prompt_writer",
+    "gpt_prompt_audit",
+    "gpt_prompt_reviser",
+    "final_prompts",
+    "four_grid_asset",
+    "artifacts",
+    "comfyui",
+]
+
+
+def _pipeline_schema_completed(command: list[str]) -> subprocess.CompletedProcess[str]:
+    return subprocess.CompletedProcess(
+        command,
+        0,
+        json.dumps(
+            {
+                "canonical_stage_order": EXPECTED_STAGE_ORDER,
+                "invariants": {
+                    "fixed_order": True,
+                    "prompt_reviser_max_auto_attempts": 1,
+                    "quality_gate_after": "deepseek_polish",
+                    "comfyui_workflow_generation": "never",
+                },
+            }
+        )
+        + "\n",
+        "",
+    )
+
 
 def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     smoke_artifact_dir = tmp_path / "smoke_artifacts"
@@ -39,6 +72,8 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "318 passed in 52.91s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2] == "relief_story_agent.smoke_comfyui":
             return subprocess.CompletedProcess(
                 command,
@@ -64,7 +99,8 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
         command_runner=runner,
     )
 
-    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.smoke_comfyui"]
+    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.cli", "relief_story_agent.smoke_comfyui"]
+    assert calls[2][3] == "pipeline-schema"
     assert Path(result["acceptance_report"]).exists()
     assert Path(result["acceptance_status"]).exists()
     assert Path(result["summary"]).exists()
@@ -77,6 +113,8 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     assert checks["compileall"]["status"] == "pass"
     assert checks["full_tests"]["status"] == "pass"
     assert checks["full_tests"]["evidence"] == "exit_code=0; 318 passed in 52.91s"
+    assert checks["pipeline_schema"]["status"] == "pass"
+    assert checks["pipeline_schema"]["evidence"] == "stage_count=10; fixed_order=true; prompt_reviser_max_auto_attempts=1; quality_gate_after=deepseek_polish; comfyui_workflow_generation=never"
     assert checks["comfyui_real_smoke"]["status"] == "pass"
     assert checks["comfyui_real_smoke"]["evidence"].startswith("prompt_id=prompt-local")
     assert checks["restart_recovery"]["status"] == "manual_pending"
@@ -100,6 +138,8 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "330 passed in 52.86s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:5] == ["relief_story_agent.cli", "model-check", "--model-config"]:
             return subprocess.CompletedProcess(command, 0, '{"ready": true, "checks": []}\n', "")
         if command[2:5] == ["relief_story_agent.cli", "diagnose", "--request"] and "--kind" not in command:
@@ -124,18 +164,21 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
         "relief_story_agent.cli",
         "relief_story_agent.cli",
         "relief_story_agent.cli",
+        "relief_story_agent.cli",
     ]
-    assert calls[2][3] == "model-check"
-    assert "--run-request" in calls[2]
-    assert str(run_request) in calls[2]
-    assert calls[3][3] == "diagnose"
+    assert calls[2][3] == "pipeline-schema"
+    assert calls[3][3] == "model-check"
+    assert "--run-request" in calls[3]
+    assert str(run_request) in calls[3]
     assert calls[4][3] == "diagnose"
-    assert "--kind" in calls[4]
+    assert calls[5][3] == "diagnose"
+    assert "--kind" in calls[5]
 
     report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
     checks = {check["id"]: check for check in report["checks"]}
 
     assert result["status"] == "completed"
+    assert checks["pipeline_schema"]["status"] == "pass"
     assert checks["model_check"]["status"] == "pass"
     assert checks["model_check"]["evidence"] == "exit_code=0; ready=true"
     assert checks["run_diagnose"]["status"] == "pass"
@@ -157,6 +200,8 @@ def test_run_local_acceptance_can_collect_real_model_probe(tmp_path):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "364 passed in 65.75s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:5] == ["relief_story_agent.cli", "model-check", "--model-config"]:
             return subprocess.CompletedProcess(
                 command,
@@ -196,6 +241,8 @@ def test_run_local_acceptance_fails_when_json_readiness_is_false(tmp_path):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "349 passed in 59.92s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:5] == ["relief_story_agent.cli", "model-check", "--model-config"]:
             return subprocess.CompletedProcess(
                 command,
@@ -231,6 +278,8 @@ def test_run_local_acceptance_can_collect_offline_local_demo(tmp_path):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "331 passed in 54.94s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:4] == ["relief_story_agent.cli", "local-demo"]:
             output_dir = Path(command[command.index("--output-dir") + 1])
             output_dir.mkdir(parents=True, exist_ok=True)
@@ -273,9 +322,10 @@ def test_run_local_acceptance_can_collect_offline_local_demo(tmp_path):
         command_runner=runner,
     )
 
-    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.cli"]
-    assert calls[2][3] == "local-demo"
-    assert calls[2][calls[2].index("--batch-size") + 1] == "2"
+    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.cli", "relief_story_agent.cli"]
+    assert calls[2][3] == "pipeline-schema"
+    assert calls[3][3] == "local-demo"
+    assert calls[3][calls[3].index("--batch-size") + 1] == "2"
 
     report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
     checks = {check["id"]: check for check in report["checks"]}
@@ -297,6 +347,8 @@ def test_run_local_acceptance_can_collect_comfyui_output_refresh(tmp_path):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
             return subprocess.CompletedProcess(
                 command,
@@ -333,11 +385,12 @@ def test_run_local_acceptance_can_collect_comfyui_output_refresh(tmp_path):
         command_runner=runner,
     )
 
-    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.cli"]
-    assert calls[2][3] == "comfyui-outputs"
-    assert "--prompt-id" in calls[2]
-    assert calls[2][calls[2].index("--prompt-id") + 1] == "prompt_video"
-    assert "--download" in calls[2]
+    assert [command[2] for command in calls] == ["compileall", "pytest", "relief_story_agent.cli", "relief_story_agent.cli"]
+    assert calls[2][3] == "pipeline-schema"
+    assert calls[3][3] == "comfyui-outputs"
+    assert "--prompt-id" in calls[3]
+    assert calls[3][calls[3].index("--prompt-id") + 1] == "prompt_video"
+    assert "--download" in calls[3]
 
     report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
     checks = {check["id"]: check for check in report["checks"]}
@@ -356,6 +409,8 @@ def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_missing(tmp
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
             return subprocess.CompletedProcess(
                 command,
@@ -418,6 +473,8 @@ def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_empty(tmp_p
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
             return subprocess.CompletedProcess(
                 command,
@@ -480,6 +537,8 @@ def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_unopenable(
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
             return subprocess.CompletedProcess(
                 command,
@@ -564,6 +623,8 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 0, "365 passed in 68.54s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         raise AssertionError(command)
 
     result = run_local_acceptance(
@@ -592,6 +653,8 @@ def test_run_local_acceptance_marks_failed_commands(tmp_path):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[2] == "pytest":
             return subprocess.CompletedProcess(command, 1, "1 failed, 317 passed\n", "failure detail\n")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
         raise AssertionError(command)
 
     result = run_local_acceptance(

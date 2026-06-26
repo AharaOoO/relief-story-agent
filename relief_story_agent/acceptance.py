@@ -33,7 +33,7 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
     },
     {
         "id": "model_check",
-        "required_evidence": "model-check JSON, ready=true",
+        "required_evidence": "model-check JSON, ready=true, text profiles and image provider covered",
     },
     {
         "id": "run_diagnose",

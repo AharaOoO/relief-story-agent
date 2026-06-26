@@ -233,6 +233,7 @@ relief-story-agent local-readiness `
 ```powershell
 relief-story-agent model-check `
   --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --real-run `
   --pretty
 ```
@@ -499,7 +500,7 @@ relief-story-agent local-readiness `
 
 ```powershell
 relief-story-agent model-check --model-config "D:/relief_story_config/model_config.local.json" --pretty
-relief-story-agent model-check --model-config "D:/relief_story_config/model_config.local.json" --real-run --pretty
+relief-story-agent model-check --model-config "D:/relief_story_config/model_config.local.json" --run-request "D:/relief_story_config/run_request.full-ltx.json" --real-run --pretty
 ```
 
 模板检查：

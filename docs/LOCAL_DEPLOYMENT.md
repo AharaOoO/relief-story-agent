@@ -163,15 +163,17 @@ relief-story-agent template-check `
   --pretty
 relief-story-agent model-check `
   --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --pretty
 relief-story-agent local-bootstrap --pretty
 relief-story-agent local-doctor --server "http://127.0.0.1:8891" --pretty
 ```
 
 `model-check` defaults to a no-quota dry-run that checks profile wiring, model
-names, and environment variables. Once the keys are set, run the same command
-with `--real-run` to send one tiny JSON probe per profile before spending quota
-on a full short-video run.
+names, environment variables, and the run request's automatic four-grid image
+provider when `--run-request` is supplied. Once the keys are set, run the same
+command with `--real-run` to send one tiny JSON probe per text profile and one
+minimal image probe before spending quota on a full short-video run.
 
 `local-bootstrap` exposes both `endpoints.local_doctor` and
 `comfyui.doctor_endpoint` for launcher/UI address-box flows. Use that doctor
@@ -200,7 +202,9 @@ This runs `compileall`, full tests, optional `model-check`, run/batch
 `diagnose`, optional offline `local-demo`, optional `smoke-comfyui`, and
 optional standalone ComfyUI output refresh/download evidence, stores
 raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
-acceptance reports plus `acceptance_status.json`.
+acceptance reports plus `acceptance_status.json`. When both model config and
+run request are provided, the collected `model-check` evidence also covers the
+configured image provider.
 
 To query a generated report without reading Markdown manually:
 

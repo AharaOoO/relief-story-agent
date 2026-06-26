@@ -88,15 +88,19 @@ mode does not call any model:
 ```powershell
 relief-story-agent model-check `
   --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --pretty
 ```
 
-After API keys and model names are correct, add `--real-run` to send a tiny
-JSON-only probe to each configured profile:
+Passing `--run-request` includes that request's automatic four-grid image
+provider in the readiness result. After API keys and model names are correct,
+add `--real-run` to send a tiny JSON-only probe to each configured text profile
+and one minimal image probe to the image provider:
 
 ```powershell
 relief-story-agent model-check `
   --model-config "D:/relief_story_config/model_config.local.json" `
+  --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --real-run `
   --pretty
 ```
@@ -167,7 +171,9 @@ This writes command stdout/stderr files, `local_acceptance_summary.json`,
 `acceptance_report.json`, `acceptance_status.json`, and
 `ACCEPTANCE_REPORT.md`. Optional config/request arguments add `model-check`, run
 diagnose, batch diagnose, smoke, and standalone ComfyUI output-download
-evidence to the same report.
+evidence to the same report. When both model config and run request are
+provided, local acceptance passes the run request into `model-check` so the
+four-grid image provider is covered by the model readiness evidence.
 
 You can also run the offline skeleton demo by itself:
 

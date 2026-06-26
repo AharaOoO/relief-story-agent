@@ -41,6 +41,7 @@ class ModelCallResult(BaseModel):
 class ModelProbeRequest(BaseModel):
     real_run: bool = False
     profiles: list[str] = Field(default_factory=list)
+    image_config: dict[str, Any] | None = None
 
 
 class LocalSetupBundleRequest(BaseModel):

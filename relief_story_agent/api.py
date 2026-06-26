@@ -37,6 +37,7 @@ from .models import (
     ComfyUIPreviewRequest,
     ComfyUIWorkflowAnalysisRequest,
     ComfyUIWorkflowDiscoveryRequest,
+    GridImageConfig,
     LocalSetupBundleRequest,
     ModelProbeRequest,
     RunRequest,
@@ -201,10 +202,16 @@ def create_app(
 
     @app.post("/api/config/model-check")
     def check_model_config(request: ModelProbeRequest):
+        image_config = (
+            GridImageConfig.model_validate(request.image_config)
+            if request.image_config
+            else None
+        )
         return run_model_probe(
             orchestrator.model_registry,
             real_run=request.real_run,
             profile_names=request.profiles or None,
+            image_config=image_config,
         )
 
     @app.get("/api/pipeline/schema")

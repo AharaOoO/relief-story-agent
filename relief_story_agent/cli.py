@@ -103,6 +103,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     model_check_parser.add_argument("--model-config", required=True, help="Model registry JSON file.")
     model_check_parser.add_argument("--profile", action="append", default=[], help="Profile name to check. Repeatable.")
+    model_check_parser.add_argument(
+        "--run-request",
+        default="",
+        help="Optional run request JSON; when provided, model-check also validates its grid image provider.",
+    )
     model_check_parser.add_argument("--real-run", action="store_true", help="Send a tiny JSON request to each selected model profile.")
     model_check_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     local_bootstrap_parser = subparsers.add_parser(
@@ -619,10 +624,17 @@ def _template_check(args: argparse.Namespace) -> int:
 
 def _model_check(args: argparse.Namespace) -> int:
     registry = ModelConfigRegistry.from_file(args.model_config)
+    image_config = None
+    if args.run_request:
+        request_payload = json.loads(Path(args.run_request).read_text(encoding="utf-8"))
+        request = RunRequest.model_validate(request_payload)
+        if request.comfyui.enabled:
+            image_config = request.comfyui.grid_image
     result = run_model_probe(
         registry,
         real_run=args.real_run,
         profile_names=args.profile or None,
+        image_config=image_config,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0 if result["ready"] else 1

@@ -119,6 +119,8 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
         "relief_story_agent.cli",
     ]
     assert calls[2][3] == "model-check"
+    assert "--run-request" in calls[2]
+    assert str(run_request) in calls[2]
     assert calls[3][3] == "diagnose"
     assert calls[4][3] == "diagnose"
     assert "--kind" in calls[4]

@@ -113,16 +113,19 @@ def run_local_acceptance(
             )
 
     if model_config:
+        model_command = [
+            python,
+            "-m",
+            "relief_story_agent.cli",
+            "model-check",
+            "--model-config",
+            str(model_config),
+        ]
+        if run_request:
+            model_command.extend(["--run-request", str(run_request)])
         model_result = _execute_and_record(
             "model_check",
-            [
-                python,
-                "-m",
-                "relief_story_agent.cli",
-                "model-check",
-                "--model-config",
-                str(model_config),
-            ],
+            model_command,
             cwd=cwd,
             output_root=output_root,
             runner=runner,

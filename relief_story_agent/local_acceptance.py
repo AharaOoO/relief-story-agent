@@ -52,6 +52,8 @@ def run_local_acceptance(
     existing_report = _load_existing_acceptance_report(target_dir / "acceptance_report.json")
     preserved_checks = _preserved_passed_checks(existing_report)
     preserved_video_paths = _report_video_paths(existing_report)
+    preserved_run_id = str(existing_report.get("run_id") or "")
+    preserved_batch_id = str(existing_report.get("batch_id") or "")
 
     compile_result = _execute_and_record(
         "compileall",
@@ -289,6 +291,8 @@ def run_local_acceptance(
     report_path = write_acceptance_report(
         target_dir,
         {
+            "run_id": preserved_run_id,
+            "batch_id": preserved_batch_id,
             "mode": "local_acceptance",
             "status": status,
             "video_paths": video_paths,

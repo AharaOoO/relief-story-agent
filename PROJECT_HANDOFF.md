@@ -397,7 +397,7 @@ relief-story-agent local-acceptance `
 - `ACCEPTANCE_REPORT.md`
 - `ready_for_release=true`
 
-`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查；如果本次运行产生同名检查，则以本次结果为准。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
+`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
 
 只有这一步和真实视频、真实 batch、真实导出都通过，才能说“除 UI 外基本完成”。
 

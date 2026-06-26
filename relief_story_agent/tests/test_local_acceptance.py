@@ -347,6 +347,8 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
     write_acceptance_report(
         acceptance_dir,
         {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
             "mode": "single_and_export",
             "status": "completed",
             "checks": [
@@ -384,6 +386,8 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
     report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
     checks = {check["id"]: check for check in report["checks"]}
 
+    assert report["run_id"] == "run_real"
+    assert report["batch_id"] == "batch_real"
     assert checks["full_tests"]["status"] == "pass"
     assert checks["single_run"]["status"] == "pass"
     assert checks["single_run"]["evidence"] == "run_id=run_real; video=D:/runs/run_real/output.mp4"

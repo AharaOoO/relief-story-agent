@@ -568,7 +568,10 @@ machine-readable `acceptance_status.json` with blocking checks and suggested
 actions.
 For JSON-producing checks such as `model-check` and `diagnose`, a zero exit code
 is not enough: `ready=false` or `valid=false` marks the check and generated
-acceptance status as failed.
+acceptance status as failed. Imported source files such as `smoke_result.json`
+and `local_demo_summary.json` are also interpreted before the top-level
+`local-acceptance` status is set, so a not-ready smoke or demo summary cannot
+leave the bundle marked completed.
 
 To inspect an existing report from scripts, another AI reviewer, or a future UI,
 use:

@@ -124,6 +124,60 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     assert acceptance_status["summary"]["blocking_count"] > 0
 
 
+def test_run_local_acceptance_fails_when_imported_smoke_result_is_not_ready(tmp_path):
+    smoke_artifact_dir = tmp_path / "smoke_artifacts"
+    smoke_artifact_dir.mkdir()
+    (smoke_artifact_dir / "smoke_result.json").write_text(
+        json.dumps(
+            {
+                "status": "failed",
+                "ready": False,
+                "prompt_id": "prompt-local",
+                "artifact_dir": str(smoke_artifact_dir),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "318 passed in 52.91s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
+            return _pipeline_schema_completed(command)
+        if command[2] == "relief_story_agent.smoke_comfyui":
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "\n".join(
+                    [
+                        "status=failed",
+                        "ready=false",
+                        "prompt_id=prompt-local",
+                        f"artifact_dir={smoke_artifact_dir}",
+                    ]
+                ),
+                "",
+            )
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        smoke_request=tmp_path / "smoke_request.json",
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
+    assert checks["comfyui_real_smoke"]["status"] == "fail"
+
+
 def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
     calls: list[list[str]] = []
     model_config = tmp_path / "model_config.json"

@@ -8,7 +8,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from .acceptance import PASS_STATUSES, build_acceptance_status, write_acceptance_report
+from .acceptance import (
+    PASS_STATUSES,
+    build_acceptance_status,
+    checks_from_sources,
+    write_acceptance_report,
+)
 from .video_validation import check_local_video_file
 
 
@@ -305,12 +310,16 @@ def run_local_acceptance(
         checks.append(output_check)
         video_paths.extend(refreshed_video_paths)
 
+    status_checks = _merge_preserved_checks(
+        [*checks, *checks_from_sources(sources)],
+        preserved_checks,
+    )
     checks = _merge_preserved_checks(checks, preserved_checks)
     video_paths = _dedupe_strings([*preserved_video_paths, *video_paths])
     status = (
         "completed"
         if all(item["exit_code"] == 0 for item in commands)
-        and _executed_checks_pass(checks)
+        and _executed_checks_pass(status_checks)
         else "failed"
     )
     report_path = write_acceptance_report(

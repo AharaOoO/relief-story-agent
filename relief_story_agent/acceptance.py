@@ -78,7 +78,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
 
     video_paths = _string_list(payload.get("video_paths") or [])
     checks = [_normalize_check(check) for check in payload.get("checks") or []]
-    checks.extend(_checks_from_sources(payload.get("sources") or {}))
+    checks.extend(checks_from_sources(payload.get("sources") or {}))
     checks = _refresh_video_evidence(
         checks,
         video_paths=video_paths,
@@ -165,7 +165,7 @@ def _normalize_check(raw_check: Any) -> dict[str, Any]:
     }
 
 
-def _checks_from_sources(sources: dict[str, Any]) -> list[dict[str, Any]]:
+def checks_from_sources(sources: dict[str, Any]) -> list[dict[str, Any]]:
     checks: list[dict[str, Any]] = []
     smoke_result = sources.get("smoke_result")
     if smoke_result:

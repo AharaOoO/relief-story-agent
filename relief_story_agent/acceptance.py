@@ -111,7 +111,8 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             video_paths=_string_list(report.get("video_paths") or []),
             mode=str(report.get("mode") or ""),
         )
-        summary = report.get("summary") or _build_summary({**report, "checks": checks})
+        checks = _merge_default_matrix(checks)
+        summary = _build_summary({**report, "checks": checks})
         ready_for_release = bool(summary.get("ready_for_release"))
     else:
         checks = _merge_default_matrix([])

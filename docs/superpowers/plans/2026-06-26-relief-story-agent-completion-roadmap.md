@@ -585,6 +585,8 @@ relief-story-agent acceptance-status `
 ```
 
 Expected for final completion: `ready_for_release=true`.
+The status query overlays the full release matrix, so partial reports from
+smoke-only or local-demo-only checks must still show blocking checks.
 
 - [ ] **Step 3: Query local-readiness**
 

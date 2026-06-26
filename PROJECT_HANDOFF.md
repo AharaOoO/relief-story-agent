@@ -134,6 +134,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `relief-story-agent local-demo`：无 API key、无 GPU 的 fake model 离线演练。
 - `relief-story-agent local-acceptance`：收集 compileall、pytest、model-check、diagnose、local-demo、smoke、comfyui-output 等证据；ComfyUI 下载视频证据会检查本地文件存在、非空且有可识别的视频容器。
 - `single_run=pass` 必须同时记录真实本地视频路径；缺少 `--video-path` 时 `acceptance-status` 会保留 `video_files` 阻塞项并返回 `ready_for_release=false`。
+- `acceptance-status` 会按完整发布矩阵补齐缺失检查；只记录 smoke 或局部手工检查的报告不会被误判为 release-ready。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
 - `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。
 
@@ -398,7 +399,7 @@ relief-story-agent local-acceptance `
 - `ACCEPTANCE_REPORT.md`
 - `ready_for_release=true`
 
-`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项；如果报告已有 `video_paths`，`acceptance-status` 会按当前磁盘状态重新检查，不信任旧的 `video_files=pass`。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
+`local-acceptance` 会保留同一输出目录里旧 `acceptance_report.json` 中已经 pass 的检查、顶层 `run_id` / `batch_id` 和视频路径；如果本次运行产生同名检查，则以本次结果为准。ComfyUI output download 检查只有在本地视频文件存在、非空且有可识别的视频容器时才会通过。`single_run=pass` 如果没有视频路径证据，`acceptance-status` 会新增/保留 `video_files` 阻塞项；如果报告已有 `video_paths`，`acceptance-status` 会按当前磁盘状态重新检查，不信任旧的 `video_files=pass`。`acceptance-status` 还会补齐完整发布矩阵，缺失的 P2-P6 证据都会保持阻塞。这样 P2-P5 手动记录的真实单条、batch、恢复、导出证据不会在最终 P6 重跑时丢失。
 
 只有这一步和真实视频、真实 batch、真实导出都通过，才能说“除 UI 外基本完成”。
 

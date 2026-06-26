@@ -577,6 +577,9 @@ relief-story-agent acceptance-status `
 
 The local API exposes the same read-only status at
 `GET /api/local/acceptance-status?report_path=...`.
+`acceptance-status` evaluates the full release matrix even when a report was
+created for a narrower smoke or manual check. Missing release gates are returned
+as blockers instead of allowing a partial report to become release-ready.
 
 ## ComfyUI / LTX 2.3 Workflows
 

@@ -228,6 +228,9 @@ relief-story-agent acceptance-status `
 
 HTTP equivalent for launchers and future UI shells:
 `GET /api/local/acceptance-status?report_path=...`.
+The status query always overlays the full release matrix. A report created for
+only smoke, local-demo, or another narrow check stays blocked until the missing
+release gates have evidence.
 
 To query the whole local deployment state in one call, including the ComfyUI
 address box value, selected workflow path, and acceptance evidence blockers:

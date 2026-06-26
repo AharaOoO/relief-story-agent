@@ -229,6 +229,39 @@ def test_build_acceptance_status_reports_missing_report_with_default_matrix(tmp_
     assert status["suggested_actions"][0] == "run_local_acceptance"
 
 
+def test_build_acceptance_status_requires_full_release_matrix_for_partial_report(tmp_path):
+    smoke_result_path = tmp_path / "smoke_result.json"
+    smoke_result_path.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "ready": True,
+                "prompt_id": "prompt-abc",
+                "artifact_dir": "D:/relief_story_smoke/smoke_demo",
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = write_acceptance_report(
+        tmp_path / "report",
+        {
+            "mode": "smoke",
+            "status": "completed",
+            "sources": {"smoke_result": str(smoke_result_path)},
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    blocking_ids = [check["id"] for check in status["blocking_checks"]]
+    assert status["ready_for_release"] is False
+    assert status["summary"]["check_count"] == 13
+    assert "comfyui_real_smoke" not in blocking_ids
+    assert "full_tests" in blocking_ids
+    assert "single_run" in blocking_ids
+    assert "run_full_tests" in status["suggested_actions"]
+
+
 def test_build_acceptance_status_lists_blocking_checks_from_existing_report(tmp_path):
     report_path = write_acceptance_report(
         tmp_path,
@@ -262,12 +295,13 @@ def test_build_acceptance_status_lists_blocking_checks_from_existing_report(tmp_
 
     assert status["exists"] is True
     assert status["ready_for_release"] is False
-    assert [check["id"] for check in status["blocking_checks"]] == [
-        "comfyui_real_smoke",
-        "single_run",
-    ]
+    blocking_ids = [check["id"] for check in status["blocking_checks"]]
+    assert blocking_ids[:2] == ["comfyui_real_smoke", "single_run"]
+    assert "local_demo" in blocking_ids
+    assert "export" in blocking_ids
     assert "run_real_comfyui_smoke" in status["suggested_actions"]
     assert "run_single_end_to_end" in status["suggested_actions"]
+    assert "run_local_demo" in status["suggested_actions"]
 
 
 def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
@@ -289,7 +323,8 @@ def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
     status = build_acceptance_status(report_path)
 
     assert status["ready_for_release"] is False
-    assert status["summary"]["blocking_count"] == 1
+    assert status["summary"]["blocking_count"] == 12
+    assert status["summary"]["check_count"] == 13
 
 
 def test_build_acceptance_status_blocks_single_run_without_video_evidence(tmp_path):

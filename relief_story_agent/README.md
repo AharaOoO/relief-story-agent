@@ -183,6 +183,9 @@ output check can pass. If an `acceptance_report.json` already exists in the
 output directory, passed checks from that report are preserved unless the new
 local-acceptance run records the same check id again; existing `run_id`,
 `batch_id`, and video paths are carried forward too.
+If a preserved or newly recorded `single_run` pass has no video path evidence,
+`acceptance-status` adds a `video_files` blocker until a real local video path
+is recorded and validates.
 
 You can also run the offline skeleton demo by itself:
 
@@ -547,6 +550,9 @@ recorded check are passing. The static checklist lives in
 `docs/ACCEPTANCE_REPORT_TEMPLATE.md`; it should not be treated as complete until
 real ComfyUI smoke, single-run, batch, restart-recovery, export, and clean-setup
 evidence has been recorded.
+For `single_run` acceptance, a passing `single_run` check must include at least
+one `--video-path`; otherwise `video_files` stays failed and
+`acceptance-status` keeps `ready_for_release=false`.
 
 To collect compile/test output and optional smoke evidence automatically, use
 `relief-story-agent local-acceptance`. It preserves raw command output under

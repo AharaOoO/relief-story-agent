@@ -63,8 +63,8 @@ chief_screenwriter
 
 1. 等用户提供真实模型 API 和本地 ComfyUI/workflow 信息。
 2. 跑 `model-check --real-run`。
-3. 跑单条真实端到端，拿到本地 mp4。
+3. 跑单条真实端到端，拿到本地 mp4，并用 `--video-path` 记录 `single_run` 验收。
 4. 跑 3-5 条 batch。
 5. 做重启恢复演练。
 6. 做 batch export 和 validate。
-7. 跑 `local-acceptance`，让 `acceptance-status` 和 `local-readiness` 都达到 `ready_for_release=true`。
+7. 跑 `local-acceptance`，让 `acceptance-status` 和 `local-readiness` 都达到 `ready_for_release=true`；缺少单条视频路径会留下 `video_files` 阻塞项。

@@ -99,6 +99,31 @@ def test_write_acceptance_report_rejects_unopenable_video_file(tmp_path):
     assert video_check["details"]["videos"][0]["valid"] is False
 
 
+def test_write_acceptance_report_requires_video_path_for_single_run_pass(tmp_path):
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "single_run",
+            "status": "completed",
+            "checks": [
+                {
+                    "id": "single_run",
+                    "status": "pass",
+                    "required_evidence": "run artifact dir, openable downloaded video path",
+                    "evidence": "run completed",
+                }
+            ],
+        },
+    )
+
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert checks["video_files"]["status"] == "fail"
+    assert checks["video_files"]["evidence"] == "missing video_paths for single_run acceptance"
+    assert report["summary"]["ready_for_release"] is False
+
+
 def test_write_acceptance_report_can_collect_smoke_result(tmp_path):
     smoke_result_path = tmp_path / "smoke_result.json"
     smoke_result_path.write_text(
@@ -265,6 +290,35 @@ def test_build_acceptance_status_does_not_trust_stale_ready_summary(tmp_path):
 
     assert status["ready_for_release"] is False
     assert status["summary"]["blocking_count"] == 1
+
+
+def test_build_acceptance_status_blocks_single_run_without_video_evidence(tmp_path):
+    report_path = tmp_path / "acceptance_report.json"
+    report_path.write_text(
+        json.dumps(
+            {
+                "mode": "single_run",
+                "status": "completed",
+                "video_paths": [],
+                "checks": [
+                    {
+                        "id": "single_run",
+                        "status": "pass",
+                        "required_evidence": "run artifact dir, openable downloaded video path",
+                        "evidence": "run completed",
+                    }
+                ],
+                "summary": {"ready_for_release": True, "check_count": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    status = build_acceptance_status(report_path)
+
+    assert status["ready_for_release"] is False
+    assert status["blocking_checks"][0]["id"] == "video_files"
+    assert "verify_video_files" in status["suggested_actions"]
 
 
 def test_cli_acceptance_writes_report(tmp_path):

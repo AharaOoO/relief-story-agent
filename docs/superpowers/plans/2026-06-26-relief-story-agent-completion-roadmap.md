@@ -324,6 +324,10 @@ relief-story-agent acceptance `
   --pretty
 ```
 
+Expected: omitting `--video-path` or pointing it at a missing/invalid video keeps
+the generated `video_files` check blocking and `acceptance-status`
+`ready_for_release=false`.
+
 Do not mark project complete yet.
 
 ## Task 5: Real Batch Run

@@ -160,6 +160,7 @@ relief-story-agent local-acceptance `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --local-demo `
+  --model-check-real-run `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
   --comfyui-output-prompt-id "{prompt_id}" `
@@ -173,7 +174,9 @@ This writes command stdout/stderr files, `local_acceptance_summary.json`,
 diagnose, batch diagnose, smoke, and standalone ComfyUI output-download
 evidence to the same report. When both model config and run request are
 provided, local acceptance passes the run request into `model-check` so the
-four-grid image provider is covered by the model readiness evidence.
+four-grid image provider is covered by the model readiness evidence. Use
+`--model-check-real-run` in the final evidence pass so the same report records
+the real text-model and image-provider probes.
 
 You can also run the offline skeleton demo by itself:
 

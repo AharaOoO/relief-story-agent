@@ -381,6 +381,7 @@ relief-story-agent local-acceptance `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --local-demo `
+  --model-check-real-run `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --comfyui-output-prompt-id "{prompt_id}" `
   --comfyui-output-artifact-dir "D:/relief_story_acceptance/comfyui_outputs" `

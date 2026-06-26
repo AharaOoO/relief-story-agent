@@ -191,6 +191,7 @@ relief-story-agent local-acceptance `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
   --local-demo `
+  --model-check-real-run `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
   --comfyui-output-prompt-id "{prompt_id}" `
@@ -204,7 +205,8 @@ optional standalone ComfyUI output refresh/download evidence, stores
 raw stdout/stderr under `command_outputs/`, and writes both JSON and Markdown
 acceptance reports plus `acceptance_status.json`. When both model config and
 run request are provided, the collected `model-check` evidence also covers the
-configured image provider.
+configured image provider. Use `--model-check-real-run` only for the final
+evidence pass after real model API keys are configured.
 
 To query a generated report without reading Markdown manually:
 
@@ -598,6 +600,7 @@ relief-story-agent local-acceptance `
   --model-config "D:/relief_story_config/model_config.local.json" `
   --run-request "D:/relief_story_config/run_request.full-ltx.json" `
   --batch-request "D:/relief_story_config/batch_request.full-ltx.json" `
+  --model-check-real-run `
   --smoke-request "D:/relief_story_config/smoke_request.json" `
   --smoke-dry-run `
   --comfyui-output-prompt-id "{prompt_id}" `

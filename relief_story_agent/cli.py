@@ -354,6 +354,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Force smoke-comfyui dry-run when --smoke-request is supplied.",
     )
+    local_acceptance_parser.add_argument(
+        "--model-check-real-run",
+        action="store_true",
+        help="Run model-check with --real-run when --model-config is supplied.",
+    )
     local_acceptance_parser.add_argument("--comfyui-output-prompt-id", default="", help="Optional ComfyUI prompt id to inspect with comfyui-outputs.")
     local_acceptance_parser.add_argument("--comfyui-output-endpoint", default="http://127.0.0.1:8188", help="ComfyUI endpoint for output inspection.")
     local_acceptance_parser.add_argument("--comfyui-output-artifact-dir", default="", help="Directory for downloaded ComfyUI output evidence.")
@@ -934,6 +939,7 @@ def _local_acceptance(args: argparse.Namespace) -> int:
         include_local_demo=args.local_demo,
         local_demo_batch_size=args.local_demo_batch_size,
         force_smoke_dry_run=args.smoke_dry_run,
+        model_check_real_run=args.model_check_real_run,
         comfyui_output_prompt_id=args.comfyui_output_prompt_id,
         comfyui_output_endpoint=args.comfyui_output_endpoint,
         comfyui_output_artifact_dir=args.comfyui_output_artifact_dir,

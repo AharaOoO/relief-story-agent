@@ -26,6 +26,7 @@ def run_local_acceptance(
     include_local_demo: bool = False,
     local_demo_batch_size: int = 2,
     force_smoke_dry_run: bool = False,
+    model_check_real_run: bool = False,
     comfyui_output_prompt_id: str | None = None,
     comfyui_output_endpoint: str = "http://127.0.0.1:8188",
     comfyui_output_artifact_dir: str | Path | None = None,
@@ -123,6 +124,8 @@ def run_local_acceptance(
         ]
         if run_request:
             model_command.extend(["--run-request", str(run_request)])
+        if model_check_real_run:
+            model_command.append("--real-run")
         model_result = _execute_and_record(
             "model_check",
             model_command,
@@ -136,7 +139,11 @@ def run_local_acceptance(
             _check_from_command(
                 model_result,
                 check_id="model_check",
-                required_evidence="model-check JSON stdout",
+                required_evidence=(
+                    "model-check --real-run JSON stdout"
+                    if model_check_real_run
+                    else "model-check JSON stdout"
+                ),
             )
         )
 

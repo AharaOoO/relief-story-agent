@@ -137,6 +137,49 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
     assert checks["batch_diagnose"]["evidence"] == "exit_code=0; kind=batch; ready=true"
 
 
+def test_run_local_acceptance_can_collect_real_model_probe(tmp_path):
+    calls: list[list[str]] = []
+    model_config = tmp_path / "model_config.json"
+    run_request = tmp_path / "run_request.json"
+    model_config.write_text("{}", encoding="utf-8")
+    run_request.write_text("{}", encoding="utf-8")
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "364 passed in 65.75s\n", "")
+        if command[2:5] == ["relief_story_agent.cli", "model-check", "--model-config"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                '{"real_run": true, "ready": true, "checks": []}\n',
+                "",
+            )
+        if command[2:5] == ["relief_story_agent.cli", "diagnose", "--request"]:
+            return subprocess.CompletedProcess(command, 0, '{"kind": "run", "ready": true}\n', "")
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        model_config=model_config,
+        run_request=run_request,
+        model_check_real_run=True,
+        command_runner=runner,
+    )
+
+    model_command = next(command for command in calls if command[3] == "model-check")
+    assert "--real-run" in model_command
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+    assert checks["model_check"]["status"] == "pass"
+    assert checks["model_check"]["required_evidence"] == "model-check --real-run JSON stdout"
+    assert checks["model_check"]["evidence"] == "exit_code=0; ready=true"
+
+
 def test_run_local_acceptance_fails_when_json_readiness_is_false(tmp_path):
     model_config = tmp_path / "model_config.json"
     model_config.write_text("{}", encoding="utf-8")
@@ -343,6 +386,7 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         comfyui_output_wait: bool,
         comfyui_output_download: bool,
         comfyui_output_timeout_seconds: float,
+        model_check_real_run: bool,
         command_timeout_seconds: float,
     ) -> dict[str, str]:
         captured.update(
@@ -362,6 +406,7 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
                 "comfyui_output_wait": comfyui_output_wait,
                 "comfyui_output_download": comfyui_output_download,
                 "comfyui_output_timeout_seconds": comfyui_output_timeout_seconds,
+                "model_check_real_run": model_check_real_run,
                 "command_timeout_seconds": command_timeout_seconds,
             }
         )
@@ -405,6 +450,7 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
             "--no-comfyui-output-download",
             "--comfyui-output-timeout-seconds",
             "44",
+            "--model-check-real-run",
             "--timeout-seconds",
             "12.5",
             "--pretty",
@@ -428,6 +474,7 @@ def test_cli_local_acceptance_invokes_snapshot_runner(tmp_path, monkeypatch, cap
         "comfyui_output_wait": True,
         "comfyui_output_download": False,
         "comfyui_output_timeout_seconds": 44.0,
+        "model_check_real_run": True,
         "command_timeout_seconds": 12.5,
     }
     output = json.loads(capsys.readouterr().out)

@@ -652,9 +652,9 @@ def test_run_local_acceptance_preserves_existing_passed_release_evidence(tmp_pat
     video_path.write_bytes(MINIMAL_MP4_BYTES)
     export_validation_report = tmp_path / "exports" / "batch_real" / "validation_report.json"
     export_validation_report.parent.mkdir(parents=True)
-    export_validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
+    export_validation_report.write_text(json.dumps({"valid": True, "batch_id": "batch_real"}), encoding="utf-8")
     zip_validation_report = tmp_path / "exports" / "batch_real.zip.validation.json"
-    zip_validation_report.write_text(json.dumps({"valid": True}), encoding="utf-8")
+    zip_validation_report.write_text(json.dumps({"valid": True, "batch_id": "batch_real"}), encoding="utf-8")
     write_acceptance_report(
         acceptance_dir,
         {

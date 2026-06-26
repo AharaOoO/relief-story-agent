@@ -460,7 +460,7 @@ def _validation_report_status(raw_path: Any, *, expected_batch_id: str = "") -> 
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {**result, "error": "invalid_report_json"}
-    reported_batch_id = _validation_report_batch_id(payload, path)
+    reported_batch_id = str(payload.get("batch_id") or "") if isinstance(payload, dict) else ""
     batch_id_matches = bool(expected_batch_id and reported_batch_id == expected_batch_id)
     error = ""
     if not expected_batch_id:
@@ -483,37 +483,6 @@ def _validation_report_path(raw_path: Any) -> str:
     if isinstance(raw_path, dict):
         return str(raw_path.get("path") or "")
     return str(raw_path or "")
-
-
-def _validation_report_batch_id(payload: Any, path: Path) -> str:
-    if isinstance(payload, dict):
-        direct_batch_id = str(payload.get("batch_id") or "")
-        if direct_batch_id:
-            return direct_batch_id
-        export_dir = str(payload.get("export_dir") or "")
-        if export_dir:
-            return Path(export_dir).name
-        zip_path = str(payload.get("zip_path") or "")
-        if zip_path:
-            return _batch_id_from_zip_path(Path(zip_path))
-    return _batch_id_from_validation_report_path(path)
-
-
-def _batch_id_from_validation_report_path(path: Path) -> str:
-    name = path.name
-    zip_report_suffix = ".zip.validation.json"
-    if name.endswith(zip_report_suffix):
-        return name[: -len(zip_report_suffix)]
-    if name == "validation_report.json":
-        return path.parent.name
-    return ""
-
-
-def _batch_id_from_zip_path(path: Path) -> str:
-    name = path.name
-    if name.endswith(".zip"):
-        return name[: -len(".zip")]
-    return path.stem
 
 
 def refresh_recovery_evidence(

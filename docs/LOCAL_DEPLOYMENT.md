@@ -117,6 +117,8 @@ If any local CLI command receives a missing, malformed, or non-object JSON
 request or model config file, it returns a structured `invalid_request` JSON
 response instead of a Python traceback, so launchers can show a clear file-level
 error.
+The server startup entrypoint uses the same structured `invalid_request`
+response when `--model-config` cannot be loaded.
 
 ## 4. Check ComfyUI
 

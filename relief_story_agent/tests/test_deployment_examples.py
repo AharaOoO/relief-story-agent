@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -175,6 +177,31 @@ def test_start_server_example_uses_module_entrypoint():
     assert "python -m relief_story_agent.server" in text
     assert "--state-dir" in text
     assert "--model-config" in text
+
+
+def test_server_start_reports_invalid_model_config_without_traceback(tmp_path):
+    model_config = tmp_path / "model_config.local.json"
+    model_config.write_text("{not valid json", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.server",
+            "--model-config",
+            str(model_config),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == str(model_config)
+    assert "Invalid model config" in body["error"]
 
 
 def test_project_can_be_installed_with_console_script():

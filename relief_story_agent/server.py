@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 
 import uvicorn
 
@@ -13,6 +14,23 @@ from .providers import OpenAICompatibleProvider
 from .resource_limits import ExecutionResourceLimits
 from .scheduler import PersistentRunScheduler
 from .storage import JsonFileRunStore
+
+
+def _model_config_error_payload(path: str, error: str) -> dict:
+    return {
+        "status": "invalid_request",
+        "ready": False,
+        "path": path,
+        "error": error,
+    }
+
+
+def _model_config_error(path: str, exc: Exception) -> dict:
+    if isinstance(exc, OSError):
+        message = f"Unable to read model config: {exc}"
+    else:
+        message = f"Invalid model config: {exc}"
+    return _model_config_error_payload(path, message)
 
 
 def build_app(
@@ -99,8 +117,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image-generation-concurrency", default=2, type=int)
     parser.add_argument("--comfyui-submission-concurrency", default=1, type=int)
     args = parser.parse_args(argv)
-    uvicorn.run(
-        build_app(
+    try:
+        app = build_app(
             state_dir=args.state_dir,
             model_config_path=args.model_config,
             host=args.host,
@@ -113,10 +131,13 @@ def main(argv: list[str] | None = None) -> int:
             recovery_poll_seconds=args.recovery_poll_seconds,
             image_generation_concurrency=args.image_generation_concurrency,
             comfyui_submission_concurrency=args.comfyui_submission_concurrency,
-        ),
-        host=args.host,
-        port=args.port,
-    )
+        )
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        if not args.model_config:
+            raise
+        print(json.dumps(_model_config_error(args.model_config, exc), ensure_ascii=False))
+        return 1
+    uvicorn.run(app, host=args.host, port=args.port)
     return 0
 
 

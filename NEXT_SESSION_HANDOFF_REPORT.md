@@ -121,6 +121,7 @@ eb3fe74 fix: revalidate preserved export evidence
 - 旧 acceptance report 中保留的 pass 证据会被重新检查，不能靠过期文件或错误 batch 混过去。
 - 损坏的 `acceptance_report.json` 会作为 `acceptance_report` blocker 返回，不能让 `acceptance-status` 崩溃或误判 ready。
 - 本地 CLI 读取请求 JSON 或模型配置 JSON 时，文件缺失、JSON 损坏或顶层不是 object 会返回结构化 `invalid_request` JSON，而不是 Python traceback。
+- `relief-story-agent serve` / `relief-story-agent-server` 启动时如果 `--model-config` 无法加载，也会返回结构化 `invalid_request` JSON，方便 Windows 启动器显示文件级错误。
 
 ## 6. 已完成能力清单
 

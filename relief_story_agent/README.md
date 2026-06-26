@@ -339,6 +339,9 @@ relief-story-agent serve --host 127.0.0.1 --port 8891
 ```
 
 The package also keeps `relief-story-agent-server` as a direct server entrypoint for scripts that do not need the unified CLI.
+When `--model-config` is missing, malformed, or invalid during server startup,
+the server entrypoint exits with a structured `invalid_request` JSON response
+instead of a Python traceback.
 
 Local API operator commands:
 

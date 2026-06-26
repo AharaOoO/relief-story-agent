@@ -627,10 +627,13 @@ def _comfyui_outputs(args: argparse.Namespace) -> int:
     if args.poll_interval_seconds is not None:
         payload["output_poll_interval_seconds"] = args.poll_interval_seconds
 
+    request = _validate_request_model(
+        ComfyUIOutputRefreshRequest,
+        payload,
+        source=args.request or "comfyui-outputs",
+    )
     try:
-        result = refresh_comfyui_prompt_outputs(
-            ComfyUIOutputRefreshRequest.model_validate(payload)
-        )
+        result = refresh_comfyui_prompt_outputs(request)
     except ValueError as exc:
         result = {
             "status": "invalid_request",

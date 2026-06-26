@@ -122,6 +122,7 @@ eb3fe74 fix: revalidate preserved export evidence
 - 损坏的 `acceptance_report.json` 会作为 `acceptance_report` blocker 返回，不能让 `acceptance-status` 崩溃或误判 ready。
 - 本地 CLI 读取请求 JSON、smoke 请求 JSON 或模型配置 JSON 时，文件缺失、JSON 损坏或顶层不是 object 会返回结构化 `invalid_request` JSON，而不是 Python traceback。
 - `connect-comfyui` 的请求 JSON 如果 schema 校验失败（例如无效 timeout），也会返回结构化 `invalid_request` JSON，而不是 Python traceback。
+- `comfyui-outputs` 的请求 JSON 如果 schema 校验失败（例如缺少有效 `prompt_ids`），也会返回带 `path` 的结构化 `invalid_request` JSON，而不是缺少文件定位信息。
 - `diagnose` 与 `model-check --run-request` 的请求 JSON 如果 schema 校验失败，也会返回结构化 `invalid_request` JSON，而不是 Python traceback。
 - `relief-story-agent serve` / `relief-story-agent-server` 启动时如果 `--model-config` 无法加载，也会返回结构化 `invalid_request` JSON，方便 Windows 启动器显示文件级错误。
 

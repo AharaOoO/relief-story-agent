@@ -206,6 +206,33 @@ def test_cli_comfyui_outputs_queries_and_downloads_prompt_outputs(tmp_path):
     ]
 
 
+def test_cli_comfyui_outputs_reports_invalid_request_schema_with_path(tmp_path):
+    request_path = tmp_path / "outputs_request.json"
+    request_path.write_text(json.dumps({"prompt_ids": []}), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "comfyui-outputs",
+            "--request",
+            str(request_path),
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == str(request_path)
+    assert "Invalid request" in body["error"]
+
+
 def test_cli_diagnose_run_reports_ready_configuration(tmp_path):
     request_path = tmp_path / "run_request.json"
     request_path.write_text(

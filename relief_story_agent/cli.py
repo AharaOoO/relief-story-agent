@@ -415,6 +415,8 @@ def main(argv: list[str] | None = None) -> int:
         return server_main(rest)
     if args.command == "smoke-comfyui":
         return smoke_main(rest)
+    if rest:
+        parser.error(f"unrecognized arguments: {' '.join(rest)}")
     if args.command == "connect-comfyui":
         return _connect_comfyui(args)
     if args.command == "discover-comfyui-workflows":

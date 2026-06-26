@@ -64,6 +64,26 @@ def test_console_script_points_to_unified_cli():
     assert pyproject["project"]["scripts"]["relief-story-agent"] == "relief_story_agent.cli:main"
 
 
+def test_cli_rejects_unknown_arguments_for_local_subcommands(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "acceptance",
+            "--output-dir",
+            str(tmp_path),
+            "--unknown-evidence-flag",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode != 0
+    assert "unrecognized arguments: --unknown-evidence-flag" in completed.stderr
+
+
 def test_cli_discover_comfyui_workflows_scans_local_directory(tmp_path):
     workflow_path = tmp_path / "ltx_litegraph.json"
     workflow_path.write_text(

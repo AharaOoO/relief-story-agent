@@ -117,6 +117,15 @@ def _batch_artifacts_report_path_with_missing_publish_video(tmp_path: Path) -> P
     return batch_report
 
 
+def _batch_artifacts_report_path_with_failed_publish_ready_item(tmp_path: Path) -> Path:
+    batch_report = _valid_batch_artifacts_report_path(tmp_path)
+    payload = json.loads(batch_report.read_text(encoding="utf-8"))
+    payload["items"][0]["status"] = "failed"
+    payload["items"][0]["failed_stage"] = "comfyui"
+    batch_report.write_text(json.dumps(payload), encoding="utf-8")
+    return batch_report
+
+
 def _passing_release_checks(
     *,
     validation_report: Path,
@@ -786,6 +795,38 @@ def test_build_acceptance_status_blocks_batch_artifacts_with_missing_publish_vid
     assert batch_check["status"] == "fail"
     assert batch_check["details"]["batch_evidence"]["error"] == "invalid_batch_items"
     assert batch_check["details"]["batch_evidence"]["invalid_items"][0]["reason"] == "publish_ready_invalid_video"
+
+
+def test_build_acceptance_status_blocks_failed_publish_ready_batch_item(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _batch_artifacts_report_path_with_failed_publish_ready_item(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    batch_check = next(check for check in status["blocking_checks"] if check["id"] == "batch_run")
+    assert status["ready_for_release"] is False
+    assert batch_check["status"] == "fail"
+    assert batch_check["details"]["batch_evidence"]["error"] == "invalid_batch_items"
+    assert batch_check["details"]["batch_evidence"]["invalid_items"][0]["reason"] == "publish_ready_status_not_completed"
 
 
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):

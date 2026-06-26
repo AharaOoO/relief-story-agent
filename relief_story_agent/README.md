@@ -531,6 +531,9 @@ POST /api/smoke/comfyui
 The request JSON accepts `workflow_path`, `comfyui_base_url`,
 `final_storyboard` or `final_prompts`, `manual_grid_image_path`, `output_root`,
 and optional `run_id`, `seed`, and `filename_prefix`.
+If the smoke request file is missing, malformed, or fails schema validation,
+the CLI returns a structured `invalid_request` JSON response instead of a
+Python traceback.
 
 Dry-run writes preflight and patched-workflow artifacts without uploading or
 enqueueing. Real mode uploads the four-grid image to `/upload/image`, injects

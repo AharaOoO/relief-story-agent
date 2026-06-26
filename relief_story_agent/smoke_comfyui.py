@@ -67,6 +67,21 @@ class ComfyUISmokeResult(BaseModel):
     failure_code: str = ""
 
 
+class SmokeRequestInputError(ValueError):
+    def __init__(self, path: str, error: str):
+        super().__init__(error)
+        self.path = path
+        self.error = error
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "status": "invalid_request",
+            "ready": False,
+            "path": self.path,
+            "error": self.error,
+        }
+
+
 def run_comfyui_smoke(
     request: ComfyUISmokeRequest,
     *,
@@ -554,8 +569,24 @@ def _comfyui_limit(resource_limits: ExecutionResourceLimits | None):
 
 
 def _load_request(path: Path) -> ComfyUISmokeRequest:
-    payload = json.loads(path.read_text(encoding="utf-8-sig"))
-    return ComfyUISmokeRequest.model_validate(payload)
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    except OSError as exc:
+        raise SmokeRequestInputError(str(path), f"Unable to read smoke request: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise SmokeRequestInputError(
+            str(path),
+            f"Invalid smoke request JSON: {exc.msg} at line {exc.lineno} column {exc.colno}",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise SmokeRequestInputError(
+            str(path),
+            "Invalid smoke request JSON: top-level value must be an object",
+        )
+    try:
+        return ComfyUISmokeRequest.model_validate(payload)
+    except ValueError as exc:
+        raise SmokeRequestInputError(str(path), f"Invalid smoke request: {exc}") from exc
 
 
 def _http_error_evidence(exc: Exception) -> dict[str, Any]:
@@ -576,7 +607,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--timeout-seconds", type=float, default=0, help="Override network timeout.")
     args = parser.parse_args(argv)
 
-    request = _load_request(Path(args.request))
+    try:
+        request = _load_request(Path(args.request))
+    except SmokeRequestInputError as exc:
+        print(json.dumps(exc.to_payload(), ensure_ascii=False))
+        return 1
     if args.dry_run:
         request.dry_run = True
     if args.comfyui_base_url:

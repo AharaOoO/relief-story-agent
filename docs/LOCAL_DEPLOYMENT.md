@@ -377,6 +377,9 @@ relief-story-agent smoke-comfyui `
 
 Searchable one-line form: `relief-story-agent smoke-comfyui --dry-run`.
 
+If the smoke request file is missing, malformed, or fails schema validation,
+the command returns structured `invalid_request` JSON instead of a traceback.
+
 The dry-run writes smoke artifacts but does not upload and does not enqueue.
 After dry-run passes, run the real smoke:
 

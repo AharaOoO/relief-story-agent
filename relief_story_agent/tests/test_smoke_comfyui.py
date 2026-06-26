@@ -433,6 +433,32 @@ def test_smoke_cli_dry_run_exits_zero_and_writes_result(tmp_path):
     assert "artifact_dir=" in completed.stdout
 
 
+def test_smoke_cli_reports_invalid_request_json_without_traceback(tmp_path):
+    request_path = tmp_path / "smoke_request.json"
+    request_path.write_text("{not valid json", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.smoke_comfyui",
+            "--request",
+            str(request_path),
+        ],
+        cwd=str(Path(__file__).resolve().parents[2]),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == str(request_path)
+    assert "Invalid smoke request" in body["error"]
+
+
 def test_smoke_cli_accepts_utf8_bom_request_files(tmp_path):
     request_path = tmp_path / "smoke_request_bom.json"
     request_path.write_text(

@@ -637,6 +637,38 @@ def test_build_acceptance_status_revalidates_preserved_smoke_result_source(tmp_p
     assert "run_real_comfyui_smoke" in status["suggested_actions"]
 
 
+def test_build_acceptance_status_blocks_corrupt_preserved_smoke_result_source(tmp_path):
+    smoke_result_path = tmp_path / "smoke_result.json"
+    smoke_result_path.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "ready": True,
+                "prompt_id": "prompt-real",
+                "artifact_dir": "D:/relief_story_smoke/smoke_demo",
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = write_acceptance_report(
+        tmp_path / "report",
+        {
+            "mode": "smoke",
+            "status": "completed",
+            "sources": {"smoke_result": str(smoke_result_path)},
+        },
+    )
+    smoke_result_path.write_text("{not valid json", encoding="utf-8")
+
+    status = build_acceptance_status(report_path)
+
+    smoke_check = next(check for check in status["blocking_checks"] if check["id"] == "comfyui_real_smoke")
+    assert status["ready_for_release"] is False
+    assert smoke_check["status"] == "fail"
+    assert smoke_check["evidence"] == f"invalid smoke_result JSON={smoke_result_path}"
+    assert "run_real_comfyui_smoke" in status["suggested_actions"]
+
+
 def test_build_acceptance_status_revalidates_preserved_local_demo_source(tmp_path):
     summary_path = tmp_path / "local_demo_summary.json"
     summary_path.write_text(
@@ -686,6 +718,43 @@ def test_build_acceptance_status_revalidates_preserved_local_demo_source(tmp_pat
     assert status["ready_for_release"] is False
     assert demo_check["status"] == "fail"
     assert "batch_completed=1/2" in demo_check["evidence"]
+    assert "run_local_demo" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_blocks_corrupt_preserved_local_demo_source(tmp_path):
+    summary_path = tmp_path / "local_demo_summary.json"
+    summary_path.write_text(
+        json.dumps(
+            {
+                "status": "completed",
+                "single_run": {"status": "completed", "artifact_dir": "D:/demo/run_demo"},
+                "batch": {"status": "completed", "summary": {"total": 2, "completed": 2}},
+                "external_calls": {
+                    "model_provider": "fake",
+                    "comfyui": False,
+                    "image_generation": False,
+                },
+                "restart_recovery": {"status": "completed"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    report_path = write_acceptance_report(
+        tmp_path / "report",
+        {
+            "mode": "offline_demo",
+            "status": "completed",
+            "sources": {"local_demo_summary": str(summary_path)},
+        },
+    )
+    summary_path.write_text("{not valid json", encoding="utf-8")
+
+    status = build_acceptance_status(report_path)
+
+    demo_check = next(check for check in status["blocking_checks"] if check["id"] == "local_demo")
+    assert status["ready_for_release"] is False
+    assert demo_check["status"] == "fail"
+    assert demo_check["evidence"] == f"invalid local_demo_summary JSON={summary_path}"
     assert "run_local_demo" in status["suggested_actions"]
 
 

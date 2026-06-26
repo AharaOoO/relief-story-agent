@@ -1469,7 +1469,24 @@ def _check_from_smoke_result(path: Path) -> dict[str, Any]:
             "evidence": f"missing smoke_result={path}",
         }
 
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "id": "comfyui_real_smoke",
+            "required_evidence": "smoke_result.json, prompt id",
+            "status": "fail",
+            "evidence": f"invalid smoke_result JSON={path}",
+            "details": {"source": str(path)},
+        }
+    if not isinstance(payload, dict):
+        return {
+            "id": "comfyui_real_smoke",
+            "required_evidence": "smoke_result.json, prompt id",
+            "status": "fail",
+            "evidence": f"invalid smoke_result JSON={path}",
+            "details": {"source": str(path)},
+        }
     prompt_id = str(payload.get("prompt_id") or "")
     ready = bool(payload.get("ready"))
     status = str(payload.get("status") or "")
@@ -1503,7 +1520,24 @@ def _check_from_local_demo_summary(path: Path) -> dict[str, Any]:
             "details": {"source": str(path)},
         }
 
-    payload = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {
+            "id": "local_demo",
+            "required_evidence": "local_demo_summary.json, fake model run and batch artifacts",
+            "status": "fail",
+            "evidence": f"invalid local_demo_summary JSON={path}",
+            "details": {"source": str(path)},
+        }
+    if not isinstance(payload, dict):
+        return {
+            "id": "local_demo",
+            "required_evidence": "local_demo_summary.json, fake model run and batch artifacts",
+            "status": "fail",
+            "evidence": f"invalid local_demo_summary JSON={path}",
+            "details": {"source": str(path)},
+        }
     single_status = str((payload.get("single_run") or {}).get("status") or "")
     batch = payload.get("batch") or {}
     batch_status = str(batch.get("status") or "")

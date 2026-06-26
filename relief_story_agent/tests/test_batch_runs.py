@@ -20,6 +20,9 @@ from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrat
 from relief_story_agent.providers import FakeModelProvider
 
 
+MINIMAL_MP4_BYTES = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+
+
 def test_run_idempotency_key_reuses_existing_run_without_duplicate_model_calls():
     provider = FakeModelProvider.minimal_success()
     store = InMemoryRunStore()
@@ -774,7 +777,7 @@ def test_api_exports_batch_artifacts_to_directory_and_zip(tmp_path):
     store = InMemoryRunStore()
     video_path = tmp_path / "run_done" / "comfyui_outputs" / "done.mp4"
     video_path.parent.mkdir(parents=True)
-    video_path.write_bytes(b"video-bytes")
+    video_path.write_bytes(MINIMAL_MP4_BYTES)
     completed = RunState(
         run_id="run_done",
         request=RunRequest(idea="done", output_root=str(tmp_path)),
@@ -835,7 +838,7 @@ def test_api_exports_batch_artifacts_to_directory_and_zip(tmp_path):
     assert len(body["zip_package"]["sha256"]) == 64
     assert body["zip_package"]["sha256_path"].endswith("batch_export.zip.sha256")
     assert (tmp_path / "exports" / "batch_export" / "batch_export_manifest.json").exists()
-    assert (tmp_path / "exports" / "batch_export" / "000_Night_Store" / "video_done.mp4").read_bytes() == b"video-bytes"
+    assert (tmp_path / "exports" / "batch_export" / "000_Night_Store" / "video_done.mp4").read_bytes() == MINIMAL_MP4_BYTES
     assert (tmp_path / "exports" / "batch_export.zip").exists()
     assert (tmp_path / "exports" / "batch_export.zip.sha256").exists()
     assert body["items"][0]["exported_files"]["video"].endswith("video_done.mp4")
@@ -863,7 +866,7 @@ def test_api_validates_batch_export_package(tmp_path):
     orchestrator = StoryRunOrchestrator(provider=FakeModelProvider.minimal_success(), store=store)
     video_path = tmp_path / "outputs" / "done.mp4"
     video_path.parent.mkdir(parents=True)
-    video_path.write_bytes(b"video-bytes")
+    video_path.write_bytes(MINIMAL_MP4_BYTES)
     run = RunState(
         run_id="run_export_validate",
         request=RunRequest(idea="export validate", output_root=str(tmp_path)),
@@ -920,7 +923,7 @@ def test_api_detects_export_zip_checksum_mismatch(tmp_path):
     orchestrator = StoryRunOrchestrator(provider=FakeModelProvider.minimal_success(), store=store)
     video_path = tmp_path / "outputs" / "done.mp4"
     video_path.parent.mkdir(parents=True)
-    video_path.write_bytes(b"video-bytes")
+    video_path.write_bytes(MINIMAL_MP4_BYTES)
     run = RunState(
         run_id="run_export_zip_validate",
         request=RunRequest(idea="export zip validate", output_root=str(tmp_path)),

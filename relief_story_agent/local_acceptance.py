@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .acceptance import PASS_STATUSES, build_acceptance_status, write_acceptance_report
+from .video_validation import check_local_video_file
 
 
 CommandRunner = Callable[[list[str]], subprocess.CompletedProcess[str]]
@@ -506,7 +507,7 @@ def _check_from_comfyui_outputs_command(
     *,
     require_download: bool,
 ) -> tuple[dict[str, Any], list[str]]:
-    required_evidence = "comfyui-outputs JSON, ready=true, video_count>0"
+    required_evidence = "comfyui-outputs JSON, ready=true, video_count>0, openable downloaded video path"
     try:
         payload = json.loads(str(command_result.get("stdout") or ""))
     except json.JSONDecodeError:
@@ -569,20 +570,7 @@ def _check_from_comfyui_outputs_command(
 
 
 def _local_video_file_checks(video_paths: list[str]) -> list[dict[str, Any]]:
-    checks = []
-    for path_value in video_paths:
-        path = Path(path_value)
-        exists = path.exists() and path.is_file()
-        size_bytes = path.stat().st_size if exists else 0
-        checks.append(
-            {
-                "path": path_value,
-                "exists": exists,
-                "size_bytes": size_bytes,
-                "valid": exists and size_bytes > 0,
-            }
-        )
-    return checks
+    return [check_local_video_file(path_value) for path_value in video_paths]
 
 
 def _last_nonempty_line(text: str) -> str:

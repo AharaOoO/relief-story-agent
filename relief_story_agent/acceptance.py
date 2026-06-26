@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .video_validation import check_local_video_file
+
 
 PASS_STATUSES = {"pass", "passed", "ok", "completed"}
 
@@ -29,7 +31,7 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
     },
     {
         "id": "comfyui_outputs",
-        "required_evidence": "comfyui-outputs JSON, ready=true, video_count>0, downloaded video path",
+        "required_evidence": "comfyui-outputs JSON, ready=true, video_count>0, openable downloaded video path",
     },
     {
         "id": "model_check",
@@ -45,7 +47,7 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
     },
     {
         "id": "single_run",
-        "required_evidence": "run artifact dir, downloaded video path",
+        "required_evidence": "run artifact dir, openable downloaded video path",
     },
     {
         "id": "batch_run",
@@ -70,8 +72,11 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
 
+    video_paths = _string_list(payload.get("video_paths") or [])
     checks = [_normalize_check(check) for check in payload.get("checks") or []]
     checks.extend(_checks_from_sources(payload.get("sources") or {}))
+    if video_paths:
+        checks.append(_check_from_video_paths(video_paths))
     if payload.get("include_default_matrix"):
         checks = _merge_default_matrix(checks)
 
@@ -81,7 +86,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         "batch_id": str(payload.get("batch_id") or ""),
         "mode": str(payload.get("mode") or "manual"),
         "status": str(payload.get("status") or "manual_pending"),
-        "video_paths": _string_list(payload.get("video_paths") or []),
+        "video_paths": video_paths,
         "checks": checks,
         "notes": str(payload.get("notes") or ""),
     }
@@ -159,6 +164,18 @@ def _checks_from_sources(sources: dict[str, Any]) -> list[dict[str, Any]]:
     return checks
 
 
+def _check_from_video_paths(video_paths: list[str]) -> dict[str, Any]:
+    video_checks = [check_local_video_file(path_value) for path_value in video_paths]
+    valid_count = sum(1 for check in video_checks if check["valid"])
+    return {
+        "id": "video_files",
+        "required_evidence": "local video files exist, are non-empty, and are openable",
+        "status": "pass" if valid_count == len(video_checks) else "fail",
+        "evidence": f"valid_videos={valid_count}/{len(video_checks)}",
+        "details": {"videos": video_checks},
+    }
+
+
 def _merge_default_matrix(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     existing_ids = {str(check.get("id") or "") for check in checks}
     merged = list(checks)
@@ -190,6 +207,7 @@ def _acceptance_status_actions(
         "comfyui_dry_smoke": "run_smoke_dry_run",
         "comfyui_real_smoke": "run_real_comfyui_smoke",
         "comfyui_outputs": "check_comfyui_outputs",
+        "video_files": "verify_video_files",
         "model_check": "configure_and_check_models",
         "run_diagnose": "fix_run_preflight",
         "batch_diagnose": "fix_batch_preflight",

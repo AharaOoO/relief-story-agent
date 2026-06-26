@@ -10,6 +10,9 @@ from relief_story_agent.acceptance import write_acceptance_report
 from relief_story_agent.local_acceptance import run_local_acceptance
 
 
+MINIMAL_MP4_BYTES = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+
+
 def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     smoke_artifact_dir = tmp_path / "smoke_artifacts"
     smoke_artifact_dir.mkdir()
@@ -283,7 +286,7 @@ def test_run_local_acceptance_can_collect_comfyui_output_refresh(tmp_path):
     calls: list[list[str]] = []
     downloaded = tmp_path / "outputs" / "render.mp4"
     downloaded.parent.mkdir(parents=True)
-    downloaded.write_bytes(b"video")
+    downloaded.write_bytes(MINIMAL_MP4_BYTES)
 
     def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         calls.append(command)
@@ -391,7 +394,13 @@ def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_missing(tmp
 
     assert checks["comfyui_outputs"]["status"] == "fail"
     assert checks["comfyui_outputs"]["details"]["video_file_checks"] == [
-        {"path": str(missing_video), "exists": False, "size_bytes": 0, "valid": False}
+        {
+            "path": str(missing_video),
+            "exists": False,
+            "size_bytes": 0,
+            "openable": False,
+            "valid": False,
+        }
     ]
     assert report["video_paths"] == []
 
@@ -447,7 +456,75 @@ def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_empty(tmp_p
 
     assert checks["comfyui_outputs"]["status"] == "fail"
     assert checks["comfyui_outputs"]["details"]["video_file_checks"] == [
-        {"path": str(empty_video), "exists": True, "size_bytes": 0, "valid": False}
+        {
+            "path": str(empty_video),
+            "exists": True,
+            "size_bytes": 0,
+            "openable": False,
+            "valid": False,
+        }
+    ]
+    assert report["video_paths"] == []
+
+
+def test_run_local_acceptance_fails_when_downloaded_comfyui_video_is_unopenable(tmp_path):
+    bad_video = tmp_path / "outputs" / "bad.mp4"
+    bad_video.parent.mkdir(parents=True)
+    bad_video.write_bytes(b"not an mp4 video")
+
+    def runner(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+        if command[2] == "compileall":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[2] == "pytest":
+            return subprocess.CompletedProcess(command, 0, "341 passed in 56.69s\n", "")
+        if command[2:4] == ["relief_story_agent.cli", "comfyui-outputs"]:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "status": "ready",
+                        "ready": True,
+                        "prompt_ids": ["prompt_video"],
+                        "video_count": 1,
+                        "image_count": 0,
+                        "downloaded_count": 1,
+                        "actual_outputs": [
+                            {
+                                "prompt_id": "prompt_video",
+                                "filename": "bad.mp4",
+                                "media_type": "video",
+                                "local_path": str(bad_video),
+                            }
+                        ],
+                    }
+                )
+                + "\n",
+                "",
+            )
+        raise AssertionError(command)
+
+    result = run_local_acceptance(
+        tmp_path / "acceptance",
+        repo_root=tmp_path,
+        python_executable=sys.executable,
+        comfyui_output_prompt_id="prompt_video",
+        comfyui_output_endpoint="http://127.0.0.1:8188",
+        command_runner=runner,
+    )
+
+    report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
+    checks = {check["id"]: check for check in report["checks"]}
+
+    assert checks["comfyui_outputs"]["status"] == "fail"
+    assert checks["comfyui_outputs"]["details"]["video_file_checks"] == [
+        {
+            "path": str(bad_video),
+            "exists": True,
+            "size_bytes": len(b"not an mp4 video"),
+            "openable": False,
+            "valid": False,
+        }
     ]
     assert report["video_paths"] == []
 

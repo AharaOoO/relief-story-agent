@@ -294,7 +294,7 @@ status=completed
 final storyboard exists
 grid image exists
 ComfyUI prompt id exists
-downloaded local video path exists and is non-empty
+downloaded local video path exists, is non-empty, and has a recognized video container
 ```
 
 - [ ] **Step 5: If ComfyUI finishes but outputs are not recorded, test output refresh**
@@ -488,7 +488,7 @@ Expected:
 export_dir present
 publish_index.json present
 publish_index.csv present
-publish_videos folder present with non-empty publish videos
+publish_videos folder present with non-empty publish videos with recognized containers
 zip_path present
 sha256 sidecar present
 ```

@@ -14,6 +14,7 @@ from .ltx_workflow import build_ltx_payload_from_storyboard
 from .models import BatchRunState, RunState
 from .pipeline import RECOVERABLE_STAGE_ORDER
 from .provenance import build_run_configuration_provenance
+from .video_validation import check_local_video_file
 
 
 ARTIFACT_SPECS = [
@@ -391,6 +392,7 @@ def validate_batch_export_package(
                 )
             )
             checks.append(_publish_video_non_empty_check(item, video_path))
+            checks.append(_publish_video_openable_check(item, video_path))
             checks.append(_publish_video_checksum_check(item, video_path))
 
     if isinstance(manifest, dict) and isinstance(publish_index, dict):
@@ -522,6 +524,29 @@ def _publish_video_non_empty_check(item: dict[str, Any], video_path: Path) -> di
         "publish_video_non_empty",
         "passed" if size_bytes > 0 else "failed",
         "publish video is non-empty." if size_bytes > 0 else "publish video is empty.",
+        details,
+    )
+
+
+def _publish_video_openable_check(item: dict[str, Any], video_path: Path) -> dict[str, Any]:
+    details = {
+        **check_local_video_file(str(video_path)),
+        "run_id": str(item.get("run_id") or ""),
+        "title": str(item.get("title") or ""),
+    }
+    if not details["exists"]:
+        return _check(
+            "publish_video_openable",
+            "skipped",
+            "publish video openability check skipped because the file is missing.",
+            details,
+        )
+    return _check(
+        "publish_video_openable",
+        "passed" if details["openable"] else "failed",
+        "publish video container is recognized."
+        if details["openable"]
+        else "publish video container is not recognized.",
         details,
     )
 

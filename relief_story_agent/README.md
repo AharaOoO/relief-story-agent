@@ -178,11 +178,11 @@ four-grid image provider is covered by the model readiness evidence. Use
 `--model-check-real-run` in the final evidence pass so the same report records
 the real text-model and image-provider probes. When `--comfyui-output-prompt-id`
 is used with download evidence, the reported video `local_path` must exist on
-disk and be non-empty before the ComfyUI output check can pass. If an
-`acceptance_report.json` already exists in the output directory, passed checks
-from that report are preserved unless the new local-acceptance run records the
-same check id again; existing `run_id`, `batch_id`, and video paths are carried
-forward too.
+disk, be non-empty, and have a recognized video container before the ComfyUI
+output check can pass. If an `acceptance_report.json` already exists in the
+output directory, passed checks from that report are preserved unless the new
+local-acceptance run records the same check id again; existing `run_id`,
+`batch_id`, and video paths are carried forward too.
 
 You can also run the offline skeleton demo by itself:
 
@@ -1121,9 +1121,9 @@ relief-story-agent validate-export `
 
 The validator checks the export manifest, publish indexes, `publish_videos/`,
 every publish-ready video path referenced by `publish_index.json`, that each
-publish video is non-empty, and each publish video's recorded size and sha256
-checksum. With `save_report: true`, it writes `validation_report.json` into the
-export directory.
+publish video is non-empty with a recognized video container, and each publish
+video's recorded size and sha256 checksum. With `save_report: true`, it writes
+`validation_report.json` into the export directory.
 
 Validate the zip itself after transfer:
 

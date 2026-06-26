@@ -29,6 +29,10 @@ from relief_story_agent.models import (
 )
 
 
+MINIMAL_MP4_BYTES = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+CHANGED_MP4_BYTES = MINIMAL_MP4_BYTES + b"changed"
+
+
 def _completed_run_with_grid_asset(tmp_path):
     image_path = tmp_path / "source.png"
     image = Image.new("RGB", (1024, 1024), "white")
@@ -814,7 +818,7 @@ def test_export_batch_artifact_package_writes_publish_index_json_and_csv(tmp_pat
 def test_validate_batch_export_package_reports_missing_publish_video(tmp_path):
     ready_video = tmp_path / "run_ready" / "comfyui_outputs" / "ready.mp4"
     ready_video.parent.mkdir(parents=True)
-    ready_video.write_bytes(b"ready-video")
+    ready_video.write_bytes(MINIMAL_MP4_BYTES)
     ready = RunState(
         run_id="run_ready_validate",
         request=RunRequest(idea="ready validate", output_root=str(tmp_path)),
@@ -864,7 +868,7 @@ def test_validate_batch_export_package_reports_missing_publish_video(tmp_path):
 def test_validate_batch_export_package_reports_publish_video_checksum_mismatch(tmp_path):
     ready_video = tmp_path / "run_ready" / "comfyui_outputs" / "ready.mp4"
     ready_video.parent.mkdir(parents=True)
-    ready_video.write_bytes(b"original-video")
+    ready_video.write_bytes(MINIMAL_MP4_BYTES)
     ready = RunState(
         run_id="run_ready_checksum",
         request=RunRequest(idea="ready checksum", output_root=str(tmp_path)),
@@ -898,18 +902,18 @@ def test_validate_batch_export_package_reports_publish_video_checksum_mismatch(t
     publish_item = ok["publish_items"][0]
 
     assert ok["valid"] is True
-    assert publish_item["publish_video_size_bytes"] == len(b"original-video")
+    assert publish_item["publish_video_size_bytes"] == len(MINIMAL_MP4_BYTES)
     assert len(publish_item["publish_video_sha256"]) == 64
 
-    Path(publish_item["publish_video_path"]).write_bytes(b"corrupted-video")
+    Path(publish_item["publish_video_path"]).write_bytes(CHANGED_MP4_BYTES)
     broken = validate_batch_export_package(exported["export_dir"])
 
     assert broken["valid"] is False
     failed_checks = [check for check in broken["checks"] if check["status"] == "failed"]
     assert failed_checks[0]["name"] == "publish_video_checksum"
     assert failed_checks[0]["details"]["run_id"] == "run_ready_checksum"
-    assert failed_checks[0]["details"]["expected_size_bytes"] == len(b"original-video")
-    assert failed_checks[0]["details"]["actual_size_bytes"] == len(b"corrupted-video")
+    assert failed_checks[0]["details"]["expected_size_bytes"] == len(MINIMAL_MP4_BYTES)
+    assert failed_checks[0]["details"]["actual_size_bytes"] == len(CHANGED_MP4_BYTES)
 
 
 def test_validate_batch_export_package_reports_empty_publish_video(tmp_path):
@@ -952,3 +956,45 @@ def test_validate_batch_export_package_reports_empty_publish_video(tmp_path):
     assert failed_checks[0]["name"] == "publish_video_non_empty"
     assert failed_checks[0]["details"]["run_id"] == "run_ready_empty_video"
     assert failed_checks[0]["details"]["size_bytes"] == 0
+
+
+def test_validate_batch_export_package_reports_unopenable_publish_video(tmp_path):
+    ready_video = tmp_path / "run_ready" / "comfyui_outputs" / "bad.mp4"
+    ready_video.parent.mkdir(parents=True)
+    ready_video.write_bytes(b"not an mp4 video")
+    ready = RunState(
+        run_id="run_ready_bad_video",
+        request=RunRequest(idea="ready bad", output_root=str(tmp_path)),
+        status="completed",
+        current_stage="completed",
+        script={"title": "Bad Video Story", "core_sentence": "soft core"},
+        comfyui_outputs=[
+            ComfyUIOutput(
+                prompt_id="prompt_ready",
+                filename="bad.mp4",
+                media_type="video",
+                local_path=str(ready_video),
+            )
+        ],
+    )
+    batch = BatchRunState(
+        batch_id="batch_validate_bad_video",
+        status="completed",
+        summary={"total": 1, "completed": 1},
+        items=[
+            BatchRunItem(index=0, run_id=ready.run_id, idea=ready.request.idea, status=ready.status, current_stage=ready.current_stage),
+        ],
+    )
+    exported = export_batch_artifact_package(
+        batch,
+        [ready],
+        export_root=tmp_path / "exports",
+        include_zip=False,
+    )
+    broken = validate_batch_export_package(exported["export_dir"])
+
+    assert broken["valid"] is False
+    failed_checks = [check for check in broken["checks"] if check["status"] == "failed"]
+    assert failed_checks[0]["name"] == "publish_video_openable"
+    assert failed_checks[0]["details"]["run_id"] == "run_ready_bad_video"
+    assert failed_checks[0]["details"]["openable"] is False

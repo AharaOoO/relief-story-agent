@@ -53,6 +53,52 @@ def test_write_acceptance_report_records_matrix_and_markdown(tmp_path):
     assert "| comfyui_real_smoke | smoke_result.json, prompt id | manual_pending |  |" in markdown
 
 
+def test_write_acceptance_report_marks_missing_video_path_failed(tmp_path):
+    missing_video = tmp_path / "missing.mp4"
+
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "single_run",
+            "status": "completed",
+            "video_paths": [str(missing_video)],
+        },
+    )
+
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    video_check = next(check for check in report["checks"] if check["id"] == "video_files")
+
+    assert video_check["status"] == "fail"
+    assert video_check["required_evidence"] == "local video files exist, are non-empty, and are openable"
+    assert video_check["details"]["videos"] == [
+        {"path": str(missing_video), "exists": False, "size_bytes": 0, "openable": False, "valid": False}
+    ]
+    assert report["summary"]["ready_for_release"] is False
+
+
+def test_write_acceptance_report_rejects_unopenable_video_file(tmp_path):
+    bad_video = tmp_path / "bad.mp4"
+    bad_video.write_bytes(b"not an mp4 video")
+
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "mode": "single_run",
+            "status": "completed",
+            "video_paths": [str(bad_video)],
+        },
+    )
+
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    video_check = next(check for check in report["checks"] if check["id"] == "video_files")
+
+    assert video_check["status"] == "fail"
+    assert video_check["details"]["videos"][0]["exists"] is True
+    assert video_check["details"]["videos"][0]["size_bytes"] == len(b"not an mp4 video")
+    assert video_check["details"]["videos"][0]["openable"] is False
+    assert video_check["details"]["videos"][0]["valid"] is False
+
+
 def test_write_acceptance_report_can_collect_smoke_result(tmp_path):
     smoke_result_path = tmp_path / "smoke_result.json"
     smoke_result_path.write_text(

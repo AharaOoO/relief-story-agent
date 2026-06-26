@@ -444,7 +444,9 @@ relief-story-agent validate-export-zip `
 
 These commands call the local API server and print the JSON response. They use
 direct local HTTP without environment proxy settings so `127.0.0.1` launchers do
-not accidentally route through a system proxy.
+not accidentally route through a system proxy. If a local CLI request file is
+missing, malformed JSON, or not a JSON object, the command returns a structured
+`invalid_request` JSON response instead of a Python traceback.
 
 Generate a local starter bundle for a non-developer machine:
 

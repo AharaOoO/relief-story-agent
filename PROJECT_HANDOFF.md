@@ -146,6 +146,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `comfyui_dry_smoke=pass`、`comfyui_real_smoke=pass` 和 `local_demo=pass` 也会重新读取对应 `smoke_result.json` / `local_demo_summary.json` source；source 丢失或内容变坏时会重新阻塞发布。
 - `acceptance` 生成报告时会写入完整发布矩阵，`acceptance-status` 读取旧报告时也会补齐缺失检查；只记录 smoke 或局部手工检查的报告不会被误判为 release-ready。
 - `acceptance-status` 读取到损坏的 `acceptance_report.json` 时会返回 `acceptance_report` blocker，而不是崩溃或误判 ready。
+- 本地 CLI 读取请求 JSON 时，如果文件缺失、JSON 损坏或顶层不是 object，会返回结构化 `invalid_request` JSON，而不是 Python traceback。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
 - `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。
 

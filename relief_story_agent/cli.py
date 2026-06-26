@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
@@ -31,7 +32,37 @@ from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import main as smoke_main
 
 
+class CliInputError(ValueError):
+    def __init__(self, path: str, error: str):
+        super().__init__(error)
+        self.path = path
+        self.error = error
+
+    def to_payload(self) -> dict[str, Any]:
+        return {
+            "status": "invalid_request",
+            "ready": False,
+            "path": self.path,
+            "error": self.error,
+        }
+
+
 def main(argv: list[str] | None = None) -> int:
+    try:
+        return _main(argv)
+    except CliInputError as exc:
+        args = sys.argv[1:] if argv is None else argv
+        print(
+            json.dumps(
+                exc.to_payload(),
+                ensure_ascii=False,
+                indent=2 if "--pretty" in args else None,
+            )
+        )
+        return 1
+
+
+def _main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="relief-story-agent")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("serve", add_help=False, help="Start the local API server.")
@@ -528,7 +559,7 @@ def _add_api_base_args(parser: argparse.ArgumentParser) -> None:
 def _connect_comfyui(args: argparse.Namespace) -> int:
     payload: dict = {}
     if args.request:
-        payload.update(json.loads(Path(args.request).read_text(encoding="utf-8")))
+        payload.update(_read_json_file(args.request))
     if args.endpoint:
         payload["endpoint"] = args.endpoint
     if args.workflow_api_path:
@@ -575,7 +606,7 @@ def _discover_comfyui_workflows(args: argparse.Namespace) -> int:
 def _comfyui_outputs(args: argparse.Namespace) -> int:
     payload: dict = {}
     if args.request:
-        payload.update(json.loads(Path(args.request).read_text(encoding="utf-8")))
+        payload.update(_read_json_file(args.request))
     if args.endpoint:
         payload["endpoint"] = args.endpoint
     if args.prompt_id:
@@ -609,7 +640,7 @@ def _comfyui_outputs(args: argparse.Namespace) -> int:
 
 
 def _diagnose(args: argparse.Namespace) -> int:
-    payload = json.loads(Path(args.request).read_text(encoding="utf-8"))
+    payload = _read_json_file(args.request)
     registry = (
         ModelConfigRegistry.from_file(args.model_config)
         if args.model_config
@@ -664,7 +695,7 @@ def _model_check(args: argparse.Namespace) -> int:
     registry = ModelConfigRegistry.from_file(args.model_config)
     image_config = None
     if args.run_request:
-        request_payload = json.loads(Path(args.run_request).read_text(encoding="utf-8"))
+        request_payload = _read_json_file(args.run_request)
         request = RunRequest.model_validate(request_payload)
         if request.comfyui.enabled:
             image_config = request.comfyui.grid_image
@@ -915,7 +946,18 @@ def _api_url(server: str, path: str, query: dict[str, str | int | bool]) -> str:
 
 
 def _read_json_file(path: str) -> dict:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise CliInputError(path, f"Unable to read JSON file: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise CliInputError(
+            path,
+            f"Invalid JSON file: {exc.msg} at line {exc.lineno} column {exc.colno}",
+        ) from exc
+    if not isinstance(payload, dict):
+        raise CliInputError(path, "Invalid JSON file: top-level value must be an object")
+    return payload
 
 
 def _setup(args: argparse.Namespace) -> int:

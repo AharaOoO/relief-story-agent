@@ -113,6 +113,9 @@ budget before any model call or ComfyUI `/prompt` submission. If
 `max_total_stage_executions` cannot cover the planned stages, diagnostics return
 `fix_execution_policy` so the local launcher can ask the operator to raise the
 budget first.
+If any local CLI command receives a missing, malformed, or non-object JSON
+request file, it returns a structured `invalid_request` JSON response instead
+of a Python traceback, so launchers can show a clear file-level error.
 
 ## 4. Check ComfyUI
 

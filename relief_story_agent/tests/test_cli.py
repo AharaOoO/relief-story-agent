@@ -356,6 +356,35 @@ def test_cli_run_posts_request_to_api(tmp_path):
     assert recorded["json"] == {"idea": "cli run"}
 
 
+def test_cli_run_reports_invalid_request_json_without_traceback(tmp_path):
+    request_path = tmp_path / "run.json"
+    request_path.write_text("{not valid json", encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "run",
+            "--server",
+            "http://127.0.0.1:9",
+            "--request",
+            str(request_path),
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == str(request_path)
+    assert "Invalid JSON" in body["error"]
+
+
 def test_cli_batch_plan_posts_without_enqueueing(tmp_path):
     request_path = tmp_path / "batch.json"
     request_path.write_text(json.dumps({"items": [{"idea": "one"}]}), encoding="utf-8")

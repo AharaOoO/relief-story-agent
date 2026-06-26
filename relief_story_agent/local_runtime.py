@@ -168,6 +168,12 @@ def build_local_readiness(
         "warnings": sum(1 for check in checks if check["status"] == "warn"),
         "failed": sum(1 for check in checks if check["status"] == "fail"),
         "blocking_count": sum(1 for check in checks if check["status"] == "fail"),
+        "real_run_blocking_count": sum(
+            1
+            for check in checks
+            if check["id"] == "local_doctor" and check["status"] != "pass"
+        ),
+        "release_blocking_count": sum(1 for check in checks if check["status"] != "pass"),
     }
     ready_for_real_runs = doctor_strict_ready
     ready_for_release = doctor_strict_ready and acceptance_ready

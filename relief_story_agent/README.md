@@ -129,6 +129,8 @@ future UI "check my local setup" button before real runs.
 It treats local-doctor warnings as not ready for unattended real runs, so missing
 model profiles, in-memory state, or a detached scheduler remain visible blockers
 even when no check has fully failed.
+Read `summary.real_run_blocking_count` for setup issues that block real runs and
+`summary.release_blocking_count` for all non-passing checks that block release.
 
 For a local launcher or future UI setup screen, call
 `POST /api/local/setup-bundle` with `output_dir`, `workflow_path`,

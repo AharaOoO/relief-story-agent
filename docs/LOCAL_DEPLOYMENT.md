@@ -264,6 +264,9 @@ ComfyUI address field and related endpoints.
 `ready_for_real_runs` stays `false` until local doctor has no failures and no
 warnings, so placeholder/missing model profiles, non-persistent state, or a
 missing scheduler do not get reported as unattended-run ready.
+Use `summary.real_run_blocking_count` for setup issues that block unattended
+real runs and `summary.release_blocking_count` for all non-passing checks that
+block release readiness.
 
 For a quick no-key/no-GPU confidence check before touching real services, run:
 

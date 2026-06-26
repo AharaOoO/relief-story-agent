@@ -148,6 +148,8 @@ def test_build_local_readiness_combines_doctor_and_acceptance_blockers():
     assert readiness["ready_for_release"] is False
     assert readiness["ready_for_real_runs"] is False
     assert readiness["summary"]["blocking_count"] == 2
+    assert readiness["summary"]["real_run_blocking_count"] == 1
+    assert readiness["summary"]["release_blocking_count"] == 2
     assert checks["local_doctor"]["status"] == "fail"
     assert checks["acceptance_status"]["status"] == "fail"
     assert checks["acceptance_status"]["details"]["blocking_count"] == 13
@@ -186,6 +188,8 @@ def test_build_local_readiness_blocks_real_runs_when_doctor_has_warnings():
     assert readiness["ready_for_real_runs"] is False
     assert readiness["ready_for_release"] is False
     assert readiness["phase"] == "setup_blocked"
+    assert readiness["summary"]["real_run_blocking_count"] == 1
+    assert readiness["summary"]["release_blocking_count"] == 1
     assert checks["local_doctor"]["status"] == "warn"
     assert "run_setup" in readiness["suggested_actions"]
     assert "restart_with_state_dir" in readiness["suggested_actions"]

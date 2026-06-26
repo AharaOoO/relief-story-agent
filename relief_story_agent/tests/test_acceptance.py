@@ -992,6 +992,44 @@ def test_cli_acceptance_attaches_batch_artifacts_report(tmp_path):
     assert batch_check["details"]["batch_evidence"]["valid"] is True
 
 
+def test_cli_acceptance_attaches_export_validation_reports(tmp_path):
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "acceptance",
+            "--output-dir",
+            str(tmp_path),
+            "--mode",
+            "export",
+            "--status",
+            "completed",
+            "--batch-id",
+            "batch_real",
+            "--check",
+            "export=pass:publish package validated",
+            "--export-validation-report",
+            str(validation_report),
+            "--export-zip-validation-report",
+            str(zip_validation_report),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    report = json.loads((tmp_path / "acceptance_report.json").read_text(encoding="utf-8"))
+    export_check = next(check for check in report["checks"] if check["id"] == "export")
+    assert export_check["status"] == "pass"
+    assert export_check["details"]["validation_report"]["path"] == str(validation_report)
+    assert export_check["details"]["zip_validation_report"]["path"] == str(zip_validation_report)
+    assert export_check["details"]["validation_report"]["valid"] is True
+    assert export_check["details"]["zip_validation_report"]["valid"] is True
+
+
 def test_cli_acceptance_attaches_restart_recovery_before_after_reports(tmp_path):
     before_report = _valid_recovery_plan_path(tmp_path, "before_restart.json")
     after_report = _valid_recovery_plan_path(tmp_path, "after_restart.json")

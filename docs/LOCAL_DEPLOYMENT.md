@@ -663,6 +663,22 @@ relief-story-agent validate-export-zip `
 Saved package and zip validation reports include their resolved `batch_id`.
 `local-acceptance` and `acceptance-status` compare that value with the
 acceptance report's top-level `batch_id` before allowing `export=pass`.
+When recording the export gate manually, pass those report paths with
+`--export-validation-report` and `--export-zip-validation-report` so the
+release status can revalidate the evidence:
+
+```powershell
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "export" `
+  --status "manual_pending" `
+  --batch-id "{batch_id}" `
+  --check "export=pass:publish index, videos, zip, sha256, validation reports exist" `
+  --export-validation-report "D:/relief_story_exports/{batch_id}/validation_report.json" `
+  --export-zip-validation-report "D:/relief_story_exports/{batch_id}.zip.validation.json" `
+  --include-default-matrix `
+  --pretty
+```
 
 The CLI uses direct local HTTP for these API calls and ignores environment proxy
 settings, which avoids accidental proxy failures for `127.0.0.1`.

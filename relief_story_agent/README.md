@@ -578,6 +578,9 @@ one `--video-path`; otherwise `video_files` stays failed and
 `--run-id`; batch, restart-recovery, and export checks that pass must keep a
 top-level `batch_id`. Existing video paths are revalidated each time
 `acceptance-status` reads a report.
+For `export` acceptance, attach the package and zip validation reports with
+`--export-validation-report` and `--export-zip-validation-report`; those reports
+are rechecked before `export=pass` can count toward release readiness.
 
 To collect compile/test output and optional smoke evidence automatically, use
 `relief-story-agent local-acceptance`. It preserves raw command output under
@@ -1224,6 +1227,20 @@ relief-story-agent validate-export-zip `
 Saved package and zip validation reports include their resolved `batch_id`.
 `local-acceptance` and `acceptance-status` compare that value with the
 acceptance report's top-level `batch_id` before allowing `export=pass`.
+Record the manual export gate with both saved report paths:
+
+```powershell
+relief-story-agent acceptance `
+  --output-dir "D:/relief_story_acceptance" `
+  --mode "export" `
+  --status "manual_pending" `
+  --batch-id "{batch_id}" `
+  --check "export=pass:publish index, videos, zip, sha256, validation reports exist" `
+  --export-validation-report "D:/relief_story_exports/{batch_id}/validation_report.json" `
+  --export-zip-validation-report "D:/relief_story_exports/{batch_id}.zip.validation.json" `
+  --include-default-matrix `
+  --pretty
+```
 
 ```json
 {

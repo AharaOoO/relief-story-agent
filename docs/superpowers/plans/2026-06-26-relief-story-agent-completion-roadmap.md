@@ -553,6 +553,8 @@ relief-story-agent acceptance `
   --status "manual_pending" `
   --batch-id "{batch_id}" `
   --check "export=pass:publish index, videos, zip, sha256, validation reports exist" `
+  --export-validation-report "D:/relief_story_exports/{batch_id}/validation_report.json" `
+  --export-zip-validation-report "D:/relief_story_exports/{batch_id}.zip.validation.json" `
   --include-default-matrix `
   --pretty
 ```

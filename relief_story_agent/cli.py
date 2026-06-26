@@ -321,6 +321,16 @@ def main(argv: list[str] | None = None) -> int:
         help="JSON batch-artifacts output with item summaries for batch_run evidence.",
     )
     acceptance_parser.add_argument(
+        "--export-validation-report",
+        default="",
+        help="JSON validate-export report for export evidence.",
+    )
+    acceptance_parser.add_argument(
+        "--export-zip-validation-report",
+        default="",
+        help="JSON validate-export-zip report for export evidence.",
+    )
+    acceptance_parser.add_argument(
         "--restart-recovery-report",
         default="",
         help="JSON report with before_restart and after_restart recovery plans for restart_recovery evidence.",
@@ -925,6 +935,11 @@ def _acceptance(args: argparse.Namespace) -> int:
         [_parse_check_arg(value) for value in args.check],
         batch_artifacts_report=args.batch_artifacts_report,
     )
+    checks = _attach_export_validation_reports(
+        checks,
+        export_validation_report=args.export_validation_report,
+        export_zip_validation_report=args.export_zip_validation_report,
+    )
     checks = _attach_restart_recovery_report(
         checks,
         restart_recovery_report=args.restart_recovery_report,
@@ -1021,6 +1036,71 @@ def _attach_batch_artifacts_report(
             },
         },
     ]
+
+
+def _attach_export_validation_reports(
+    checks: list[dict[str, str]],
+    *,
+    export_validation_report: str,
+    export_zip_validation_report: str,
+) -> list[dict[str, Any]]:
+    export_details = _export_validation_details(
+        export_validation_report=export_validation_report,
+        export_zip_validation_report=export_zip_validation_report,
+    )
+    if not export_details:
+        return checks
+    attached: list[dict[str, Any]] = []
+    found = False
+    for check in checks:
+        if check.get("id") != "export":
+            attached.append(check)
+            continue
+        found = True
+        details = check.get("details") if isinstance(check.get("details"), dict) else {}
+        attached.append(
+            {
+                **check,
+                "details": {
+                    **details,
+                    **export_details,
+                },
+            }
+        )
+    if found:
+        return attached
+    return [
+        *attached,
+        {
+            "id": "export",
+            "status": "pass",
+            "required_evidence": "export package and zip validation reports",
+            "evidence": _export_validation_evidence_text(export_details),
+            "details": export_details,
+        },
+    ]
+
+
+def _export_validation_details(
+    *,
+    export_validation_report: str,
+    export_zip_validation_report: str,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {}
+    if export_validation_report:
+        details["validation_report"] = export_validation_report
+    if export_zip_validation_report:
+        details["zip_validation_report"] = export_zip_validation_report
+    return details
+
+
+def _export_validation_evidence_text(details: dict[str, Any]) -> str:
+    parts = []
+    if details.get("validation_report"):
+        parts.append(f"validation_report={details['validation_report']}")
+    if details.get("zip_validation_report"):
+        parts.append(f"zip_validation_report={details['zip_validation_report']}")
+    return "; ".join(parts)
 
 
 def _attach_restart_recovery_report(

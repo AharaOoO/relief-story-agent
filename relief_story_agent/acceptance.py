@@ -386,6 +386,17 @@ def _invalid_batch_items(items: list[Any]) -> list[dict[str, Any]]:
         if publish_ready:
             if not primary_video_path:
                 invalid.append({"index": index, "run_id": run_id, "reason": "publish_ready_missing_video"})
+            else:
+                video_check = check_local_video_file(primary_video_path)
+                if not video_check["valid"]:
+                    invalid.append(
+                        {
+                            "index": index,
+                            "run_id": run_id,
+                            "reason": "publish_ready_invalid_video",
+                            "video": video_check,
+                        }
+                    )
             continue
         if status == "failed":
             if not failed_stage:

@@ -16,6 +16,7 @@ from .acceptance import (
     refresh_comfyui_outputs_evidence,
     refresh_export_evidence,
     refresh_identity_evidence,
+    refresh_model_check_evidence,
     refresh_recovery_evidence,
     refresh_video_evidence,
     write_acceptance_report,
@@ -328,6 +329,7 @@ def run_local_acceptance(
         mode="local_acceptance",
     )
     status_checks = refresh_comfyui_outputs_evidence(status_checks)
+    status_checks = refresh_model_check_evidence(status_checks)
     status_checks = refresh_batch_evidence(status_checks, batch_id=preserved_batch_id)
     status_checks = refresh_export_evidence(status_checks, batch_id=preserved_batch_id)
     status_checks = refresh_recovery_evidence(status_checks, batch_id=preserved_batch_id)
@@ -343,6 +345,7 @@ def run_local_acceptance(
         else "failed"
     )
     checks = refresh_comfyui_outputs_evidence(checks)
+    checks = refresh_model_check_evidence(checks)
     checks = refresh_batch_evidence(checks, batch_id=preserved_batch_id)
     checks = refresh_export_evidence(checks, batch_id=preserved_batch_id)
     checks = refresh_recovery_evidence(checks, batch_id=preserved_batch_id)

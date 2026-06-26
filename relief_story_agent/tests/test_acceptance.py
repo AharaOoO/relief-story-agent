@@ -53,6 +53,23 @@ def _valid_restart_recovery_report_path(tmp_path: Path, *, batch_id: str = "batc
     return recovery_report
 
 
+def _model_check_report_path(tmp_path: Path, *, real_run: bool = True, include_image: bool = True) -> Path:
+    checks = [
+        {"profile": "gemini_writer", "status": "pass", "real_run": real_run},
+        {"profile": "deepseek_editor", "status": "pass", "real_run": real_run},
+        {"profile": "gpt_visual", "status": "pass", "real_run": real_run},
+    ]
+    if include_image:
+        checks.append({"profile": "image_provider", "status": "pass", "real_run": real_run})
+    model_check_report = tmp_path / "model_check" / "model_check.json"
+    model_check_report.parent.mkdir(parents=True, exist_ok=True)
+    model_check_report.write_text(
+        json.dumps({"real_run": real_run, "ready": True, "checks": checks}),
+        encoding="utf-8",
+    )
+    return model_check_report
+
+
 def _valid_recovery_plan_path(tmp_path: Path, name: str, *, batch_id: str = "batch_real") -> Path:
     recovery_plan = tmp_path / "recovery" / name
     recovery_plan.parent.mkdir(parents=True, exist_ok=True)
@@ -153,10 +170,13 @@ def _passing_release_checks(
     batch_artifacts_report: Path | None = None,
     restart_recovery_report: Path | None = None,
     comfyui_output_video: Path | None = None,
+    model_check_report: Path | None = None,
 ) -> list[dict[str, object]]:
     if comfyui_output_video is None:
         comfyui_output_video = validation_report.parent / "comfyui_output.mp4"
         comfyui_output_video.write_bytes(_valid_mp4_bytes())
+    if model_check_report is None:
+        model_check_report = _model_check_report_path(validation_report.parent)
     checks = []
     for default_check in DEFAULT_ACCEPTANCE_MATRIX:
         check: dict[str, object] = {
@@ -167,6 +187,10 @@ def _passing_release_checks(
         }
         if default_check["id"] == "comfyui_outputs":
             check["details"] = _comfyui_outputs_details(comfyui_output_video)
+        if default_check["id"] == "model_check":
+            check["details"] = {
+                "model_check_report": str(model_check_report),
+            }
         if default_check["id"] == "export":
             check["details"] = {
                 "validation_report": str(validation_report),
@@ -889,6 +913,75 @@ def test_build_acceptance_status_blocks_comfyui_outputs_with_missing_downloaded_
     assert comfyui_check["details"]["comfyui_outputs_evidence"]["error"] == "invalid_downloaded_videos"
     assert comfyui_check["details"]["comfyui_outputs_evidence"]["video_file_checks"][0]["exists"] is False
     assert "check_comfyui_outputs" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_blocks_model_check_without_real_run(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    model_check_report = _model_check_report_path(tmp_path, real_run=False)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+                model_check_report=model_check_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    model_check = next(check for check in status["blocking_checks"] if check["id"] == "model_check")
+    assert status["ready_for_release"] is False
+    assert model_check["status"] == "fail"
+    assert model_check["details"]["model_check_evidence"]["valid"] is False
+    assert model_check["details"]["model_check_evidence"]["error"] == "model_check_not_real_run"
+    assert "configure_and_check_models" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_blocks_model_check_without_image_provider_probe(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    model_check_report = _model_check_report_path(tmp_path, real_run=True, include_image=False)
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+                model_check_report=model_check_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    model_check = next(check for check in status["blocking_checks"] if check["id"] == "model_check")
+    assert status["ready_for_release"] is False
+    assert model_check["status"] == "fail"
+    assert model_check["details"]["model_check_evidence"]["valid"] is False
+    assert model_check["details"]["model_check_evidence"]["error"] == "missing_image_provider_check"
 
 
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):

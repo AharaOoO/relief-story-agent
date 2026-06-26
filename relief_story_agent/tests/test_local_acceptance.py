@@ -195,7 +195,7 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
         if command[2:4] == ["relief_story_agent.cli", "pipeline-schema"]:
             return _pipeline_schema_completed(command)
         if command[2:5] == ["relief_story_agent.cli", "model-check", "--model-config"]:
-            return subprocess.CompletedProcess(command, 0, '{"ready": true, "checks": []}\n', "")
+            return subprocess.CompletedProcess(command, 0, '{"real_run": false, "ready": true, "checks": []}\n', "")
         if command[2:5] == ["relief_story_agent.cli", "diagnose", "--request"] and "--kind" not in command:
             return subprocess.CompletedProcess(command, 0, '{"kind": "run", "ready": true}\n', "")
         if command[2:5] == ["relief_story_agent.cli", "diagnose", "--request"] and "--kind" in command:
@@ -231,10 +231,14 @@ def test_run_local_acceptance_collects_model_and_request_diagnostics(tmp_path):
     report = json.loads(Path(result["acceptance_report"]).read_text(encoding="utf-8"))
     checks = {check["id"]: check for check in report["checks"]}
 
-    assert result["status"] == "completed"
+    assert result["status"] == "failed"
+    assert report["status"] == "failed"
     assert checks["pipeline_schema"]["status"] == "pass"
-    assert checks["model_check"]["status"] == "pass"
-    assert checks["model_check"]["evidence"] == "exit_code=0; ready=true"
+    assert checks["model_check"]["status"] == "fail"
+    assert checks["model_check"]["evidence"] == (
+        "model_check_valid=false; real_run=false; ready=true; checks=0/0; image_provider_covered=false"
+    )
+    assert checks["model_check"]["details"]["model_check_evidence"]["error"] == "model_check_not_real_run"
     assert checks["run_diagnose"]["status"] == "pass"
     assert checks["run_diagnose"]["evidence"] == "exit_code=0; kind=run; ready=true"
     assert checks["batch_diagnose"]["status"] == "pass"
@@ -260,7 +264,19 @@ def test_run_local_acceptance_can_collect_real_model_probe(tmp_path):
             return subprocess.CompletedProcess(
                 command,
                 0,
-                '{"real_run": true, "ready": true, "checks": []}\n',
+                json.dumps(
+                    {
+                        "real_run": True,
+                        "ready": True,
+                        "checks": [
+                            {"profile": "gemini_writer", "status": "pass", "real_run": True},
+                            {"profile": "deepseek_editor", "status": "pass", "real_run": True},
+                            {"profile": "gpt_visual", "status": "pass", "real_run": True},
+                            {"profile": "image_provider", "status": "pass", "real_run": True},
+                        ],
+                    }
+                )
+                + "\n",
                 "",
             )
         if command[2:5] == ["relief_story_agent.cli", "diagnose", "--request"]:
@@ -283,7 +299,9 @@ def test_run_local_acceptance_can_collect_real_model_probe(tmp_path):
     checks = {check["id"]: check for check in report["checks"]}
     assert checks["model_check"]["status"] == "pass"
     assert checks["model_check"]["required_evidence"] == "model-check --real-run JSON stdout"
-    assert checks["model_check"]["evidence"] == "exit_code=0; ready=true"
+    assert checks["model_check"]["evidence"] == (
+        "model_check_valid=true; real_run=true; ready=true; checks=4/4; image_provider_covered=true"
+    )
 
 
 def test_run_local_acceptance_fails_when_json_readiness_is_false(tmp_path):

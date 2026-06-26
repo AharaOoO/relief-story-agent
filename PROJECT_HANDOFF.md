@@ -138,6 +138,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `single_run=pass` 还必须有顶层 `run_id`；`batch_run`、`restart_recovery` 和 `export=pass` 必须有顶层 `batch_id`，否则会重新阻塞发布。
 - 旧报告里保留的 `export=pass` 会重新检查 `details.validation_report` 和 `details.zip_validation_report`；报告缺失、JSON 无效、`valid=false` 或报告里的 `batch_id` 与顶层 `batch_id` 不一致，都会重新阻塞发布。
 - `comfyui_outputs=pass` 也会重新检查结构化 `actual_outputs` 或 outputs report；下载视频路径缺失、已删除、为空或容器签名不可识别时都会重新阻塞发布。
+- `model_check=pass` 也会重新检查记录的 model-check JSON；只有 `--real-run`、非空且全部 pass 的 checks、并包含 `image_provider` 探针时才算发布证据。
 - `acceptance` 生成报告时会写入完整发布矩阵，`acceptance-status` 读取旧报告时也会补齐缺失检查；只记录 smoke 或局部手工检查的报告不会被误判为 release-ready。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
 - `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。

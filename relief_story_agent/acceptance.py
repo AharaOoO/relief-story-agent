@@ -39,7 +39,7 @@ DEFAULT_ACCEPTANCE_MATRIX: tuple[dict[str, str], ...] = (
     },
     {
         "id": "model_check",
-        "required_evidence": "model-check JSON, ready=true, text profiles and image provider covered",
+        "required_evidence": "model-check --real-run JSON, ready=true, text profiles and image provider covered",
     },
     {
         "id": "run_diagnose",
@@ -85,6 +85,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         mode=str(payload.get("mode") or "manual"),
     )
     checks = refresh_comfyui_outputs_evidence(checks)
+    checks = refresh_model_check_evidence(checks)
     checks = refresh_batch_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_recovery_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
@@ -124,6 +125,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             mode=str(report.get("mode") or ""),
         )
         checks = refresh_comfyui_outputs_evidence(checks)
+        checks = refresh_model_check_evidence(checks)
         checks = refresh_batch_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_recovery_evidence(checks, batch_id=str(report.get("batch_id") or ""))
@@ -398,6 +400,132 @@ def _safe_int(value: Any, *, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def refresh_model_check_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _refreshed_model_check(check)
+        if str(check.get("id") or "") == "model_check"
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_model_check(check: dict[str, Any]) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    model_evidence = _model_check_evidence_status(details)
+    valid = bool(model_evidence["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"model_check_valid={str(valid).lower()}; "
+            f"real_run={str(bool(model_evidence['real_run'])).lower()}; "
+            f"ready={str(bool(model_evidence['ready'])).lower()}; "
+            f"checks={model_evidence['pass_count']}/{model_evidence['check_count']}; "
+            f"image_provider_covered={str(bool(model_evidence['image_provider_covered'])).lower()}"
+        ),
+        "details": {
+            **details,
+            "model_check_evidence": model_evidence,
+        },
+    }
+
+
+def _model_check_evidence_status(details: dict[str, Any]) -> dict[str, Any]:
+    result = {
+        "valid": False,
+        "error": "",
+        "path": "",
+        "exists": False,
+        "real_run": False,
+        "ready": False,
+        "check_count": 0,
+        "pass_count": 0,
+        "image_provider_covered": False,
+        "non_real_run_checks": [],
+        "failed_checks": [],
+    }
+    payload_result = _model_check_payload(details)
+    result = {**result, **payload_result}
+    payload = payload_result.get("payload")
+    if not isinstance(payload, dict):
+        result.pop("payload", None)
+        if not result["error"]:
+            result["error"] = "missing_model_check_evidence"
+        return result
+
+    checks = payload.get("checks") or []
+    if not isinstance(checks, list):
+        checks = []
+    failed_checks = [
+        str(check.get("profile") or check.get("id") or index)
+        for index, check in enumerate(checks)
+        if not isinstance(check, dict) or str(check.get("status") or "").lower() not in PASS_STATUSES
+    ]
+    non_real_run_checks = [
+        str(check.get("profile") or check.get("id") or index)
+        for index, check in enumerate(checks)
+        if isinstance(check, dict) and not bool(check.get("real_run"))
+    ]
+    image_provider_covered = any(
+        isinstance(check, dict) and str(check.get("profile") or "") == "image_provider"
+        for check in checks
+    )
+    real_run = bool(payload.get("real_run"))
+    ready = bool(payload.get("ready"))
+    error = ""
+    if not real_run:
+        error = "model_check_not_real_run"
+    elif not ready:
+        error = "model_check_not_ready"
+    elif not checks:
+        error = "missing_model_checks"
+    elif failed_checks:
+        error = "failed_model_checks"
+    elif non_real_run_checks:
+        error = "model_checks_not_real_run"
+    elif not image_provider_covered:
+        error = "missing_image_provider_check"
+
+    result.update(
+        {
+            "valid": not error,
+            "error": error,
+            "real_run": real_run,
+            "ready": ready,
+            "check_count": len(checks),
+            "pass_count": len(checks) - len(failed_checks),
+            "image_provider_covered": image_provider_covered,
+            "non_real_run_checks": non_real_run_checks,
+            "failed_checks": failed_checks,
+        }
+    )
+    result.pop("payload", None)
+    return result
+
+
+def _model_check_payload(details: dict[str, Any]) -> dict[str, Any]:
+    raw_path = (
+        details.get("model_check_report")
+        or details.get("stdout_path")
+        or details.get("report_path")
+        or ""
+    )
+    if raw_path:
+        path = Path(str(raw_path))
+        base = {"path": str(path), "exists": path.exists() and path.is_file()}
+        if not base["exists"]:
+            return {**base, "error": "missing_model_check_report"}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {**base, "error": "invalid_model_check_report_json"}
+        return {**base, "payload": payload}
+    if "real_run" in details or "checks" in details or "ready" in details:
+        return {"payload": details}
+    return {"error": "missing_model_check_evidence"}
 
 
 def refresh_batch_evidence(

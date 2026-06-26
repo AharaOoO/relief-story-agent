@@ -113,6 +113,7 @@ eb3fe74 fix: revalidate preserved export evidence
 - `restart_recovery=pass` 必须带 before/after recovery-plan JSON，两个文件都要有 summary，且 `batch_id` 匹配顶层 `batch_id`。
 - `export=pass` 必须有 export package validation report 和 zip validation report，且报告里的 `batch_id` 匹配顶层 `batch_id`。
 - `comfyui_outputs=pass` 必须有结构化 `actual_outputs` 或 outputs report，且下载视频路径仍然存在、非空并有可识别的视频容器签名。
+- `model_check=pass` 必须来自 `model-check --real-run` 的 JSON，checks 非空、全部 pass，且包含 `image_provider` 探针。
 - 旧 acceptance report 中保留的 pass 证据会被重新检查，不能靠过期文件或错误 batch 混过去。
 
 ## 6. 已完成能力清单

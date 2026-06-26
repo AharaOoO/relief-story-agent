@@ -202,7 +202,9 @@ is recorded and validates. It also requires top-level `run_id` for
 instead of trusting a stale `video_files=pass` entry. `comfyui_outputs=pass` is
 also revalidated from structured `actual_outputs` details or a recorded outputs
 report, and at least one downloaded video path must still pass container
-validation. `batch_run=pass` needs
+validation. `model_check=pass` is revalidated from the recorded model-check
+JSON; release evidence must come from `--real-run`, have non-empty passing
+checks, and include the image provider probe. `batch_run=pass` needs
 structured `--batch-artifacts-report` evidence with publish-ready completed
 items and failed items that include `failed_stage` plus
 `recommended_action.code`. `restart_recovery=pass` also needs structured

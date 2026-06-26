@@ -173,6 +173,32 @@ def test_cli_discover_comfyui_workflows_returns_zero_when_no_recommendation(tmp_
     assert body["items"][0]["status"] == "unsupported"
 
 
+def test_cli_discover_comfyui_workflows_reports_invalid_schema_without_traceback(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "discover-comfyui-workflows",
+            "--search-root",
+            str(tmp_path),
+            "--max-results",
+            "0",
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == "discover-comfyui-workflows"
+    assert "Invalid request" in body["error"]
+
+
 def test_cli_comfyui_outputs_queries_and_downloads_prompt_outputs(tmp_path):
     with _ComfyUIHistoryServer(video_bytes=b"cli-video") as server:
         completed = subprocess.run(

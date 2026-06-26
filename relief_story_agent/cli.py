@@ -584,12 +584,16 @@ def _connect_comfyui(args: argparse.Namespace) -> int:
 
 
 def _discover_comfyui_workflows(args: argparse.Namespace) -> int:
-    request = ComfyUIWorkflowDiscoveryRequest(
-        endpoint=args.endpoint,
-        search_roots=args.search_root,
-        max_results=args.max_results,
-        filename_keywords=args.filename_keyword,
-        include_unsupported=not args.hide_unsupported,
+    request = _validate_request_model(
+        ComfyUIWorkflowDiscoveryRequest,
+        {
+            "endpoint": args.endpoint,
+            "search_roots": args.search_root,
+            "max_results": args.max_results,
+            "filename_keywords": args.filename_keyword,
+            "include_unsupported": not args.hide_unsupported,
+        },
+        source="discover-comfyui-workflows",
     )
     result = discover_workflows(
         request.search_roots,

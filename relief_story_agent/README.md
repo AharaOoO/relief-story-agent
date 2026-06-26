@@ -451,9 +451,9 @@ not accidentally route through a system proxy. If a local CLI request or model
 config file is missing, malformed JSON, or not a JSON object, the command
 returns a structured `invalid_request` JSON response instead of a Python
 traceback. Commands that validate local request schemas, including
-`connect-comfyui`, `comfyui-outputs`, `diagnose`,
-`model-check --run-request`, and `smoke-comfyui`, use the same structured
-response for schema failures.
+`connect-comfyui`, `discover-comfyui-workflows`, `comfyui-outputs`,
+`diagnose`, `model-check --run-request`, and `smoke-comfyui`, use the same
+structured response for schema failures.
 
 Generate a local starter bundle for a non-developer machine:
 

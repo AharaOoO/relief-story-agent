@@ -77,6 +77,42 @@ def _diagnose_report_path(tmp_path: Path, *, kind: str, ready: bool = True) -> P
     return diagnose_report
 
 
+def _pipeline_schema_report_path(
+    tmp_path: Path,
+    *,
+    stage_order: list[str] | None = None,
+) -> Path:
+    pipeline_schema_report = tmp_path / "pipeline" / "pipeline_schema.json"
+    pipeline_schema_report.parent.mkdir(parents=True, exist_ok=True)
+    pipeline_schema_report.write_text(
+        json.dumps(
+            {
+                "canonical_stage_order": stage_order
+                or [
+                    "chief_screenwriter",
+                    "deepseek_polish",
+                    "quality_gate",
+                    "gpt_prompt_writer",
+                    "gpt_prompt_audit",
+                    "gpt_prompt_reviser",
+                    "final_prompts",
+                    "four_grid_asset",
+                    "artifacts",
+                    "comfyui",
+                ],
+                "invariants": {
+                    "fixed_order": True,
+                    "prompt_reviser_max_auto_attempts": 1,
+                    "quality_gate_after": "deepseek_polish",
+                    "comfyui_workflow_generation": "never",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    return pipeline_schema_report
+
+
 def _valid_recovery_plan_path(tmp_path: Path, name: str, *, batch_id: str = "batch_real") -> Path:
     recovery_plan = tmp_path / "recovery" / name
     recovery_plan.parent.mkdir(parents=True, exist_ok=True)
@@ -180,6 +216,7 @@ def _passing_release_checks(
     model_check_report: Path | None = None,
     run_diagnose_report: Path | None = None,
     batch_diagnose_report: Path | None = None,
+    pipeline_schema_report: Path | None = None,
 ) -> list[dict[str, object]]:
     if comfyui_output_video is None:
         comfyui_output_video = validation_report.parent / "comfyui_output.mp4"
@@ -190,6 +227,8 @@ def _passing_release_checks(
         run_diagnose_report = _diagnose_report_path(validation_report.parent, kind="run")
     if batch_diagnose_report is None:
         batch_diagnose_report = _diagnose_report_path(validation_report.parent, kind="batch")
+    if pipeline_schema_report is None:
+        pipeline_schema_report = _pipeline_schema_report_path(validation_report.parent)
     checks = []
     for default_check in DEFAULT_ACCEPTANCE_MATRIX:
         check: dict[str, object] = {
@@ -211,6 +250,10 @@ def _passing_release_checks(
         if default_check["id"] == "batch_diagnose":
             check["details"] = {
                 "diagnose_report": str(batch_diagnose_report),
+            }
+        if default_check["id"] == "pipeline_schema":
+            check["details"] = {
+                "pipeline_schema_report": str(pipeline_schema_report),
             }
         if default_check["id"] == "export":
             check["details"] = {
@@ -1073,6 +1116,55 @@ def test_build_acceptance_status_blocks_batch_diagnose_with_wrong_kind(tmp_path)
     assert diagnose_check["details"]["diagnose_evidence"]["valid"] is False
     assert diagnose_check["details"]["diagnose_evidence"]["error"] == "diagnose_kind_mismatch"
     assert "fix_batch_preflight" in status["suggested_actions"]
+
+
+def test_build_acceptance_status_blocks_pipeline_schema_with_wrong_stage_order(tmp_path):
+    video_path = tmp_path / "complete.mp4"
+    video_path.write_bytes(_valid_mp4_bytes())
+    validation_report, zip_validation_report = _valid_export_report_paths(tmp_path)
+    batch_artifacts_report = _valid_batch_artifacts_report_path(tmp_path)
+    restart_recovery_report = _valid_restart_recovery_report_path(tmp_path)
+    pipeline_schema_report = _pipeline_schema_report_path(
+        tmp_path,
+        stage_order=[
+            "chief_screenwriter",
+            "quality_gate",
+            "deepseek_polish",
+            "gpt_prompt_writer",
+            "gpt_prompt_audit",
+            "gpt_prompt_reviser",
+            "final_prompts",
+            "four_grid_asset",
+            "artifacts",
+            "comfyui",
+        ],
+    )
+    report_path = write_acceptance_report(
+        tmp_path,
+        {
+            "run_id": "run_real",
+            "batch_id": "batch_real",
+            "mode": "local_acceptance",
+            "status": "completed",
+            "video_paths": [str(video_path)],
+            "checks": _passing_release_checks(
+                validation_report=validation_report,
+                zip_validation_report=zip_validation_report,
+                batch_artifacts_report=batch_artifacts_report,
+                restart_recovery_report=restart_recovery_report,
+                pipeline_schema_report=pipeline_schema_report,
+            ),
+        },
+    )
+
+    status = build_acceptance_status(report_path)
+
+    pipeline_check = next(check for check in status["blocking_checks"] if check["id"] == "pipeline_schema")
+    assert status["ready_for_release"] is False
+    assert pipeline_check["status"] == "fail"
+    assert pipeline_check["details"]["pipeline_schema_evidence"]["valid"] is False
+    assert pipeline_check["details"]["pipeline_schema_evidence"]["error"] == "stage_order_mismatch"
+    assert "verify_pipeline_schema" in status["suggested_actions"]
 
 
 def test_build_acceptance_status_blocks_single_run_pass_without_run_id(tmp_path):

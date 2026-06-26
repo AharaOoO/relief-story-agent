@@ -239,6 +239,8 @@ evidence must come from `--real-run`, have non-empty passing checks, and include
 the image provider probe.
 `run_diagnose=pass` and `batch_diagnose=pass` are revalidated from recorded
 diagnose JSON; their `kind` must match and `ready` must be true.
+`pipeline_schema=pass` is revalidated from the recorded pipeline-schema JSON,
+including the fixed stage order and invariants.
 The same status refresh requires top-level `run_id` for `single_run=pass`, and
 top-level `batch_id` for `batch_run`, `restart_recovery`, and `export=pass`, so
 release-ready reports stay traceable to concrete run and batch records.

@@ -87,6 +87,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
     checks = refresh_comfyui_outputs_evidence(checks)
     checks = refresh_model_check_evidence(checks)
     checks = refresh_diagnose_evidence(checks)
+    checks = refresh_pipeline_schema_evidence(checks)
     checks = refresh_batch_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_export_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
     checks = refresh_recovery_evidence(checks, batch_id=str(payload.get("batch_id") or ""))
@@ -128,6 +129,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
         checks = refresh_comfyui_outputs_evidence(checks)
         checks = refresh_model_check_evidence(checks)
         checks = refresh_diagnose_evidence(checks)
+        checks = refresh_pipeline_schema_evidence(checks)
         checks = refresh_batch_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_export_evidence(checks, batch_id=str(report.get("batch_id") or ""))
         checks = refresh_recovery_evidence(checks, batch_id=str(report.get("batch_id") or ""))
@@ -624,6 +626,131 @@ def _diagnose_payload(details: dict[str, Any]) -> dict[str, Any]:
 
 def _diagnose_expected_kind(check_id: str) -> str:
     return "batch" if check_id == "batch_diagnose" else "run"
+
+
+EXPECTED_RELEASE_STAGE_ORDER = [
+    "chief_screenwriter",
+    "deepseek_polish",
+    "quality_gate",
+    "gpt_prompt_writer",
+    "gpt_prompt_audit",
+    "gpt_prompt_reviser",
+    "final_prompts",
+    "four_grid_asset",
+    "artifacts",
+    "comfyui",
+]
+
+
+def refresh_pipeline_schema_evidence(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        _refreshed_pipeline_schema_check(check)
+        if str(check.get("id") or "") == "pipeline_schema"
+        and str(check.get("status") or "").lower() in PASS_STATUSES
+        else check
+        for check in checks
+    ]
+
+
+def _refreshed_pipeline_schema_check(check: dict[str, Any]) -> dict[str, Any]:
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    schema_evidence = _pipeline_schema_evidence_status(details)
+    valid = bool(schema_evidence["valid"])
+    return {
+        **check,
+        "status": "pass" if valid else "fail",
+        "evidence": (
+            f"pipeline_schema_valid={str(valid).lower()}; "
+            f"stage_count={schema_evidence['stage_count']}; "
+            f"fixed_order={str(bool(schema_evidence['fixed_order'])).lower()}; "
+            f"prompt_reviser_max_auto_attempts={schema_evidence['prompt_reviser_max_auto_attempts']}; "
+            f"quality_gate_after={schema_evidence['quality_gate_after']}; "
+            f"comfyui_workflow_generation={schema_evidence['comfyui_workflow_generation']}"
+        ),
+        "details": {
+            **details,
+            "pipeline_schema_evidence": schema_evidence,
+        },
+    }
+
+
+def _pipeline_schema_evidence_status(details: dict[str, Any]) -> dict[str, Any]:
+    result = {
+        "valid": False,
+        "error": "",
+        "path": "",
+        "exists": False,
+        "stage_count": 0,
+        "expected_stage_order": EXPECTED_RELEASE_STAGE_ORDER,
+        "actual_stage_order": [],
+        "fixed_order": False,
+        "prompt_reviser_max_auto_attempts": None,
+        "quality_gate_after": "",
+        "comfyui_workflow_generation": "",
+    }
+    payload_result = _pipeline_schema_payload(details)
+    result = {**result, **payload_result}
+    payload = payload_result.get("payload")
+    if not isinstance(payload, dict):
+        result.pop("payload", None)
+        if not result["error"]:
+            result["error"] = "missing_pipeline_schema_evidence"
+        return result
+
+    stage_order = [str(item) for item in payload.get("canonical_stage_order") or []]
+    invariants = payload.get("invariants") if isinstance(payload.get("invariants"), dict) else {}
+    fixed_order = invariants.get("fixed_order") is True
+    prompt_reviser_attempts = invariants.get("prompt_reviser_max_auto_attempts")
+    quality_gate_after = str(invariants.get("quality_gate_after") or "")
+    comfyui_workflow_generation = str(invariants.get("comfyui_workflow_generation") or "")
+    error = ""
+    if stage_order != EXPECTED_RELEASE_STAGE_ORDER:
+        error = "stage_order_mismatch"
+    elif not fixed_order:
+        error = "fixed_order_not_true"
+    elif prompt_reviser_attempts != 1:
+        error = "prompt_reviser_attempts_mismatch"
+    elif quality_gate_after != "deepseek_polish":
+        error = "quality_gate_position_mismatch"
+    elif comfyui_workflow_generation != "never":
+        error = "comfyui_workflow_generation_mismatch"
+
+    result.update(
+        {
+            "valid": not error,
+            "error": error,
+            "stage_count": len(stage_order),
+            "actual_stage_order": stage_order,
+            "fixed_order": fixed_order,
+            "prompt_reviser_max_auto_attempts": prompt_reviser_attempts,
+            "quality_gate_after": quality_gate_after,
+            "comfyui_workflow_generation": comfyui_workflow_generation,
+        }
+    )
+    result.pop("payload", None)
+    return result
+
+
+def _pipeline_schema_payload(details: dict[str, Any]) -> dict[str, Any]:
+    raw_path = (
+        details.get("pipeline_schema_report")
+        or details.get("stdout_path")
+        or details.get("report_path")
+        or ""
+    )
+    if raw_path:
+        path = Path(str(raw_path))
+        base = {"path": str(path), "exists": path.exists() and path.is_file()}
+        if not base["exists"]:
+            return {**base, "error": "missing_pipeline_schema_report"}
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {**base, "error": "invalid_pipeline_schema_report_json"}
+        return {**base, "payload": payload}
+    if "canonical_stage_order" in details or "invariants" in details:
+        return {"payload": details}
+    return {"error": "missing_pipeline_schema_evidence"}
 
 
 def refresh_batch_evidence(

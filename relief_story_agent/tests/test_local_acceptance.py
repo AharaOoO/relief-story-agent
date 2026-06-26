@@ -114,7 +114,11 @@ def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):
     assert checks["full_tests"]["status"] == "pass"
     assert checks["full_tests"]["evidence"] == "exit_code=0; 318 passed in 52.91s"
     assert checks["pipeline_schema"]["status"] == "pass"
-    assert checks["pipeline_schema"]["evidence"] == "stage_count=10; fixed_order=true; prompt_reviser_max_auto_attempts=1; quality_gate_after=deepseek_polish; comfyui_workflow_generation=never"
+    assert checks["pipeline_schema"]["evidence"] == (
+        "pipeline_schema_valid=true; stage_count=10; fixed_order=true; "
+        "prompt_reviser_max_auto_attempts=1; quality_gate_after=deepseek_polish; "
+        "comfyui_workflow_generation=never"
+    )
     assert checks["comfyui_real_smoke"]["status"] == "pass"
     assert checks["comfyui_real_smoke"]["evidence"].startswith("prompt_id=prompt-local")
     assert checks["restart_recovery"]["status"] == "manual_pending"

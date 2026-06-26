@@ -146,6 +146,10 @@ relief-story-agent connect-comfyui `
   --pretty
 ```
 
+If the connection request JSON is valid but fails schema validation, such as an
+invalid timeout value, the command returns structured `invalid_request` JSON
+instead of a traceback.
+
 The ComfyUI endpoint accepts common address-box input. For example,
 `127.0.0.1:8188`, `http://127.0.0.1:8188/`, and
 `http://127.0.0.1:8188/queue` are normalized to

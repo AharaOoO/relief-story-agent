@@ -567,7 +567,12 @@ def _connect_comfyui(args: argparse.Namespace) -> int:
     if args.timeout_seconds > 0:
         payload["timeout_seconds"] = args.timeout_seconds
 
-    result = connect_comfyui(ComfyUIConnectionRequest.model_validate(payload))
+    request = _validate_request_model(
+        ComfyUIConnectionRequest,
+        payload,
+        source=args.request or "connect-comfyui",
+    )
+    result = connect_comfyui(request)
     print(
         json.dumps(
             result,
@@ -958,6 +963,13 @@ def _read_json_file(path: str) -> dict:
     if not isinstance(payload, dict):
         raise CliInputError(path, "Invalid JSON file: top-level value must be an object")
     return payload
+
+
+def _validate_request_model(model: type[Any], payload: dict, *, source: str) -> Any:
+    try:
+        return model.model_validate(payload)
+    except ValueError as exc:
+        raise CliInputError(source, f"Invalid request: {exc}") from exc
 
 
 def _load_model_config_registry(path: str) -> ModelConfigRegistry:

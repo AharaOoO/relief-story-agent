@@ -722,6 +722,10 @@ After `setup`, use the generated local file instead:
 relief-story-agent connect-comfyui --request "D:/relief_story_config/comfyui_connect.json" --pretty
 ```
 
+If the connection request JSON is valid but fails schema validation, such as an
+invalid timeout value, the command returns structured `invalid_request` JSON
+instead of a traceback.
+
 `workflow_api_path` accepts two workflow shapes:
 
 - ComfyUI API prompt JSON: uses `placeholder_map_path` and/or inline `placeholder_map` to fill per-shot inputs, then queues one prompt per storyboard shot. When both are provided, the file is loaded first and inline entries override entries with the same key.

@@ -10,7 +10,10 @@ from relief_story_agent.acceptance import write_acceptance_report
 from relief_story_agent.local_acceptance import run_local_acceptance
 
 
-MINIMAL_MP4_BYTES = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+MINIMAL_MP4_BYTES = (
+    b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+    b"\x00\x00\x00\tmoov\x00"
+)
 
 
 def test_run_local_acceptance_collects_commands_and_smoke_report(tmp_path):

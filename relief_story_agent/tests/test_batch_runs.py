@@ -20,7 +20,10 @@ from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrat
 from relief_story_agent.providers import FakeModelProvider
 
 
-MINIMAL_MP4_BYTES = b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+MINIMAL_MP4_BYTES = (
+    b"\x00\x00\x00\x18ftypisom\x00\x00\x02\x00isomiso2"
+    b"\x00\x00\x00\tmoov\x00"
+)
 
 
 def test_run_idempotency_key_reuses_existing_run_without_duplicate_model_calls():

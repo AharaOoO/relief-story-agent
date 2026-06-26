@@ -22,8 +22,21 @@ def has_recognized_video_container(path: Path) -> bool:
     suffix = path.suffix.lower()
     if suffix in {".mp4", ".m4v", ".mov"}:
         try:
-            header = path.read_bytes()[:64]
+            data = path.read_bytes()
         except OSError:
             return False
-        return b"ftyp" in header[:16]
+        return _has_mp4_required_boxes(data)
     return suffix in {".webm", ".mkv", ".avi"}
+
+
+def _has_mp4_required_boxes(data: bytes) -> bool:
+    boxes = set()
+    offset = 0
+    while offset + 8 <= len(data):
+        size = int.from_bytes(data[offset : offset + 4], "big")
+        kind = data[offset + 4 : offset + 8]
+        if size == 1 or size < 8:
+            break
+        boxes.add(kind)
+        offset += size
+    return b"ftyp" in boxes and b"moov" in boxes

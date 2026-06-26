@@ -653,14 +653,14 @@ def _diagnose(args: argparse.Namespace) -> int:
     )
     kind = _diagnose_kind(payload, args.kind)
     if kind == "batch":
-        request = BatchRunRequest.model_validate(payload)
+        request = _validate_request_model(BatchRunRequest, payload, source=args.request)
         result = diagnose_batch_configuration(
             request,
             registry,
             check_comfyui_connection=args.check_comfyui_connection,
         )
     else:
-        request = RunRequest.model_validate(payload)
+        request = _validate_request_model(RunRequest, payload, source=args.request)
         result = diagnose_run_configuration(
             request,
             registry,
@@ -701,7 +701,7 @@ def _model_check(args: argparse.Namespace) -> int:
     image_config = None
     if args.run_request:
         request_payload = _read_json_file(args.run_request)
-        request = RunRequest.model_validate(request_payload)
+        request = _validate_request_model(RunRequest, request_payload, source=args.run_request)
         if request.comfyui.enabled:
             image_config = request.comfyui.grid_image
     result = run_model_probe(

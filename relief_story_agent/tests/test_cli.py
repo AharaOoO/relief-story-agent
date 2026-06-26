@@ -320,6 +320,67 @@ def test_cli_diagnose_auto_detects_batch_request(tmp_path):
     assert body["summary"]["total"] == 2
 
 
+def test_cli_diagnose_reports_invalid_request_schema_without_traceback(tmp_path):
+    request_path = tmp_path / "batch_request.json"
+    request_path.write_text(json.dumps({"items": []}), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "diagnose",
+            "--request",
+            str(request_path),
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == str(request_path)
+    assert "Invalid request" in body["error"]
+
+
+def test_cli_model_check_reports_invalid_run_request_schema_without_traceback(tmp_path):
+    request_path = tmp_path / "run_request.json"
+    request_path.write_text(
+        json.dumps({"output_root": str(tmp_path / "outputs")}),
+        encoding="utf-8",
+    )
+    model_config_path = tmp_path / "models.json"
+    model_config_path.write_text(json.dumps({"profiles": {}, "stages": {}}), encoding="utf-8")
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "model-check",
+            "--model-config",
+            str(model_config_path),
+            "--run-request",
+            str(request_path),
+            "--pretty",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 1
+    assert "Traceback" not in completed.stderr
+    body = json.loads(completed.stdout)
+    assert body["status"] == "invalid_request"
+    assert body["path"] == str(request_path)
+    assert "Invalid request" in body["error"]
+
+
 def test_cli_run_posts_request_to_api(tmp_path):
     request_path = tmp_path / "run.json"
     request_path.write_text(json.dumps({"idea": "cli run"}), encoding="utf-8")

@@ -148,6 +148,7 @@ artifact_dir=D:\relief_story_smoke\comfyui_smoke_20260625T115742676759Z
 - `acceptance-status` 读取到损坏的 `acceptance_report.json` 时会返回 `acceptance_report` blocker，而不是崩溃或误判 ready。
 - 本地 CLI 读取请求 JSON、smoke 请求 JSON 或模型配置 JSON 时，如果文件缺失、JSON 损坏或顶层不是 object，会返回结构化 `invalid_request` JSON，而不是 Python traceback。
 - `connect-comfyui` 的请求 JSON 如果 schema 校验失败（例如无效 timeout），也会返回结构化 `invalid_request` JSON，而不是 Python traceback。
+- `diagnose` 与 `model-check --run-request` 的请求 JSON 如果 schema 校验失败，也会返回结构化 `invalid_request` JSON，而不是 Python traceback。
 - `relief-story-agent serve` / `relief-story-agent-server` 启动时如果 `--model-config` 无法加载，也会返回结构化 `invalid_request` JSON，方便 Windows 启动器显示文件级错误。
 - `relief-story-agent acceptance-status` 和 `GET /api/local/acceptance-status`。
 - `relief-story-agent local-readiness` 和 `GET /api/local/readiness`：本次新增，见下一节。

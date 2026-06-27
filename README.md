@@ -1,5 +1,44 @@
 # Relief Story Agent
 
+> Current status for reviewers: read [PROJECT_STATUS.md](PROJECT_STATUS.md)
+> first. The project now has an API-first backend with an internal workflow
+> layer, ComfyUI/LTX adapter, batch scheduler, recovery/export/acceptance
+> evidence gates, and a RunningHub cloud-generation starter. It is not yet
+> release-ready because final real model/video/batch/recovery/export evidence
+> and a production-grade creator UI are still pending.
+
+## Current Reviewer Snapshot
+
+Latest verified backend baseline on `codex/export-acceptance-evidence`:
+
+```text
+python -m pytest relief_story_agent/tests -q
+446 passed
+```
+
+Current readiness status:
+
+```text
+ready_for_configuration=true
+ready_for_real_runs=false
+ready_for_release=false
+```
+
+Short version:
+
+- Workflow layer exists: pipeline schema, orchestrator, scheduler, persistent
+  state, acceptance gates.
+- ComfyUI adapter exists: workflow discovery/analysis, LiteGraph/API JSON
+  patching, LTX 2.3 injection, `/object_info`, `/prompt`, `/history` outputs.
+- Batch system exists: plan/create/status/timeline/health/artifacts,
+  pause/resume/cancel/retry, concurrency controls.
+- Stability systems exist: idempotency, retries, recovery plans, execution
+  policy budgets, seed tracking, structured errors, evidence revalidation.
+- UI is not product-grade yet; future UI should be a creator operations tool.
+- RunningHub cloud generation mode 2 starter exists with `workflowId +
+  nodeInfoList`, env-based `RUNNINGHUB_API_KEY`, CLI/API dry-run, submit,
+  status, and outputs.
+
 本仓库是一个本地部署优先的短片生成 agent。当前目标不是先做漂亮 UI，而是把核心流水线打磨稳定：多模型编剧、提示词模板迭代、提示词漏洞检查、LTX 2.3 四宫格图、ComfyUI 工作流入队、批量任务与恢复能力。
 
 项目正在逐步走向“可以分享给粉丝本地部署使用”的软件形态。现在最重要的是让下一个开发会话能快速接手，不需要翻长聊天记录。

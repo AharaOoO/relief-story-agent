@@ -496,6 +496,48 @@ def test_write_acceptance_report_can_collect_smoke_result(tmp_path):
     assert report["summary"]["by_status"]["manual_pending"] == 13
 
 
+def test_write_acceptance_report_coalesces_manual_and_source_smoke_checks(tmp_path):
+    smoke_result_path = tmp_path / "smoke_result.json"
+    smoke_result_path.write_text(
+        json.dumps(
+            {
+                "status": "passed",
+                "ready": True,
+                "prompt_id": "prompt_real",
+                "artifact_dir": "D:/smoke/run",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_path = write_acceptance_report(
+        tmp_path / "report",
+        {
+            "mode": "comfyui_real_smoke",
+            "status": "manual_pending",
+            "checks": [
+                {
+                    "id": "comfyui_real_smoke",
+                    "status": "pass",
+                    "evidence": "prompt_real accepted",
+                }
+            ],
+            "sources": {"smoke_result": str(smoke_result_path)},
+            "include_default_matrix": True,
+        },
+    )
+
+    report = json.loads(Path(report_path).read_text(encoding="utf-8"))
+    smoke_checks = [check for check in report["checks"] if check["id"] == "comfyui_real_smoke"]
+    assert len(smoke_checks) == 1
+    assert smoke_checks[0]["status"] == "pass"
+    assert smoke_checks[0]["details"]["source"] == str(smoke_result_path)
+
+    status = build_acceptance_status(report_path)
+    blocking_ids = [check["id"] for check in status["blocking_checks"]]
+    assert "comfyui_real_smoke" not in blocking_ids
+
+
 def test_write_acceptance_report_can_collect_local_demo_summary(tmp_path):
     summary_path = tmp_path / "local_demo_summary.json"
     summary_path.write_text(

@@ -56,6 +56,15 @@ from .planning import build_batch_plan
 from .recovery import build_batch_recovery_plan
 from .run_audit import audit_run_state
 from .run_timeline import build_run_timeline
+from .runninghub import (
+    RunningHubTaskOutputsRequest,
+    RunningHubTaskRequest,
+    RunningHubWorkflowRequest,
+    check_runninghub_request,
+    fetch_runninghub_outputs,
+    fetch_runninghub_status,
+    submit_runninghub_task,
+)
 from .scheduler import PersistentRunScheduler
 from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import ComfyUISmokeRequest, run_comfyui_smoke
@@ -111,6 +120,20 @@ def create_app(
             workflow_path=request.workflow_path,
             comfyui_endpoint=request.comfyui_endpoint,
             output_root=request.output_root,
+            gemini_base_url=request.gemini_base_url,
+            gemini_model=request.gemini_model,
+            gemini_api_key_env=request.gemini_api_key_env,
+            deepseek_base_url=request.deepseek_base_url,
+            deepseek_model=request.deepseek_model,
+            deepseek_api_key_env=request.deepseek_api_key_env,
+            gpt_base_url=request.gpt_base_url,
+            gpt_model=request.gpt_model,
+            gpt_api_key_env=request.gpt_api_key_env,
+            image_base_url=request.image_base_url,
+            image_model=request.image_model,
+            image_api_key_env=request.image_api_key_env,
+            acceptance_output_dir=request.acceptance_output_dir,
+            export_output_dir=request.export_output_dir,
         )
 
     @app.get("/api/local/doctor")
@@ -375,6 +398,31 @@ def create_app(
             resource_limits=orchestrator.resource_limits,
         )
         return result.model_dump()
+
+    @app.post("/api/runninghub/check")
+    def check_runninghub(request: RunningHubWorkflowRequest):
+        return check_runninghub_request(request)
+
+    @app.post("/api/runninghub/submit")
+    def submit_runninghub(request: RunningHubWorkflowRequest, dry_run: bool = False):
+        try:
+            return submit_runninghub_task(request, dry_run=dry_run)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/runninghub/status")
+    def runninghub_status(request: RunningHubTaskRequest):
+        try:
+            return fetch_runninghub_status(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/runninghub/outputs")
+    def runninghub_outputs(request: RunningHubTaskOutputsRequest):
+        try:
+            return fetch_runninghub_outputs(request)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.get("/api/batches")
     def list_batches(status: str | None = None, limit: int = 50):

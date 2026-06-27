@@ -99,6 +99,7 @@ def write_acceptance_report(output_dir: str | Path, payload: dict[str, Any]) -> 
         run_id=str(payload.get("run_id") or ""),
         batch_id=str(payload.get("batch_id") or ""),
     )
+    checks = _coalesce_checks_by_id(checks)
     checks = _merge_default_matrix(checks)
 
     report = {
@@ -167,6 +168,7 @@ def build_acceptance_status(report_path: str | Path) -> dict[str, Any]:
             run_id=str(report.get("run_id") or ""),
             batch_id=str(report.get("batch_id") or ""),
         )
+        checks = _coalesce_checks_by_id(checks)
         checks = _merge_default_matrix(checks)
         summary = _build_summary({**report, "checks": checks})
         ready_for_release = bool(summary.get("ready_for_release"))
@@ -1508,6 +1510,48 @@ def _merge_default_matrix(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
             }
         )
     return merged
+
+
+def _coalesce_checks_by_id(checks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    selected: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for check in checks:
+        check_id = str(check.get("id") or "")
+        if not check_id:
+            check_id = f"__blank_{len(order)}"
+        if check_id not in selected:
+            selected[check_id] = check
+            order.append(check_id)
+            continue
+        selected[check_id] = _preferred_duplicate_check(selected[check_id], check)
+    return [selected[check_id] for check_id in order]
+
+
+def _preferred_duplicate_check(existing: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    if _check_preference_score(candidate) >= _check_preference_score(existing):
+        return _merge_check_records(existing, candidate)
+    return _merge_check_records(candidate, existing)
+
+
+def _merge_check_records(previous: dict[str, Any], preferred: dict[str, Any]) -> dict[str, Any]:
+    previous_details = previous.get("details") if isinstance(previous.get("details"), dict) else {}
+    preferred_details = preferred.get("details") if isinstance(preferred.get("details"), dict) else {}
+    return {
+        **preferred,
+        "required_evidence": str(preferred.get("required_evidence") or previous.get("required_evidence") or ""),
+        "evidence": str(preferred.get("evidence") or previous.get("evidence") or ""),
+        "details": {**previous_details, **preferred_details},
+    }
+
+
+def _check_preference_score(check: dict[str, Any]) -> tuple[int, int, int, int]:
+    status = str(check.get("status") or "").lower()
+    details = check.get("details") if isinstance(check.get("details"), dict) else {}
+    status_score = 3 if status in PASS_STATUSES else 2 if status == "fail" else 1
+    source_score = 1 if _evidence_source_path(details) else 0
+    evidence_score = 1 if str(check.get("evidence") or "") else 0
+    required_score = 1 if str(check.get("required_evidence") or "") else 0
+    return (status_score, source_score, evidence_score, required_score)
 
 
 def _acceptance_status_actions(

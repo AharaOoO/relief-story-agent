@@ -135,6 +135,7 @@ def test_smoke_dry_run_writes_preflight_and_patched_workflow_without_upload(tmp_
         final_storyboard=_final_storyboard(),
         manual_grid_image_path=str(_write_grid(tmp_path / "grid.png")),
         output_root=str(tmp_path / "out"),
+        duration_seconds=6,
         dry_run=True,
     )
 
@@ -158,6 +159,9 @@ def test_smoke_dry_run_writes_preflight_and_patched_workflow_without_upload(tmp_
         for check in result.preflight
     )
     assert result.patched_replacements["grid_image"]["node"] == "196"
+    patched = json.loads(Path(result.artifact_dir, "smoke_workflow_patched.json").read_text(encoding="utf-8"))
+    ltx_payload = json.loads(patched["202"]["inputs"]["text"])
+    assert ltx_payload["duration_seconds"] == 6
 
 
 def test_smoke_dry_run_accepts_integrated_ltx_widget_workflow(tmp_path):

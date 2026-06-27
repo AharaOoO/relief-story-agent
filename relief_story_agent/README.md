@@ -343,6 +343,30 @@ When `--model-config` is missing, malformed, or invalid during server startup,
 the server entrypoint exits with a structured `invalid_request` JSON response
 instead of a Python traceback.
 
+RunningHub cloud generation mode 2:
+
+```powershell
+$env:RUNNINGHUB_API_KEY = "your-runninghub-key"
+
+relief-story-agent runninghub-check `
+  --request "relief_story_agent/examples/runninghub_request.example.json" `
+  --pretty
+
+relief-story-agent runninghub-submit `
+  --request "relief_story_agent/examples/runninghub_request.example.json" `
+  --dry-run `
+  --pretty
+
+relief-story-agent runninghub-status --task-id "{task_id}" --pretty
+relief-story-agent runninghub-outputs --task-id "{task_id}" --pretty
+```
+
+This mode uses RunningHub's advanced workflow API with a user supplied
+`workflow_id` and `node_info_list`. The example file stores `api_key_env`, not a
+plaintext key. Dry-run and API responses redact the key. Cloud output URLs are
+remote artifacts until a later import/download step validates them as local
+video files.
+
 Local API operator commands:
 
 ```powershell
@@ -1488,6 +1512,10 @@ A run may select another registered profile without changing the server configur
 - `POST /api/comfyui/preview`
 - `POST /api/comfyui/outputs`
 - `POST /api/smoke/comfyui`
+- `POST /api/runninghub/check`
+- `POST /api/runninghub/submit`
+- `POST /api/runninghub/status`
+- `POST /api/runninghub/outputs`
 - `POST /api/runs`
 - `GET /api/runs`
 - `GET /api/runs/{run_id}`

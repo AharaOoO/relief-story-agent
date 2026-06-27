@@ -88,6 +88,10 @@ def build_local_bootstrap(config: LocalRuntimeConfig | None = None) -> dict:
             "comfyui_discover_workflows": "/api/comfyui/discover-workflows",
             "comfyui_preview": "/api/comfyui/preview",
             "comfyui_outputs": "/api/comfyui/outputs",
+            "runninghub_check": "/api/runninghub/check",
+            "runninghub_submit": "/api/runninghub/submit",
+            "runninghub_status": "/api/runninghub/status",
+            "runninghub_outputs": "/api/runninghub/outputs",
             "smoke_comfyui": "/api/smoke/comfyui",
         },
     }
@@ -424,11 +428,17 @@ def _doctor_actions(checks: list[dict]) -> list[str]:
             actions.append("start_server_entrypoint")
         elif check["id"] == "comfyui_connection":
             details = check.get("details") or {}
-            actions.extend(str(item) for item in details.get("suggested_actions") or [])
+            actions.extend(_action_code(item) for item in details.get("suggested_actions") or [])
             actions.append("start_or_check_comfyui")
         else:
             actions.append("inspect_local_runtime")
     return _dedupe(actions)
+
+
+def _action_code(action: object) -> str:
+    if isinstance(action, dict):
+        return str(action.get("code") or action)
+    return str(action)
 
 
 def _doctor_check(check_id: str, status: str, message: str, details: dict) -> dict:

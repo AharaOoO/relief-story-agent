@@ -1,5 +1,35 @@
 # 新会话接手提示词
 
+## 2026-06-27 addendum
+
+当前分支：`codex/export-acceptance-evidence`。
+
+本轮新增了 RunningHub 云端生成方式 2 的后端 starter：
+
+- `relief_story_agent/runninghub.py`
+- `relief_story_agent/tests/test_runninghub.py`
+- `relief_story_agent/examples/runninghub_request.example.json`
+- `POST /api/runninghub/check`
+- `POST /api/runninghub/submit`
+- `POST /api/runninghub/status`
+- `POST /api/runninghub/outputs`
+- `relief-story-agent runninghub-check|runninghub-submit|runninghub-status|runninghub-outputs`
+- `docs/superpowers/specs/2026-06-27-runninghub-cloud-generation-design.md`
+- `docs/superpowers/plans/2026-06-27-runninghub-cloud-generation.md`
+
+RunningHub 方案使用用户上传/复制的高级工作流 `workflowId` 和
+`nodeInfoList`，不把本地 ComfyUI workflow JSON 当成云端契约。API key 只走
+`RUNNINGHUB_API_KEY` 等环境变量，dry-run/API/CLI 输出必须保持 redacted。
+
+注意：RunningHub mode 2 尚未做真实云端提交；还需要真实
+`RUNNINGHUB_API_KEY`、`workflowId` 和节点字段映射。本地发布主线仍然需要
+P1-P6 的真实模型、本地视频、batch、恢复、导出和 final acceptance 证据。
+
+最新验证：`python -m pytest relief_story_agent/tests -q` 为 `446 passed`。
+`local-readiness` 仍为 `ready_for_real_runs=false`、`ready_for_release=false`，
+主要缺模型 key、真实视频和 P2-P6 验收证据。拉取本分支后如果要让正在运行的
+8891 API 暴露新的 `/api/runninghub/*` bootstrap endpoint，需要重启 API。
+
 请接手本地项目：
 
 ```text
@@ -53,6 +83,9 @@ chief_screenwriter
 重要边界：
 
 - 没有用户提供 Gemini / DeepSeek / GPT / 图像模型 API key 前，不能真实跑通多模型端到端。
+- 当前 `codex/export-acceptance-evidence` 分支已超过 `origin/master` 的 70% 基线：真实非 secret config bundle、文本/图像模型 setup 参数、local-readiness、验收证据复验、用户 LTX 2.3 workflow 兼容都已补强。
+- 当前 full tests 结果为 `440 passed`；partial acceptance 已记录 `comfyui_real_smoke=pass`，prompt id 为 `7503d6c2-c5cb-5e16-b5f8-5bcb03906750`，但 `comfyui_outputs` 仍未通过，视频还没下载到本地。
+- 新生成的 smoke request 已改为 6 秒短探针，primary/hard-cut `D:/relief_story_config*` 均已刷新；不要再用旧 90 秒 smoke 配置重复入队。
 - 目前可以做 compile/test、fake-model `local-demo`、`template-check`、`model-check` dry-run、`diagnose`、ComfyUI 连接检查、smoke dry-run/real-run 到 `/prompt`。
 - `local_comfyui_smoke` 已实现，不要重复造。
 - 已新增 `GET /api/local/readiness` 和 `relief-story-agent local-readiness`，它是未来 UI/启动器“填 ComfyUI 地址后一键检查本地部署”的后端入口。
@@ -64,7 +97,7 @@ chief_screenwriter
 
 下一步建议：
 
-1. 等用户提供真实模型 API 和本地 ComfyUI/workflow 信息。
+1. 当前本地 ComfyUI/workflow/config bundle 已就绪；等用户提供真实模型 API key 环境变量。
 2. 跑 `model-check --real-run`。
 3. 跑单条真实端到端，拿到本地 mp4，并用 `--video-path` 记录 `single_run` 验收。
 4. 跑 3-5 条 batch。

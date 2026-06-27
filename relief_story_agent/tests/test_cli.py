@@ -56,6 +56,10 @@ def test_cli_help_lists_core_local_commands():
     assert "batch-health" in completed.stdout
     assert "validate-export" in completed.stdout
     assert "validate-export-zip" in completed.stdout
+    assert "runninghub-check" in completed.stdout
+    assert "runninghub-submit" in completed.stdout
+    assert "runninghub-status" in completed.stdout
+    assert "runninghub-outputs" in completed.stdout
 
 
 def test_console_script_points_to_unified_cli():

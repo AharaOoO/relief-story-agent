@@ -306,6 +306,54 @@ def test_connect_comfyui_reports_missing_runtime_node_types(tmp_path):
     assert report["suggested_actions"][0]["code"] == "install_or_enable_comfyui_nodes"
 
 
+def test_connect_comfyui_ignores_litegraph_canvas_helper_node_types(tmp_path):
+    workflow_path = tmp_path / "canvas_helper_nodes_workflow.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {
+                        "id": 1,
+                        "type": "CLIPTextEncode",
+                        "title": "CLIP Text Encode (Positive Prompt)",
+                        "widgets_values": ["prompt"],
+                    },
+                    {"id": 2, "type": "Note", "widgets_values": ["note"]},
+                    {"id": 3, "type": "MarkdownNote", "widgets_values": ["# heading"]},
+                    {"id": 4, "type": "Label (rgthree)", "widgets_values": ["section"]},
+                    {"id": 5, "type": "Bookmark (rgthree)", "widgets_values": ["bookmark"]},
+                    {"id": 6, "type": "Fast Actions Button (rgthree)", "widgets_values": []},
+                    {"id": 7, "type": "Fast Groups Bypasser (rgthree)", "widgets_values": []},
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def handler(request: httpx.Request):
+        if request.url.path == "/queue":
+            return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
+        if request.url.path == "/object_info":
+            return httpx.Response(200, json={"CLIPTextEncode": {}})
+        return httpx.Response(404)
+
+    report = connect_comfyui(
+        ComfyUIConnectionRequest(
+            endpoint="http://comfy.local",
+            workflow_api_path=str(workflow_path),
+        ),
+        client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+
+    node_check = next(check for check in report["checks"] if check["name"] == "comfyui_node_types")
+    assert report["ready"] is True
+    assert node_check["status"] == "passed"
+    assert node_check["details"]["required_node_type_count"] == 1
+    assert node_check["details"]["missing_node_types"] == []
+
+
 def test_connect_comfyui_uses_direct_http_client_by_default(monkeypatch):
     created_clients: list[dict] = []
 

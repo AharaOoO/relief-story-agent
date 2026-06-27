@@ -1,0 +1,16 @@
+{
+  "workflow_id": "2038860299301818369",
+  "api_key_env": "RUNNINGHUB_API_KEY",
+  "base_url": "https://www.runninghub.ai",
+  "node_info_list": [
+    {
+      "node_id": "1",
+      "field_name": "text",
+      "field_value": "Replace this with the prompt, image URL, seed, or other field value required by your RunningHub workflow.",
+      "description": "Example advanced workflow node field."
+    }
+  ],
+  "webhook_url": "",
+  "use_personal_queue": false,
+  "instance_type": ""
+}

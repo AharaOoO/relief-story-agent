@@ -417,6 +417,90 @@ For a future launcher or UI, the equivalent endpoint is `POST /api/comfyui/outpu
 The request accepts the user's local ComfyUI address, one or more `prompt_ids`,
 `wait_for_completion`, `download_outputs`, and an `artifact_dir`.
 
+## 6.5. RunningHub Cloud Generation Mode 2
+
+RunningHub cloud generation is a second generation backend. It is useful when
+the user has uploaded or copied a workflow in RunningHub and wants cloud GPU
+compute for LTX 2.3 video generation. It does not replace the local ComfyUI
+release gates in this guide.
+
+Configure the key only in the environment:
+
+```powershell
+$env:RUNNINGHUB_API_KEY = "your-runninghub-key"
+```
+
+Create a local-only request file outside git, for example
+`D:/relief_story_config/runninghub_request.local.json`. Start from the non-secret
+example at `relief_story_agent/examples/runninghub_request.example.json`:
+
+```json
+{
+  "workflow_id": "2038860299301818369",
+  "api_key_env": "RUNNINGHUB_API_KEY",
+  "base_url": "https://www.runninghub.ai",
+  "node_info_list": [
+    {
+      "node_id": "1",
+      "field_name": "text",
+      "field_value": "prompt, image URL, seed, or another workflow field value",
+      "description": "main prompt"
+    }
+  ],
+  "webhook_url": "",
+  "use_personal_queue": false,
+  "instance_type": ""
+}
+```
+
+Dry-run before spending cloud credits:
+
+```powershell
+relief-story-agent runninghub-check `
+  --request "D:/relief_story_config/runninghub_request.local.json" `
+  --pretty
+
+relief-story-agent runninghub-submit `
+  --request "D:/relief_story_config/runninghub_request.local.json" `
+  --dry-run `
+  --pretty
+```
+
+The dry-run payload uses RunningHub's advanced workflow fields
+`workflowId` and `nodeInfoList`, but redacts `apiKey` as
+`<redacted:RUNNINGHUB_API_KEY>`.
+
+Submit and poll a real cloud task only after the workflow id and node mapping
+are confirmed:
+
+```powershell
+relief-story-agent runninghub-submit `
+  --request "D:/relief_story_config/runninghub_request.local.json" `
+  --pretty
+
+relief-story-agent runninghub-status `
+  --task-id "{task_id}" `
+  --pretty
+
+relief-story-agent runninghub-outputs `
+  --task-id "{task_id}" `
+  --pretty
+```
+
+HTTP endpoints for a future UI:
+
+```text
+POST /api/runninghub/check
+POST /api/runninghub/submit
+POST /api/runninghub/status
+POST /api/runninghub/outputs
+```
+
+The first UI should show a segmented generation mode selector:
+`Local ComfyUI` and `RunningHub Cloud`. The RunningHub panel should collect
+`workflowId`, API key env name, `nodeInfoList` rows, queue options, and show a
+redacted dry-run payload before enabling live submit.
+
 ## 7. Start The API
 
 ```powershell

@@ -49,6 +49,20 @@ class LocalSetupBundleRequest(BaseModel):
     workflow_path: str
     comfyui_endpoint: str = "http://127.0.0.1:8188"
     output_root: str = "D:/relief_story_runs"
+    gemini_base_url: str = ""
+    gemini_model: str = ""
+    gemini_api_key_env: str = ""
+    deepseek_base_url: str = ""
+    deepseek_model: str = ""
+    deepseek_api_key_env: str = ""
+    gpt_base_url: str = ""
+    gpt_model: str = ""
+    gpt_api_key_env: str = ""
+    image_base_url: str = ""
+    image_model: str = ""
+    image_api_key_env: str = ""
+    acceptance_output_dir: str = ""
+    export_output_dir: str = ""
 
 
 class ModelAttempt(BaseModel):

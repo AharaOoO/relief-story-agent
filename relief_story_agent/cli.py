@@ -27,6 +27,15 @@ from .models import (
 )
 from .pipeline import build_pipeline_schema
 from .prompt_templates import validate_prompt_template_file
+from .runninghub import (
+    RunningHubTaskOutputsRequest,
+    RunningHubTaskRequest,
+    RunningHubWorkflowRequest,
+    check_runninghub_request,
+    fetch_runninghub_outputs,
+    fetch_runninghub_status,
+    submit_runninghub_task,
+)
 from .server import main as server_main
 from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import main as smoke_main
@@ -67,6 +76,29 @@ def _main(argv: list[str] | None = None) -> int:
     subparsers = parser.add_subparsers(dest="command")
     subparsers.add_parser("serve", add_help=False, help="Start the local API server.")
     subparsers.add_parser("smoke-comfyui", add_help=False, help="Run local ComfyUI smoke verification.")
+    runninghub_check_parser = subparsers.add_parser(
+        "runninghub-check",
+        help="Validate a RunningHub advanced workflow request without submitting.",
+    )
+    runninghub_check_parser.add_argument("--request", required=True, help="RunningHub workflow request JSON file.")
+    runninghub_check_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    runninghub_submit_parser = subparsers.add_parser(
+        "runninghub-submit",
+        help="Submit or dry-run a RunningHub advanced workflow task.",
+    )
+    runninghub_submit_parser.add_argument("--request", required=True, help="RunningHub workflow request JSON file.")
+    runninghub_submit_parser.add_argument("--dry-run", action="store_true", help="Build the official payload without calling RunningHub.")
+    runninghub_submit_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+    runninghub_status_parser = subparsers.add_parser(
+        "runninghub-status",
+        help="Fetch RunningHub task status.",
+    )
+    _add_runninghub_task_args(runninghub_status_parser)
+    runninghub_outputs_parser = subparsers.add_parser(
+        "runninghub-outputs",
+        help="Fetch RunningHub task outputs.",
+    )
+    _add_runninghub_task_args(runninghub_outputs_parser)
     connect_parser = subparsers.add_parser(
         "connect-comfyui",
         help="Check a local ComfyUI endpoint and optional workflow file.",
@@ -329,6 +361,20 @@ def _main(argv: list[str] | None = None) -> int:
     setup_parser.add_argument("--workflow-path", required=True, help="Local ComfyUI workflow JSON path.")
     setup_parser.add_argument("--comfyui-endpoint", default="http://127.0.0.1:8188", help="ComfyUI base URL.")
     setup_parser.add_argument("--output-root", default="D:/relief_story_runs", help="Directory for generated runs.")
+    setup_parser.add_argument("--gemini-base-url", default="", help="Gemini OpenAI-compatible base URL.")
+    setup_parser.add_argument("--gemini-model", default="", help="Gemini model name.")
+    setup_parser.add_argument("--gemini-api-key-env", default="", help="Environment variable name for the Gemini API key.")
+    setup_parser.add_argument("--deepseek-base-url", default="", help="DeepSeek OpenAI-compatible base URL.")
+    setup_parser.add_argument("--deepseek-model", default="", help="DeepSeek model name.")
+    setup_parser.add_argument("--deepseek-api-key-env", default="", help="Environment variable name for the DeepSeek API key.")
+    setup_parser.add_argument("--gpt-base-url", default="", help="GPT/OpenAI-compatible base URL.")
+    setup_parser.add_argument("--gpt-model", default="", help="GPT JSON model name.")
+    setup_parser.add_argument("--gpt-api-key-env", default="", help="Environment variable name for the GPT/OpenAI-compatible API key.")
+    setup_parser.add_argument("--image-base-url", default="", help="Image OpenAI-compatible base URL.")
+    setup_parser.add_argument("--image-model", default="", help="Image generation model name.")
+    setup_parser.add_argument("--image-api-key-env", default="", help="Environment variable name for the image generation API key.")
+    setup_parser.add_argument("--acceptance-output-dir", default="", help="Directory for local acceptance evidence.")
+    setup_parser.add_argument("--export-output-dir", default="", help="Directory for batch export bundles.")
     setup_parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     acceptance_parser = subparsers.add_parser(
         "acceptance",
@@ -448,6 +494,14 @@ def _main(argv: list[str] | None = None) -> int:
         return smoke_main(rest)
     if rest:
         parser.error(f"unrecognized arguments: {' '.join(rest)}")
+    if args.command == "runninghub-check":
+        return _runninghub_check(args)
+    if args.command == "runninghub-submit":
+        return _runninghub_submit(args)
+    if args.command == "runninghub-status":
+        return _runninghub_status(args)
+    if args.command == "runninghub-outputs":
+        return _runninghub_outputs(args)
     if args.command == "connect-comfyui":
         return _connect_comfyui(args)
     if args.command == "discover-comfyui-workflows":
@@ -554,6 +608,81 @@ def _add_api_base_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--server", default="http://127.0.0.1:8891", help="Relief Story Agent API base URL.")
     parser.add_argument("--timeout-seconds", type=float, default=60, help="HTTP timeout.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+
+
+def _add_runninghub_task_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--task-id", required=True, help="RunningHub task id.")
+    parser.add_argument("--api-key-env", default="RUNNINGHUB_API_KEY", help="Environment variable containing the RunningHub API key.")
+    parser.add_argument("--base-url", default="https://www.runninghub.ai", help="RunningHub API base URL.")
+    parser.add_argument("--timeout-seconds", type=float, default=60, help="HTTP timeout.")
+    parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
+
+
+def _runninghub_check(args: argparse.Namespace) -> int:
+    request = _validate_request_model(
+        RunningHubWorkflowRequest,
+        _read_json_file(args.request),
+        source=args.request,
+    )
+    result = check_runninghub_request(request)
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("ready") else 1
+
+
+def _runninghub_submit(args: argparse.Namespace) -> int:
+    request = _validate_request_model(
+        RunningHubWorkflowRequest,
+        _read_json_file(args.request),
+        source=args.request,
+    )
+    try:
+        result = submit_runninghub_task(request, dry_run=args.dry_run)
+    except ValueError as exc:
+        result = {
+            "status": "invalid_request",
+            "ready": False,
+            "error": str(exc),
+        }
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("ready") else 1
+
+
+def _runninghub_status(args: argparse.Namespace) -> int:
+    request = RunningHubTaskRequest(
+        task_id=args.task_id,
+        api_key_env=args.api_key_env,
+        base_url=args.base_url,
+        timeout_seconds=args.timeout_seconds,
+    )
+    try:
+        result = fetch_runninghub_status(request)
+    except ValueError as exc:
+        result = {
+            "status": "invalid_request",
+            "ready": False,
+            "error": str(exc),
+        }
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("ready") else 1
+
+
+def _runninghub_outputs(args: argparse.Namespace) -> int:
+    request = RunningHubTaskOutputsRequest(
+        task_id=args.task_id,
+        api_key_env=args.api_key_env,
+        base_url=args.base_url,
+        timeout_seconds=args.timeout_seconds,
+    )
+    try:
+        result = fetch_runninghub_outputs(request)
+    except ValueError as exc:
+        result = {
+            "status": "invalid_request",
+            "ready": False,
+            "error": str(exc),
+        }
+    print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
+    return 0 if result.get("ready") else 1
 
 
 def _connect_comfyui(args: argparse.Namespace) -> int:
@@ -1012,6 +1141,20 @@ def _setup(args: argparse.Namespace) -> int:
         workflow_path=args.workflow_path,
         comfyui_endpoint=args.comfyui_endpoint,
         output_root=args.output_root,
+        gemini_base_url=args.gemini_base_url,
+        gemini_model=args.gemini_model,
+        gemini_api_key_env=args.gemini_api_key_env,
+        deepseek_base_url=args.deepseek_base_url,
+        deepseek_model=args.deepseek_model,
+        deepseek_api_key_env=args.deepseek_api_key_env,
+        gpt_base_url=args.gpt_base_url,
+        gpt_model=args.gpt_model,
+        gpt_api_key_env=args.gpt_api_key_env,
+        image_base_url=args.image_base_url,
+        image_model=args.image_model,
+        image_api_key_env=args.image_api_key_env,
+        acceptance_output_dir=args.acceptance_output_dir,
+        export_output_dir=args.export_output_dir,
     )
     print(json.dumps(result, ensure_ascii=False, indent=2 if args.pretty else None))
     return 0

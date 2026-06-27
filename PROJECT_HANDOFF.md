@@ -3,9 +3,70 @@
 更新日期：2026-06-26
 本地路径：`D:\codex工作区`
 GitHub 仓库：`https://github.com/AharaOoO/relief-story-agent`
-当前分支：`master`
+当前分支：`codex/export-acceptance-evidence`
 
 这份文件是给下一个 Codex/AI 会话看的单一交接入口。新会话先读这一份，再按里面列出的验证命令核对当前状态。不要依赖历史聊天记录。
+
+## 2026-06-27 Status Addendum
+
+Current branch: `codex/export-acceptance-evidence`.
+
+This branch has now been reviewed against the remote GitHub repository state
+available through `origin/master` and the local development branch. The backend
+is stronger than the earlier 65-70% baseline: local config bundle generation,
+model/image config env-name wiring, local readiness, acceptance evidence
+revalidation, LiteGraph/LTX 2.3 workflow compatibility, ComfyUI smoke dry-run,
+and structured CLI/API errors are implemented and tested.
+
+Important remaining blockers:
+
+- Real text/image model probes still require `GEMINI_API_KEY`,
+  `DEEPSEEK_API_KEY`, and `OPENAI_API_KEY` in the operator environment.
+- The existing real ComfyUI smoke prompt was accepted, but a local video output
+  has not been downloaded and validated yet.
+- Release readiness still requires one real completed run with a local video
+  path, a real 3-5 item batch, restart recovery evidence, export/zip
+  validation, and final `local-acceptance`.
+- Do not mark `ready_for_release=true` manually. Let `acceptance-status` and
+  `local-readiness` compute it from evidence.
+
+Fresh verification on this branch:
+
+- `python -m pytest relief_story_agent/tests -q` -> `446 passed`.
+- `local-readiness` -> `ready_for_configuration=true`,
+  `ready_for_real_runs=false`, `ready_for_release=false`.
+- Current release blockers are missing model key env vars, failed model/run/batch
+  diagnose evidence, missing ComfyUI downloaded video output, and pending
+  single-run/batch/recovery/export/fresh-setup evidence.
+
+RunningHub cloud generation mode 2 has a starter backend entry:
+
+- `relief_story_agent/runninghub.py`
+- `POST /api/runninghub/check`
+- `POST /api/runninghub/submit`
+- `POST /api/runninghub/status`
+- `POST /api/runninghub/outputs`
+- `relief-story-agent runninghub-check|runninghub-submit|runninghub-status|runninghub-outputs`
+- `relief_story_agent/examples/runninghub_request.example.json`
+- `docs/superpowers/specs/2026-06-27-runninghub-cloud-generation-design.md`
+- `docs/superpowers/plans/2026-06-27-runninghub-cloud-generation.md`
+
+Mode 2 uses RunningHub's advanced workflow API shape:
+`workflowId + nodeInfoList`. It is designed for the user-uploaded/copied
+RunningHub workflow id flow. It does not upload local ComfyUI workflow JSON as
+the cloud contract. `RUNNINGHUB_API_KEY` must stay in the environment and is
+redacted in dry-run/API/CLI output.
+
+Next development priorities:
+
+1. Finish P1-P6 local release evidence after model keys are available.
+2. Collect the real RunningHub `workflowId` and non-secret node mapping.
+3. Dry-run `D:/relief_story_config/runninghub_request.local.json`.
+4. Submit one real RunningHub task, poll status, fetch outputs, then decide
+   whether cloud outputs stay remote artifacts or are downloaded into local
+   export validation.
+5. Design the UI around a segmented generation mode selector:
+   `Local ComfyUI` / `RunningHub Cloud`.
 
 ## 1. 项目目标
 
@@ -45,14 +106,46 @@ chief_screenwriter
 
 ## 3. 当前进度总览
 
-整体后端进度约 65%。API-first 骨架、诊断、持久化、批量、ComfyUI 入队、部署辅助已经比较厚实；但真实模型端到端、真实视频下载、3-5 条批量验收、重启恢复演练和最终导出验收还没有用真实证据跑完。
+整体后端进度已经高于 `master` 交接文件里记录的 65%。当前 `codex/export-acceptance-evidence` 分支相对 `origin/master` 继续加固了验收证据、CLI/API 输入错误报告、local-readiness、LiteGraph/LTX workflow 兼容，以及本地配置包生成能力。API-first 骨架、诊断、持久化、批量、ComfyUI 入队、部署辅助、局部 acceptance 证据已经比较厚实；但真实模型端到端、真实视频下载、3-5 条批量验收、重启恢复演练和最终导出验收还没有用真实证据跑完。
 
 可以说：
 
 - 后端核心 alpha 已成型。
 - 本地 ComfyUI `/prompt` 入队 smoke 已跑通。
+- 当前分支已通过 `python -m pytest relief_story_agent/tests -q`，结果为 `440 passed`。
+- 当前本机 partial `local-acceptance` 已生成 `D:\relief_story_acceptance\acceptance_report.json`，其中 `compileall`、`full_tests`、`pipeline_schema`、`comfyui_dry_smoke`、`comfyui_real_smoke`、`local_demo` 为 pass。
+- `local-readiness` 已验证本地 API、持久化 scheduler、资源限制、ComfyUI 连接、用户 LTX 2.3 workflow 节点检查通过。
 - 还不能说“除 UI 外完整完成”。
-- 真实端到端验收需要用户提供 Gemini / DeepSeek / GPT / 图像模型 API，并保证本地 ComfyUI + LTX 2.3 节点可用。
+- 当前 release 阻塞项主要是 `GEMINI_API_KEY`、`DEEPSEEK_API_KEY`、`OPENAI_API_KEY` 未在运行会话配置，以及缺少真实模型、真实视频、真实 batch、恢复、导出和 fresh setup 证据。
+- 真实端到端验收需要用户提供 Gemini / DeepSeek / GPT / 图像模型 API key，并继续使用已验证的本地 ComfyUI + LTX 2.3 workflow。
+
+### 3.1 2026-06-27 分支审计更新
+
+本次审计对照了 GitHub remote `origin/master` 与当前 `codex/export-acceptance-evidence` 分支。GitHub 网页入口在当前会话不可访问，但本地 remote 指向 `https://github.com/AharaOoO/relief-story-agent.git`，`git fetch --all --prune` 成功，远端默认分支为 `master`。
+
+当前分支相对 `origin/master` 已经超额完成：
+
+- 验收报告不会信任过期、损坏、缺 ID、缺视频、缺 batch/export/recovery 结构化证据。
+- CLI/API 对无效 JSON、无效请求、损坏 evidence 文件返回结构化错误，而不是 Python traceback。
+- `local-readiness` 可作为未来 UI/启动器的本地部署统一入口。
+- setup bundle 可写入真实非 secret model profile、图像模型 base/model/env、acceptance/export 输出目录，并保持 API key 只引用环境变量名。
+- setup bundle 生成的 smoke request 已改为 6 秒短探针，避免默认 90 秒 LTX smoke 长时间占用本地 ComfyUI；正式 run/batch 仍保持 90 秒。
+- LTX workflow 适配层已支持跳过 LiteGraph canvas helper 节点，并展开 LiteGraph subgraph 节点。
+- 两个用户提供的 LTX 2.3 workflow 均已通过 ComfyUI 连接检查和 smoke dry-run。
+
+当前仍未完成：
+
+- `model-check --real-run`：缺真实 API key 环境变量。
+- `run_diagnose` / `batch_diagnose`：当前阻塞在模型环境变量和图像模型 key。
+- `comfyui_real_smoke`：当前已通过，prompt id 为 `7503d6c2-c5cb-5e16-b5f8-5bcb03906750`，artifact dir 为 `D:\relief_story_runs\comfyui_smoke_20260626T191313370540Z`；这是旧 90 秒 smoke 入队证据。
+- 新生成的 primary/hard-cut `D:\relief_story_config*\smoke_request.json` 已改为 `duration_seconds=6`，最新 dry-run artifact `D:\relief_story_runs\comfyui_smoke_20260626T195512000812Z` 验证 patched LTX payload 也是 6 秒。
+- primary/hard-cut `run_request.full-ltx.json` 与 `batch_request.full-ltx.json` 现在也由 setup 参数显式写入 `comfyui.grid_image.base_url/model/api_key_env`；当前本地配置使用 `https://api.openai.com/v1`、`gpt-image-2`、`OPENAI_API_KEY`，仍无明文 key。
+- `comfyui_outputs`：当前 prompt id 等待 900 秒后仍无 outputs；ComfyUI `/queue` 显示该 prompt 仍在 `queue_running`，还需要稍后用同一 prompt id 继续查询并下载本地视频，不要盲目重复入队。
+- `single_run`：需要真实 `run_id` 与本地视频路径。
+- `batch_run`：需要 3-5 条真实 batch 与结构化 batch-artifacts 证据。
+- `restart_recovery`：需要真实 before/after recovery-plan 证据。
+- `export`：需要真实 export、zip、sha256、directory/zip validation。
+- `fresh_setup`：需要干净环境按文档重跑设置命令。
 
 ## 4. 已完成能力
 

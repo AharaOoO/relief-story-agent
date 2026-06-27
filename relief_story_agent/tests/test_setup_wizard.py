@@ -71,6 +71,8 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     assert smoke_request.comfyui_base_url == "http://127.0.0.1:8188"
     assert smoke_request.dry_run is False
     assert smoke_request.manual_grid_image_path == str(tmp_path / "four_grid_smoke.png")
+    assert smoke_request.duration_seconds == 6
+    assert smoke_request.final_storyboard[0]["time_range"] == "0-6s"
     assert smoke_request.final_storyboard
     assert result["files"]["smoke_request"]["exists"] is True
     assert "smoke-comfyui" in result["next_commands"]["smoke_dry_run"]
@@ -98,6 +100,64 @@ def test_write_local_config_bundle_creates_deployable_files(tmp_path):
     assert "{{storyboard_json}}" in audit
 
 
+def test_write_local_config_bundle_accepts_real_model_profile_values_without_secrets(tmp_path):
+    result = write_local_config_bundle(
+        tmp_path,
+        workflow_path="C:/ComfyUI/workflows/ltx23_four_grid.json",
+        comfyui_endpoint="http://127.0.0.1:8188",
+        output_root="D:/relief_story_runs",
+        gemini_base_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        gemini_model="gemini-2.5-pro",
+        gemini_api_key_env="RELIEF_GEMINI_API_KEY",
+        deepseek_base_url="https://api.deepseek.com/v1",
+        deepseek_model="deepseek-chat",
+        deepseek_api_key_env="RELIEF_DEEPSEEK_API_KEY",
+        gpt_base_url="https://api.openai.com/v1",
+        gpt_model="gpt-5-mini",
+        gpt_api_key_env="RELIEF_OPENAI_API_KEY",
+        image_base_url="https://images.example/v1",
+        image_model="gpt-image-2-prod",
+        image_api_key_env="RELIEF_IMAGE_API_KEY",
+        acceptance_output_dir="D:/relief_story_acceptance",
+        export_output_dir="D:/relief_story_exports",
+    )
+
+    model_payload = json.loads(Path(result["model_config"]).read_text(encoding="utf-8"))
+    run_payload = json.loads(Path(result["run_request"]).read_text(encoding="utf-8"))
+    batch_payload = json.loads(Path(result["batch_request"]).read_text(encoding="utf-8"))
+    run_image = run_payload["comfyui"]["grid_image"]
+    batch_image = batch_payload["defaults"]["comfyui"]["grid_image"]
+
+    assert model_payload["profiles"]["gemini_writer"] == {
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+        "api_key_env": "RELIEF_GEMINI_API_KEY",
+        "model": "gemini-2.5-pro",
+        "temperature": 0.7,
+        "max_attempts": 3,
+        "requests_per_minute": 20,
+    }
+    assert model_payload["profiles"]["deepseek_editor"]["base_url"] == "https://api.deepseek.com/v1"
+    assert model_payload["profiles"]["deepseek_editor"]["model"] == "deepseek-chat"
+    assert model_payload["profiles"]["deepseek_editor"]["api_key_env"] == "RELIEF_DEEPSEEK_API_KEY"
+    assert model_payload["profiles"]["gpt_visual"]["model"] == "gpt-5-mini"
+    assert model_payload["profiles"]["gpt_visual"]["api_key_env"] == "RELIEF_OPENAI_API_KEY"
+    assert run_image["base_url"] == "https://images.example/v1"
+    assert run_image["model"] == "gpt-image-2-prod"
+    assert run_image["api_key_env"] == "RELIEF_IMAGE_API_KEY"
+    assert batch_image["base_url"] == "https://images.example/v1"
+    assert batch_image["model"] == "gpt-image-2-prod"
+    assert batch_image["api_key_env"] == "RELIEF_IMAGE_API_KEY"
+    assert '"api_key":' not in json.dumps(model_payload)
+    assert "YOUR_" not in json.dumps(model_payload)
+    assert "RELIEF_IMAGE_API_KEY" in result["checks"]["secrets"]["api_key_env"]
+    assert result["output_folders"]["run_output_root"] == "D:/relief_story_runs"
+    assert result["output_folders"]["acceptance_output_dir"] == "D:/relief_story_acceptance"
+    assert result["output_folders"]["export_output_dir"] == "D:/relief_story_exports"
+    assert '--output-dir "D:/relief_story_acceptance"' in result["next_commands"]["local_acceptance"]
+    assert '--acceptance-report "D:/relief_story_acceptance/acceptance_report.json"' in result["next_commands"]["local_readiness"]
+    assert '--export-root "D:/relief_story_exports"' in result["next_commands"]["export_batch"]
+
+
 def test_cli_setup_writes_local_config_bundle(tmp_path):
     completed = subprocess.run(
         [
@@ -123,6 +183,65 @@ def test_cli_setup_writes_local_config_bundle(tmp_path):
     assert "model_config.local.json" in completed.stdout
     assert (tmp_path / "run_request.full-ltx.json").exists()
     assert (tmp_path / "templates" / "prompt_writer.default.md").exists()
+
+
+def test_cli_setup_accepts_model_profile_and_output_folder_values(tmp_path):
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "relief_story_agent.cli",
+            "setup",
+            "--output-dir",
+            str(tmp_path),
+            "--workflow-path",
+            "C:/ComfyUI/workflows/ltx23_four_grid.json",
+            "--gemini-base-url",
+            "https://generativelanguage.googleapis.com/v1beta/openai",
+            "--gemini-model",
+            "gemini-2.5-pro",
+            "--gemini-api-key-env",
+            "RELIEF_GEMINI_API_KEY",
+            "--deepseek-base-url",
+            "https://api.deepseek.com/v1",
+            "--deepseek-model",
+            "deepseek-chat",
+            "--deepseek-api-key-env",
+            "RELIEF_DEEPSEEK_API_KEY",
+            "--gpt-base-url",
+            "https://api.openai.com/v1",
+            "--gpt-model",
+            "gpt-5-mini",
+            "--gpt-api-key-env",
+            "RELIEF_OPENAI_API_KEY",
+            "--image-base-url",
+            "https://images.example/v1",
+            "--image-model",
+            "gpt-image-2-prod",
+            "--image-api-key-env",
+            "RELIEF_IMAGE_API_KEY",
+            "--acceptance-output-dir",
+            "D:/relief_story_acceptance",
+            "--export-output-dir",
+            "D:/relief_story_exports",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert completed.returncode == 0
+    body = json.loads(completed.stdout)
+    model_payload = json.loads((tmp_path / "model_config.local.json").read_text(encoding="utf-8"))
+    run_payload = json.loads((tmp_path / "run_request.full-ltx.json").read_text(encoding="utf-8"))
+    assert model_payload["profiles"]["gemini_writer"]["model"] == "gemini-2.5-pro"
+    assert model_payload["profiles"]["deepseek_editor"]["model"] == "deepseek-chat"
+    assert model_payload["profiles"]["gpt_visual"]["model"] == "gpt-5-mini"
+    assert run_payload["comfyui"]["grid_image"]["api_key_env"] == "RELIEF_IMAGE_API_KEY"
+    assert run_payload["comfyui"]["grid_image"]["model"] == "gpt-image-2-prod"
+    assert body["output_folders"]["acceptance_output_dir"] == "D:/relief_story_acceptance"
+    assert "YOUR_" not in completed.stdout
+    assert '"api_key":' not in completed.stdout
 
 
 def test_setup_wizard_normalizes_comfyui_endpoint_for_generated_files(tmp_path):
@@ -192,3 +311,45 @@ def test_api_local_setup_bundle_writes_config_files_for_ui(tmp_path):
     assert smoke_payload["comfyui_base_url"] == "http://127.0.0.1:8188"
     assert smoke_payload["workflow_path"] == "C:/ComfyUI/workflows/ltx23_four_grid.json"
     assert connect_payload["endpoint"] == "http://127.0.0.1:8188"
+
+
+def test_api_local_setup_bundle_accepts_model_profile_values_without_plaintext_keys(tmp_path):
+    app = create_app(StoryRunOrchestrator(provider=FakeModelProvider.minimal_success()))
+    client = TestClient(app)
+    output_dir = tmp_path / "relief_story_config"
+
+    response = client.post(
+        "/api/local/setup-bundle",
+        json={
+            "output_dir": str(output_dir),
+            "workflow_path": "C:/ComfyUI/workflows/ltx23_four_grid.json",
+            "gemini_base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
+            "gemini_model": "gemini-2.5-pro",
+            "gemini_api_key_env": "RELIEF_GEMINI_API_KEY",
+            "deepseek_base_url": "https://api.deepseek.com/v1",
+            "deepseek_model": "deepseek-chat",
+            "deepseek_api_key_env": "RELIEF_DEEPSEEK_API_KEY",
+            "gpt_base_url": "https://api.openai.com/v1",
+            "gpt_model": "gpt-5-mini",
+            "gpt_api_key_env": "RELIEF_OPENAI_API_KEY",
+            "image_base_url": "https://images.example/v1",
+            "image_model": "gpt-image-2-prod",
+            "image_api_key_env": "RELIEF_IMAGE_API_KEY",
+            "acceptance_output_dir": "D:/relief_story_acceptance",
+            "export_output_dir": "D:/relief_story_exports",
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    model_payload = json.loads(Path(body["model_config"]).read_text(encoding="utf-8"))
+    run_payload = json.loads(Path(body["run_request"]).read_text(encoding="utf-8"))
+    assert model_payload["profiles"]["gemini_writer"]["model"] == "gemini-2.5-pro"
+    assert model_payload["profiles"]["deepseek_editor"]["model"] == "deepseek-chat"
+    assert model_payload["profiles"]["gpt_visual"]["model"] == "gpt-5-mini"
+    assert run_payload["comfyui"]["grid_image"]["api_key_env"] == "RELIEF_IMAGE_API_KEY"
+    assert run_payload["comfyui"]["grid_image"]["base_url"] == "https://images.example/v1"
+    assert run_payload["comfyui"]["grid_image"]["model"] == "gpt-image-2-prod"
+    assert '"api_key":' not in json.dumps(model_payload)
+    assert body["output_folders"]["acceptance_output_dir"] == "D:/relief_story_acceptance"
+    assert body["output_folders"]["export_output_dir"] == "D:/relief_story_exports"

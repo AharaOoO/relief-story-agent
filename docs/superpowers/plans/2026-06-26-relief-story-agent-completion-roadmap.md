@@ -32,6 +32,9 @@ chief_screenwriter
 - Do not auto-generate ComfyUI node graphs.
 - Do not claim completion without a real local video file and batch/export evidence.
 - Do not use `git add .`.
+- Treat RunningHub cloud generation as generation mode 2. It can be designed and
+  developed in parallel, but it does not replace the local ComfyUI release
+  evidence gates until a separate cloud acceptance gate is defined and proven.
 
 ## File Map
 
@@ -42,6 +45,8 @@ chief_screenwriter
 - `relief_story_agent/local_runtime.py`: bootstrap, doctor, local-readiness contracts.
 - `relief_story_agent/api.py`: FastAPI routes.
 - `relief_story_agent/cli.py`: unified CLI.
+- `relief_story_agent/runninghub.py`: RunningHub advanced workflow API starter
+  for generation mode 2.
 - `relief_story_agent/model_config.py`, `model_probe.py`, `model_runtime.py`: model config and real probe.
 - `relief_story_agent/orchestrator.py`: fixed pipeline execution.
 - `relief_story_agent/comfyui.py`, `ltx_workflow.py`, `comfyui_outputs.py`: ComfyUI integration.
@@ -658,6 +663,116 @@ git push
 ```
 
 Use narrower paths if only docs changed.
+
+## Task 9: RunningHub Cloud Generation Mode 2 Starter
+
+**Files:**
+
+- Create: `relief_story_agent/runninghub.py`
+- Create: `relief_story_agent/tests/test_runninghub.py`
+- Create: `relief_story_agent/examples/runninghub_request.example.json`
+- Modify: `relief_story_agent/api.py`
+- Modify: `relief_story_agent/cli.py`
+- Modify: `relief_story_agent/local_runtime.py`
+- Create: `docs/superpowers/specs/2026-06-27-runninghub-cloud-generation-design.md`
+- Create: `docs/superpowers/plans/2026-06-27-runninghub-cloud-generation.md`
+
+- [x] **Step 1: Confirm API shape from official docs**
+
+Use RunningHub advanced workflow API as the contract:
+
+```text
+POST /task/openapi/create
+POST /task/openapi/status
+POST /task/openapi/outputs
+```
+
+Create requires `apiKey`, `workflowId`, and `nodeInfoList`.
+
+- [x] **Step 2: Add test-first backend starter**
+
+Run:
+
+```powershell
+python -m pytest relief_story_agent/tests/test_runninghub.py -q
+```
+
+Expected after implementation: payload mapping, missing key diagnosis, dry-run
+redaction, mocked submit/status/outputs, API, and CLI tests pass.
+
+- [x] **Step 3: Add API/CLI/UI bootstrap entry points**
+
+Expose:
+
+```text
+POST /api/runninghub/check
+POST /api/runninghub/submit
+POST /api/runninghub/status
+POST /api/runninghub/outputs
+```
+
+Commands:
+
+```powershell
+relief-story-agent runninghub-check --request "relief_story_agent/examples/runninghub_request.example.json" --pretty
+relief-story-agent runninghub-submit --request "relief_story_agent/examples/runninghub_request.example.json" --dry-run --pretty
+relief-story-agent runninghub-status --task-id "{task_id}" --pretty
+relief-story-agent runninghub-outputs --task-id "{task_id}" --pretty
+```
+
+- [x] **Step 4: Keep secrets out of git**
+
+The example stores `api_key_env`, not a plaintext key. API/CLI responses redact
+the key as `<redacted:RUNNINGHUB_API_KEY>`.
+
+## Task 10: RunningHub Real Cloud Acceptance
+
+**Files:**
+
+- Generated outside repo: `D:/relief_story_config/runninghub_request.local.json`
+- Modify only with TDD if a real response shape requires it:
+  - `relief_story_agent/runninghub.py`
+  - `relief_story_agent/tests/test_runninghub.py`
+
+- [ ] **Step 1: Collect non-secret mapping**
+
+Ask for:
+
+```text
+workflowId
+node ids and field names for prompt/material/seed/duration/output controls
+usePersonalQueue value
+instanceType value
+webhookUrl, if needed
+```
+
+- [ ] **Step 2: Set key only in environment**
+
+```powershell
+$env:RUNNINGHUB_API_KEY = "<user supplied>"
+```
+
+- [ ] **Step 3: Dry-run mapped payload**
+
+```powershell
+relief-story-agent runninghub-check --request "D:/relief_story_config/runninghub_request.local.json" --pretty
+relief-story-agent runninghub-submit --request "D:/relief_story_config/runninghub_request.local.json" --dry-run --pretty
+```
+
+Expected: `ready=true`, redacted key, correct workflow id, and correct
+`nodeInfoList`.
+
+- [ ] **Step 4: Submit and poll one real task**
+
+```powershell
+relief-story-agent runninghub-submit --request "D:/relief_story_config/runninghub_request.local.json" --pretty
+relief-story-agent runninghub-status --task-id "{task_id}" --pretty
+relief-story-agent runninghub-outputs --task-id "{task_id}" --pretty
+```
+
+Expected: real task id, terminal RunningHub status, and output file URLs. If the
+remote response differs from the mocked contract, record the non-secret shape
+and write a failing parser test before changing code.
 
 ## Completion Definition
 

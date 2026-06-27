@@ -41,6 +41,10 @@ def test_build_local_bootstrap_exposes_ui_ports_and_core_endpoints():
     assert bootstrap["endpoints"]["comfyui_connect"] == "/api/comfyui/connect"
     assert bootstrap["endpoints"]["comfyui_discover_workflows"] == "/api/comfyui/discover-workflows"
     assert bootstrap["endpoints"]["comfyui_outputs"] == "/api/comfyui/outputs"
+    assert bootstrap["endpoints"]["runninghub_check"] == "/api/runninghub/check"
+    assert bootstrap["endpoints"]["runninghub_submit"] == "/api/runninghub/submit"
+    assert bootstrap["endpoints"]["runninghub_status"] == "/api/runninghub/status"
+    assert bootstrap["endpoints"]["runninghub_outputs"] == "/api/runninghub/outputs"
 
 
 def test_api_local_bootstrap_returns_runtime_config_for_ui_shell():
@@ -236,6 +240,13 @@ def test_build_local_doctor_reports_comfyui_connection_failure():
             "connected": False,
             "endpoint": "http://127.0.0.1:8188",
             "message": "Cannot reach ComfyUI /queue: offline",
+            "suggested_actions": [
+                {
+                    "code": "start_or_check_comfyui",
+                    "label": "Start or check ComfyUI",
+                    "description": "Cannot reach ComfyUI /queue: offline",
+                }
+            ],
         },
     )
 
@@ -244,6 +255,7 @@ def test_build_local_doctor_reports_comfyui_connection_failure():
     assert checks["comfyui_connection"]["status"] == "fail"
     assert checks["comfyui_connection"]["details"]["endpoint"] == "http://127.0.0.1:8188"
     assert "start_or_check_comfyui" in report["suggested_actions"]
+    assert not any(action.startswith("{") for action in report["suggested_actions"])
 
 
 def test_build_local_doctor_fails_when_comfyui_runtime_is_connected_but_not_ready():

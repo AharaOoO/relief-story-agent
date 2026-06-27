@@ -11,6 +11,17 @@ from urllib.parse import unquote
 
 LTX_REQUIRED_JSON_KEYS = {"prompt", "frame_indices", "strengths", "duration_seconds"}
 
+LITEGRAPH_NON_RUNTIME_NODE_TYPES = {
+    "Bookmark (rgthree)",
+    "Fast Actions Button (rgthree)",
+    "Fast Groups Bypasser (rgthree)",
+    "GetNode",
+    "Label (rgthree)",
+    "MarkdownNote",
+    "Note",
+    "SetNode",
+}
+
 
 @dataclass(frozen=True)
 class LTXInjectionPoints:
@@ -131,42 +142,161 @@ def litegraph_to_api_prompt(
 
     expanded_links = _expand_kjnodes_set_get_links(workflow)
     links_by_id = {link[0]: link for link in expanded_links if isinstance(link, list) and len(link) >= 5}
+    subgraph_definitions = _subgraph_definitions_by_id(workflow)
+    subgraph_output_sources: dict[tuple[str, int], list[Any]] = {}
     prompt: dict[str, Any] = {}
 
+    def resolve_link_source(link: Any) -> list[Any]:
+        origin_id, origin_slot = _link_origin(link)
+        return subgraph_output_sources.get((origin_id, origin_slot), [origin_id, origin_slot])
+
     for node in workflow.get("nodes", []):
-        if node.get("type") in {"SetNode", "GetNode"}:
+        node_type = str(node.get("type") or "")
+        if node_type in subgraph_definitions:
+            _append_subgraph_prompt(
+                prompt,
+                outer_node=node,
+                subgraph=subgraph_definitions[node_type],
+                outer_links_by_id=links_by_id,
+                resolve_outer_link_source=resolve_link_source,
+                subgraph_output_sources=subgraph_output_sources,
+                object_info=object_info,
+            )
+
+    for node in workflow.get("nodes", []):
+        if _is_litegraph_non_runtime_node(node):
+            continue
+        if str(node.get("type") or "") in subgraph_definitions:
             continue
         node_id = str(node.get("id"))
-        inputs: dict[str, Any] = {}
-
-        for input_index, input_spec in enumerate(node.get("inputs") or []):
-            name = input_spec.get("name")
-            if not name:
-                continue
-
-            link_id = input_spec.get("link")
-            if link_id is not None and link_id in links_by_id:
-                link = links_by_id[link_id]
-                inputs[name] = [str(link[1]), int(link[2])]
-                continue
-
-            if "widget" in input_spec:
-                value_found, value = _read_widget_value(node, name, input_index)
-                if value_found and name != "videopreview":
-                    inputs[name] = value
-
-        _apply_known_widget_values(node, inputs)
-        _apply_object_info_widget_values(node, inputs, object_info)
-
-        prompt[node_id] = {
-            "class_type": node.get("type"),
-            "inputs": inputs,
-        }
+        inputs = _litegraph_node_inputs(node, links_by_id, resolve_link_source, object_info)
+        prompt[node_id] = {"class_type": node.get("type"), "inputs": inputs}
         title = node.get("title")
         if title:
             prompt[node_id]["_meta"] = {"title": title}
 
     return prompt
+
+
+def _is_litegraph_non_runtime_node(node: dict[str, Any]) -> bool:
+    return str(node.get("type") or "") in LITEGRAPH_NON_RUNTIME_NODE_TYPES
+
+
+def _litegraph_node_inputs(
+    node: dict[str, Any],
+    links_by_id: dict[Any, Any],
+    resolve_link_source,
+    object_info: dict[str, Any] | None,
+) -> dict[str, Any]:
+    inputs: dict[str, Any] = {}
+    for input_index, input_spec in enumerate(node.get("inputs") or []):
+        name = input_spec.get("name")
+        if not name:
+            continue
+
+        link_id = input_spec.get("link")
+        if link_id is not None and link_id in links_by_id:
+            inputs[name] = resolve_link_source(links_by_id[link_id])
+            continue
+
+        if "widget" in input_spec:
+            value_found, value = _read_widget_value(node, name, input_index)
+            if value_found and name != "videopreview":
+                inputs[name] = value
+
+    _apply_known_widget_values(node, inputs)
+    _apply_object_info_widget_values(node, inputs, object_info)
+    return inputs
+
+
+def _subgraph_definitions_by_id(workflow: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    raw_subgraphs = (workflow.get("definitions") or {}).get("subgraphs") or []
+    if isinstance(raw_subgraphs, dict):
+        subgraphs = raw_subgraphs.values()
+    else:
+        subgraphs = raw_subgraphs
+    return {
+        str(subgraph.get("id")): subgraph
+        for subgraph in subgraphs
+        if isinstance(subgraph, dict) and subgraph.get("id")
+    }
+
+
+def _append_subgraph_prompt(
+    prompt: dict[str, Any],
+    *,
+    outer_node: dict[str, Any],
+    subgraph: dict[str, Any],
+    outer_links_by_id: dict[Any, Any],
+    resolve_outer_link_source,
+    subgraph_output_sources: dict[tuple[str, int], list[Any]],
+    object_info: dict[str, Any] | None,
+) -> None:
+    outer_id = str(outer_node.get("id"))
+    input_node_id = str((subgraph.get("inputNode") or {}).get("id"))
+    output_node_id = str((subgraph.get("outputNode") or {}).get("id"))
+    subgraph_links_by_id = {
+        _link_id(link): link
+        for link in subgraph.get("links", [])
+        if _link_id(link) is not None
+    }
+    outer_input_sources: dict[int, list[Any]] = {}
+    for input_index, input_spec in enumerate(outer_node.get("inputs") or []):
+        link_id = input_spec.get("link")
+        if link_id is not None and link_id in outer_links_by_id:
+            outer_input_sources[input_index] = resolve_outer_link_source(outer_links_by_id[link_id])
+
+    def resolve_subgraph_link_source(link: Any) -> list[Any] | None:
+        origin_id, origin_slot = _link_origin(link)
+        if origin_id == input_node_id:
+            return outer_input_sources.get(origin_slot)
+        return [_subgraph_prompt_node_id(outer_id, origin_id), origin_slot]
+
+    for link in subgraph.get("links", []):
+        target_id, target_slot = _link_target(link)
+        if target_id == output_node_id:
+            source = resolve_subgraph_link_source(link)
+            if source is not None:
+                subgraph_output_sources[(outer_id, target_slot)] = source
+
+    for inner_node in subgraph.get("nodes", []):
+        if _is_litegraph_non_runtime_node(inner_node):
+            continue
+        inner_id = _subgraph_prompt_node_id(outer_id, str(inner_node.get("id")))
+        inputs = _litegraph_node_inputs(
+            inner_node,
+            subgraph_links_by_id,
+            resolve_subgraph_link_source,
+            object_info,
+        )
+        prompt[inner_id] = {"class_type": inner_node.get("type"), "inputs": inputs}
+        title = inner_node.get("title")
+        if title:
+            prompt[inner_id]["_meta"] = {"title": title}
+
+
+def _subgraph_prompt_node_id(outer_id: str, inner_id: str) -> str:
+    return f"{outer_id}:{inner_id}"
+
+
+def _link_id(link: Any) -> Any:
+    if isinstance(link, dict):
+        return link.get("id")
+    if isinstance(link, list) and link:
+        return link[0]
+    return None
+
+
+def _link_origin(link: Any) -> tuple[str, int]:
+    if isinstance(link, dict):
+        return str(link.get("origin_id")), int(link.get("origin_slot") or 0)
+    return str(link[1]), int(link[2])
+
+
+def _link_target(link: Any) -> tuple[str, int]:
+    if isinstance(link, dict):
+        return str(link.get("target_id")), int(link.get("target_slot") or 0)
+    return str(link[3]), int(link[4])
 
 
 def _expand_kjnodes_set_get_links(workflow: dict[str, Any]) -> list[list[Any]]:

@@ -169,6 +169,71 @@ def test_litegraph_to_api_prompt_expands_kjnodes_set_get_pairs_to_direct_links()
     assert prompt["4"]["inputs"]["width"] == ["1", 0]
 
 
+def test_litegraph_to_api_prompt_expands_comfyui_subgraph_nodes():
+    workflow = {
+        "version": 0.4,
+        "nodes": [
+            {"id": 1, "type": "PrimitiveString", "outputs": [{"name": "STRING", "type": "STRING", "links": [10]}]},
+            {
+                "id": 2,
+                "type": "subgraph-uuid",
+                "inputs": [{"name": "text", "type": "STRING", "link": 10}],
+                "outputs": [{"name": "STRING", "type": "STRING", "links": [20]}],
+            },
+            {"id": 3, "type": "NeedsSubgraphOutput", "inputs": [{"name": "value", "type": "STRING", "link": 20}]},
+        ],
+        "links": [
+            [10, 1, 0, 2, 0, "STRING"],
+            [20, 2, 0, 3, 0, "STRING"],
+        ],
+        "definitions": {
+            "subgraphs": [
+                {
+                    "id": "subgraph-uuid",
+                    "name": "Tiny Subgraph",
+                    "inputNode": {"id": -10},
+                    "outputNode": {"id": -20},
+                    "inputs": [{"name": "text", "type": "STRING"}],
+                    "outputs": [{"name": "STRING", "type": "STRING"}],
+                    "nodes": [
+                        {
+                            "id": 101,
+                            "type": "InnerTransform",
+                            "inputs": [{"name": "text", "type": "STRING", "link": 100}],
+                            "outputs": [{"name": "STRING", "type": "STRING", "links": [101]}],
+                        }
+                    ],
+                    "links": [
+                        {
+                            "id": 100,
+                            "origin_id": -10,
+                            "origin_slot": 0,
+                            "target_id": 101,
+                            "target_slot": 0,
+                            "type": "STRING",
+                        },
+                        {
+                            "id": 101,
+                            "origin_id": 101,
+                            "origin_slot": 0,
+                            "target_id": -20,
+                            "target_slot": 0,
+                            "type": "STRING",
+                        },
+                    ],
+                }
+            ]
+        },
+    }
+
+    prompt = litegraph_to_api_prompt(workflow)
+
+    assert "2" not in prompt
+    assert prompt["2:101"]["class_type"] == "InnerTransform"
+    assert prompt["2:101"]["inputs"]["text"] == ["1", 0]
+    assert prompt["3"]["inputs"]["value"] == ["2:101", 0]
+
+
 def test_patches_ltx_json_seed_and_filename_prefix_before_api_conversion():
     workflow = _mini_litegraph_workflow()
     ltx_payload = {

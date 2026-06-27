@@ -44,6 +44,7 @@ class ComfyUISmokeRequest(BaseModel):
     output_root: str = "runs"
     seed: int | None = None
     filename_prefix: str | None = None
+    duration_seconds: int = Field(default=6, gt=0)
     dry_run: bool = False
     timeout_seconds: float = Field(default=30.0, gt=0)
 
@@ -194,6 +195,7 @@ def run_comfyui_smoke(
                     config,
                     storyboard,
                     request.filename_prefix or request.run_id,
+                    duration_seconds=request.duration_seconds,
                     include_workflow=True,
                     grid_image_asset=grid_asset,
                     object_info=runtime_object_info,
@@ -231,6 +233,7 @@ def run_comfyui_smoke(
                         config,
                         storyboard,
                         request.filename_prefix or request.run_id,
+                        duration_seconds=request.duration_seconds,
                         client=active_client,
                         grid_image_asset=grid_asset,
                         object_info=runtime_object_info,
@@ -534,6 +537,7 @@ def _check_patch_preview(
             config,
             storyboard,
             request.filename_prefix or request.run_id,
+            duration_seconds=request.duration_seconds,
             include_workflow=True,
             grid_image_asset=grid_asset,
             allow_unuploaded_grid_image=True,

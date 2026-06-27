@@ -109,6 +109,20 @@ def write_local_config_bundle(
     workflow_path: str,
     comfyui_endpoint: str = "http://127.0.0.1:8188",
     output_root: str = "D:/relief_story_runs",
+    gemini_base_url: str = "",
+    gemini_model: str = "",
+    gemini_api_key_env: str = "",
+    deepseek_base_url: str = "",
+    deepseek_model: str = "",
+    deepseek_api_key_env: str = "",
+    gpt_base_url: str = "",
+    gpt_model: str = "",
+    gpt_api_key_env: str = "",
+    image_base_url: str = "",
+    image_model: str = "",
+    image_api_key_env: str = "",
+    acceptance_output_dir: str = "",
+    export_output_dir: str = "",
 ) -> dict[str, Any]:
     comfyui_endpoint = normalize_comfyui_endpoint(comfyui_endpoint)
     target_dir = Path(output_dir)
@@ -127,7 +141,20 @@ def write_local_config_bundle(
 
     prompt_writer_template.write_text(PROMPT_WRITER_TEMPLATE, encoding="utf-8")
     prompt_audit_template.write_text(PROMPT_AUDIT_TEMPLATE, encoding="utf-8")
-    _write_json(model_config, _model_config_payload())
+    _write_json(
+        model_config,
+        _model_config_payload(
+            gemini_base_url=gemini_base_url,
+            gemini_model=gemini_model,
+            gemini_api_key_env=gemini_api_key_env,
+            deepseek_base_url=deepseek_base_url,
+            deepseek_model=deepseek_model,
+            deepseek_api_key_env=deepseek_api_key_env,
+            gpt_base_url=gpt_base_url,
+            gpt_model=gpt_model,
+            gpt_api_key_env=gpt_api_key_env,
+        ),
+    )
     _write_json(
         comfyui_connect,
         {
@@ -144,6 +171,9 @@ def write_local_config_bundle(
             output_root=output_root,
             prompt_writer_template=prompt_writer_template,
             prompt_audit_template=prompt_audit_template,
+            image_base_url=image_base_url,
+            image_model=image_model,
+            image_api_key_env=image_api_key_env,
         ),
     )
     _write_json(
@@ -154,6 +184,9 @@ def write_local_config_bundle(
             output_root=output_root,
             prompt_writer_template=prompt_writer_template,
             prompt_audit_template=prompt_audit_template,
+            image_base_url=image_base_url,
+            image_model=image_model,
+            image_api_key_env=image_api_key_env,
         ),
     )
     _write_json(
@@ -183,39 +216,62 @@ def write_local_config_bundle(
             comfyui_endpoint=comfyui_endpoint,
             output_root=output_root,
             manual_grid_image_path=manual_grid_image,
+            gemini_api_key_env=gemini_api_key_env,
+            deepseek_api_key_env=deepseek_api_key_env,
+            gpt_api_key_env=gpt_api_key_env,
+            image_api_key_env=image_api_key_env,
         ),
         "next_commands": _next_commands(
             target_dir,
             comfyui_endpoint=comfyui_endpoint,
             workflow_path=workflow_path,
+            acceptance_output_dir=acceptance_output_dir,
+            export_output_dir=export_output_dir,
         ),
         "next_endpoints": _next_endpoints(),
+        "output_folders": _output_folders(
+            target_dir,
+            output_root=output_root,
+            acceptance_output_dir=acceptance_output_dir,
+            export_output_dir=export_output_dir,
+        ),
     }
 
 
-def _model_config_payload() -> dict[str, Any]:
+def _model_config_payload(
+    *,
+    gemini_base_url: str = "",
+    gemini_model: str = "",
+    gemini_api_key_env: str = "",
+    deepseek_base_url: str = "",
+    deepseek_model: str = "",
+    deepseek_api_key_env: str = "",
+    gpt_base_url: str = "",
+    gpt_model: str = "",
+    gpt_api_key_env: str = "",
+) -> dict[str, Any]:
     return {
         "profiles": {
             "gemini_writer": {
-                "base_url": "https://YOUR_GEMINI_OPENAI_COMPATIBLE_ENDPOINT/v1",
-                "api_key_env": "GEMINI_API_KEY",
-                "model": "YOUR_GEMINI_MODEL",
+                "base_url": gemini_base_url or "https://YOUR_GEMINI_OPENAI_COMPATIBLE_ENDPOINT/v1",
+                "api_key_env": gemini_api_key_env or "GEMINI_API_KEY",
+                "model": gemini_model or "YOUR_GEMINI_MODEL",
                 "temperature": 0.7,
                 "max_attempts": 3,
                 "requests_per_minute": 20,
             },
             "deepseek_editor": {
-                "base_url": "https://YOUR_DEEPSEEK_OPENAI_COMPATIBLE_ENDPOINT/v1",
-                "api_key_env": "DEEPSEEK_API_KEY",
-                "model": "YOUR_DEEPSEEK_MODEL",
+                "base_url": deepseek_base_url or "https://YOUR_DEEPSEEK_OPENAI_COMPATIBLE_ENDPOINT/v1",
+                "api_key_env": deepseek_api_key_env or "DEEPSEEK_API_KEY",
+                "model": deepseek_model or "YOUR_DEEPSEEK_MODEL",
                 "temperature": 0.8,
                 "max_attempts": 3,
                 "requests_per_minute": 20,
             },
             "gpt_visual": {
-                "base_url": "https://api.openai.com/v1",
-                "api_key_env": "OPENAI_API_KEY",
-                "model": "YOUR_GPT_JSON_MODEL",
+                "base_url": gpt_base_url or "https://api.openai.com/v1",
+                "api_key_env": gpt_api_key_env or "OPENAI_API_KEY",
+                "model": gpt_model or "YOUR_GPT_JSON_MODEL",
                 "temperature": 0.4,
                 "max_attempts": 3,
                 "requests_per_minute": 30,
@@ -238,6 +294,9 @@ def _run_request_payload(
     output_root: str,
     prompt_writer_template: Path,
     prompt_audit_template: Path,
+    image_base_url: str = "",
+    image_model: str = "",
+    image_api_key_env: str = "",
 ) -> dict[str, Any]:
     return {
         "idempotency_key": "relief-single-demo-001",
@@ -253,7 +312,13 @@ def _run_request_payload(
             "prompt_writer_template_path": str(prompt_writer_template),
             "prompt_audit_template_path": str(prompt_audit_template),
         },
-        "comfyui": _comfyui_payload(workflow_path, comfyui_endpoint),
+        "comfyui": _comfyui_payload(
+            workflow_path,
+            comfyui_endpoint,
+            image_base_url=image_base_url,
+            image_model=image_model,
+            image_api_key_env=image_api_key_env,
+        ),
     }
 
 
@@ -264,6 +329,9 @@ def _batch_request_payload(
     output_root: str,
     prompt_writer_template: Path,
     prompt_audit_template: Path,
+    image_base_url: str = "",
+    image_model: str = "",
+    image_api_key_env: str = "",
 ) -> dict[str, Any]:
     return {
         "idempotency_key": "relief-batch-demo-001",
@@ -282,7 +350,13 @@ def _batch_request_payload(
                 "prompt_writer_template_path": str(prompt_writer_template),
                 "prompt_audit_template_path": str(prompt_audit_template),
             },
-            "comfyui": _comfyui_payload(workflow_path, comfyui_endpoint),
+            "comfyui": _comfyui_payload(
+                workflow_path,
+                comfyui_endpoint,
+                image_base_url=image_base_url,
+                image_model=image_model,
+                image_api_key_env=image_api_key_env,
+            ),
         },
         "items": [
             {
@@ -324,10 +398,11 @@ def _smoke_request_payload(
         "dry_run": False,
         "seed": 123456,
         "filename_prefix": "smoke_relief_story",
+        "duration_seconds": 6,
         "final_storyboard": [
             {
                 "shot_id": 1,
-                "time_range": "0-15s",
+                "time_range": "0-6s",
                 "description": "A tired worker pauses beside a quiet convenience-store window at night.",
                 "image_prompt": (
                     "rainy convenience-store window at night, tired office worker, "
@@ -349,7 +424,14 @@ def _smoke_request_payload(
     }
 
 
-def _comfyui_payload(workflow_path: str, comfyui_endpoint: str) -> dict[str, Any]:
+def _comfyui_payload(
+    workflow_path: str,
+    comfyui_endpoint: str,
+    *,
+    image_base_url: str = "",
+    image_model: str = "",
+    image_api_key_env: str = "",
+) -> dict[str, Any]:
     return {
         "enabled": True,
         "endpoint": comfyui_endpoint,
@@ -361,9 +443,9 @@ def _comfyui_payload(workflow_path: str, comfyui_endpoint: str) -> dict[str, Any
         "grid_image": {
             "mode": "auto",
             "provider": "openai_compatible",
-            "base_url": "https://api.openai.com/v1",
-            "api_key_env": "OPENAI_API_KEY",
-            "model": "gpt-image-2",
+            "base_url": image_base_url or "https://api.openai.com/v1",
+            "api_key_env": image_api_key_env or "OPENAI_API_KEY",
+            "model": image_model or "gpt-image-2",
             "size": "1024x1024",
             "quality": "medium",
             "output_format": "png",
@@ -412,6 +494,10 @@ def _bundle_checks(
     comfyui_endpoint: str,
     output_root: str,
     manual_grid_image_path: Path,
+    gemini_api_key_env: str = "",
+    deepseek_api_key_env: str = "",
+    gpt_api_key_env: str = "",
+    image_api_key_env: str = "",
 ) -> dict[str, dict[str, Any]]:
     workflow = Path(workflow_path)
     output = Path(output_root)
@@ -451,10 +537,26 @@ def _bundle_checks(
         },
         "secrets": {
             "status": "pending",
-            "api_key_env": ["GEMINI_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY"],
+            "api_key_env": _secret_env_names(
+                gemini_api_key_env or "GEMINI_API_KEY",
+                deepseek_api_key_env or "DEEPSEEK_API_KEY",
+                gpt_api_key_env or "OPENAI_API_KEY",
+                image_api_key_env or "OPENAI_API_KEY",
+            ),
             "message": "API keys are referenced by environment variable name only.",
         },
     }
+
+
+def _secret_env_names(*names: str) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for name in names:
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        result.append(name)
+    return result
 
 
 def _next_commands(
@@ -462,13 +564,16 @@ def _next_commands(
     *,
     comfyui_endpoint: str,
     workflow_path: str,
+    acceptance_output_dir: str = "",
+    export_output_dir: str = "",
 ) -> dict[str, str]:
     model_config = target_dir / "model_config.local.json"
     run_request = target_dir / "run_request.full-ltx.json"
     batch_request = target_dir / "batch_request.full-ltx.json"
     smoke_request = target_dir / "smoke_request.json"
-    acceptance_dir = target_dir / "acceptance"
-    acceptance_report = acceptance_dir / "acceptance_report.json"
+    acceptance_dir = acceptance_output_dir or str(target_dir / "acceptance")
+    export_dir = export_output_dir or "D:/relief_story_exports"
+    acceptance_report = _join_path(acceptance_dir, "acceptance_report.json")
     repo_root = Path.cwd()
     return {
         "doctor": (
@@ -507,7 +612,32 @@ def _next_commands(
             f'relief-story-agent batch-plan --request "{batch_request}" '
             "--check-comfyui-connection --pretty"
         ),
+        "export_batch": (
+            'relief-story-agent export-batch --batch-id "<batch_id>" '
+            f'--export-root "{export_dir}" --pretty'
+        ),
     }
+
+
+def _output_folders(
+    target_dir: Path,
+    *,
+    output_root: str,
+    acceptance_output_dir: str = "",
+    export_output_dir: str = "",
+) -> dict[str, str]:
+    return {
+        "config_dir": str(target_dir),
+        "run_output_root": output_root,
+        "acceptance_output_dir": acceptance_output_dir or str(target_dir / "acceptance"),
+        "export_output_dir": export_output_dir or "D:/relief_story_exports",
+    }
+
+
+def _join_path(base: str | Path, name: str) -> str:
+    base_text = str(base).rstrip("/\\")
+    separator = "/" if "/" in base_text and "\\" not in base_text else "\\"
+    return f"{base_text}{separator}{name}"
 
 
 def _next_endpoints() -> dict[str, str]:

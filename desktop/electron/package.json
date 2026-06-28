@@ -1,0 +1,56 @@
+{
+  "name": "relief-story-agent-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Desktop shell for Relief Story Agent.",
+  "main": "src/main.js",
+  "scripts": {
+    "check": "node --check src/main.js && node --check src/preload.js",
+    "dev": "electron . --dev",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "ai.reliefstory.agent",
+    "productName": "Relief Story Agent",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../../frontend/dist",
+        "to": "frontend",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "sidecar/bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "../../tools/desktop/assets/relief-story-agent.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Relief Story Agent"
+    }
+  }
+}

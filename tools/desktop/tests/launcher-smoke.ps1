@@ -40,6 +40,32 @@ if (-not $desktopPlan.electronDir.EndsWith("desktop\electron")) {
   throw "Unexpected Electron dir: $($desktopPlan.electronDir)"
 }
 
+$desktopSettingsDir = Join-Path ([System.IO.Path]::GetTempPath()) ("relief-desktop-settings-" + [guid]::NewGuid().ToString("N"))
+New-Item -ItemType Directory -Force -Path $desktopSettingsDir | Out-Null
+@{
+  host = "127.0.0.2"
+  backendPort = 8899
+  frontendPort = 5299
+  comfyUiEndpoint = "http://127.0.0.1:8199"
+  workflowPath = "D:/ComfyUI/workflows/custom.json"
+  stateDir = "D:/relief/state"
+  logDir = "D:/relief/logs"
+} | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $desktopSettingsDir "settings.json") -Encoding UTF8
+
+$customDesktopPlan = & $desktopLauncher -DryRun -DesktopUserDataDir $desktopSettingsDir | ConvertFrom-Json
+if ($customDesktopPlan.backendPort -ne 8899) {
+  throw "Expected custom desktop backend port 8899, got $($customDesktopPlan.backendPort)"
+}
+if ($customDesktopPlan.frontendPort -ne 5299) {
+  throw "Expected custom desktop frontend port 5299, got $($customDesktopPlan.frontendPort)"
+}
+if ($customDesktopPlan.comfyUiEndpoint -ne "http://127.0.0.1:8199") {
+  throw "Expected custom ComfyUI endpoint, got $($customDesktopPlan.comfyUiEndpoint)"
+}
+if ($customDesktopPlan.frontendUrl -ne "http://127.0.0.2:5299/") {
+  throw "Unexpected custom frontend URL: $($customDesktopPlan.frontendUrl)"
+}
+
 $desktopShortcutPlan = & $desktopInstaller -DryRun | ConvertFrom-Json
 if (-not $desktopShortcutPlan.shortcutPath.EndsWith("Relief Story Agent Desktop.lnk")) {
   throw "Unexpected desktop app shortcut path: $($desktopShortcutPlan.shortcutPath)"

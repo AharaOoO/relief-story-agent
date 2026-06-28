@@ -687,6 +687,41 @@ a {
   gap: 14px;
 }
 
+.desktop-settings__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(160px, 0.5fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.desktop-settings__summary .metric--code strong {
+  font-size: 15px;
+  line-height: 1.25;
+  white-space: normal;
+}
+
+.desktop-settings__form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  background: rgba(255, 249, 238, 0.72);
+}
+
+.desktop-settings__form .field--wide {
+  grid-column: 1 / -1;
+}
+
+.desktop-settings__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  margin-top: 16px;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -712,6 +747,14 @@ a {
   font-weight: 750;
   outline: 0;
   padding: 12px 13px;
+}
+
+.field input:disabled,
+.field textarea:disabled,
+.field select:disabled {
+  border-color: rgba(98, 59, 42, 0.12);
+  background: rgba(255, 242, 223, 0.5);
+  color: rgba(98, 59, 42, 0.56);
 }
 
 .field textarea {
@@ -960,6 +1003,21 @@ a {
   line-height: 1.5;
 }
 
+.alert-box--soft {
+  border-color: rgba(32, 61, 111, 0.18);
+  background: rgba(96, 184, 232, 0.12);
+}
+
+.alert-box--success {
+  border-color: rgba(57, 185, 121, 0.34);
+  background: rgba(57, 185, 121, 0.12);
+}
+
+.alert-box--danger {
+  border-color: rgba(217, 61, 50, 0.34);
+  background: rgba(217, 61, 50, 0.1);
+}
+
 .dialog-backdrop {
   position: fixed;
   z-index: 80;
@@ -1012,6 +1070,11 @@ a {
     position: static;
     max-height: none;
   }
+
+  .desktop-settings__summary,
+  .desktop-settings__form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 1380px) {
@@ -1045,8 +1108,14 @@ a {
 
   .layout-grid,
   .grid-two,
-  .grid-three {
+  .grid-three,
+  .desktop-settings__summary,
+  .desktop-settings__form {
     grid-template-columns: 1fr;
+  }
+
+  .desktop-settings__actions > * {
+    width: 100%;
   }
 
   .metric--wide {

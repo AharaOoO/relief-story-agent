@@ -2,7 +2,7 @@ import { ShieldCheck, Sparkles } from 'lucide-react'
 import { useUiStore } from '../../shared/store/uiStore'
 
 const guardrailText =
-  'readiness first · preflight before real run · recovery plan before recover · no raw api keys · '
+  'readiness first / preflight before real run / recovery plan before recover / no raw api keys / '
 
 export function Topbar() {
   const apiBaseUrl = useUiStore((state) => state.apiBaseUrl)
@@ -21,20 +21,20 @@ export function Topbar() {
           </div>
           <div>
             <div className="brand-title display-font">Relief Story</div>
-            <strong>Agent Console</strong>
+            <strong>Desktop Client</strong>
           </div>
         </div>
-        <div className="topbar-note" aria-label="当前工作台原则">
+        <div className="topbar-note" aria-label="当前桌面工作台原则">
           <ShieldCheck size={18} />
-          <span>Local creator operations</span>
-          <strong>Safety gates stay visible</strong>
+          <span>本地创作工作台</span>
+          <strong>配置、运行、恢复都在眼前</strong>
         </div>
         <div className="api-control">
-          <label htmlFor="api-base-url">后端 API / 端口</label>
+          <label htmlFor="api-base-url">后端 API 地址</label>
           <input
             id="api-base-url"
-            aria-label="后端 API / 端口"
-            title="这里改后端服务地址和端口，默认 http://127.0.0.1:8891"
+            aria-label="后端 API 地址"
+            title="输入后端服务地址，例如 http://127.0.0.1:8891"
             value={apiBaseUrl}
             onChange={(event) => setApiBaseUrl(event.target.value)}
           />

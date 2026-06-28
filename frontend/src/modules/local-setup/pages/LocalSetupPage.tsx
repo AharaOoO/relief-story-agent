@@ -2,6 +2,7 @@ import { PageHeader } from '../../../shared/components/PageHeader'
 import { useDocumentTitle } from '../../../shared/hooks/useDocumentTitle'
 import { BackendStatusCard } from '../components/BackendStatusCard'
 import { ComfyUIConnectionCard } from '../components/ComfyUIConnectionCard'
+import { DesktopSettingsPanel } from '../components/DesktopSettingsPanel'
 import { LaunchGuideCard } from '../components/LaunchGuideCard'
 import { ReadinessPanel } from '../components/ReadinessPanel'
 import { SetupBundlePanel } from '../components/SetupBundlePanel'
@@ -18,6 +19,7 @@ export function LocalSetupPage() {
         kicker="Checkpoint 01"
       />
       <LaunchGuideCard />
+      <DesktopSettingsPanel />
       <div className="grid-two">
         <div className="stack">
           <BackendStatusCard />

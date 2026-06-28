@@ -1,16 +1,26 @@
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, shell } = require('electron')
 const { spawn } = require('child_process')
+const fs = require('fs')
 const http = require('http')
 const path = require('path')
 
-const host = process.env.RELIEF_DESKTOP_HOST || '127.0.0.1'
-const backendPort = Number(process.env.RELIEF_BACKEND_PORT || 8891)
-const frontendPort = Number(process.env.RELIEF_FRONTEND_PORT || 5173)
-const backendUrl = `http://${host}:${backendPort}`
-const frontendDevUrl = `http://${host}:${frontendPort}/`
+const {
+  buildBackendLaunch,
+  buildBackendUrl,
+  buildFrontendDevUrl,
+  buildUiOrigin,
+} = require('./backend')
+const {
+  createDefaultSettings,
+  getSettingsFilePath,
+  loadSettings,
+  saveSettings,
+} = require('./settings')
+
 const isDev = process.argv.includes('--dev') || !app.isPackaged
 
 let backendProcess = null
+let currentSettings = null
 
 function requestUrl(url) {
   return new Promise((resolve) => {
@@ -40,75 +50,65 @@ async function waitForUrl(url, timeoutMs = 45_000) {
   return false
 }
 
-function startBackend() {
-  if (backendProcess) return
+function getUserDataDir() {
+  return process.env.RELIEF_DESKTOP_USER_DATA_DIR || app.getPath('userData')
+}
 
-  if (isDev) {
-    const repoRoot = path.resolve(__dirname, '../../..')
-    const stateDir = path.join(repoRoot, 'relief_story_state')
-    const modelConfig = path.join(
-      repoRoot,
-      'relief_story_agent',
-      'examples',
-      'model_config.local.example.json',
-    )
-    const pythonPath = process.env.PYTHONPATH
-      ? `${repoRoot}${path.delimiter}${process.env.PYTHONPATH}`
-      : repoRoot
+function getRepoRoot() {
+  return path.resolve(__dirname, '../../..')
+}
 
-    backendProcess = spawn(
-      'python',
-      [
-        '-m',
-        'relief_story_agent.server',
-        '--host',
-        host,
-        '--port',
-        String(backendPort),
-        '--state-dir',
-        stateDir,
-        '--model-config',
-        modelConfig,
-        '--max-workers',
-        '2',
-        '--lease-seconds',
-        '300',
-        '--recovery-poll-seconds',
-        '5',
-      ],
-      {
-        cwd: repoRoot,
-        env: {
-          ...process.env,
-          PYTHONPATH: pythonPath,
-        },
-        stdio: 'ignore',
-        windowsHide: true,
-      },
-    )
-    return
+function getModelConfigPath() {
+  return path.join(
+    getRepoRoot(),
+    'relief_story_agent',
+    'examples',
+    'model_config.local.example.json',
+  )
+}
+
+function loadCurrentSettings() {
+  currentSettings = loadSettings(getUserDataDir())
+  return currentSettings
+}
+
+function getDesktopState(settings = currentSettings || loadCurrentSettings()) {
+  return {
+    platform: process.platform,
+    shell: 'electron',
+    isDev,
+    settings,
+    settingsPath: getSettingsFilePath(getUserDataDir()),
+    backendUrl: buildBackendUrl(settings),
+    frontendDevUrl: buildFrontendDevUrl(settings),
+    uiOrigin: buildUiOrigin(settings),
+    backendRunning: Boolean(backendProcess && !backendProcess.killed),
+    backendPid: backendProcess && !backendProcess.killed ? backendProcess.pid : null,
   }
+}
 
-  const sidecarPath = path.join(
-    process.resourcesPath,
-    'bin',
-    'relief-story-agent-api.exe',
-  )
-  backendProcess = spawn(
-    sidecarPath,
-    [
-      '--host',
-      host,
-      '--port',
-      String(backendPort),
-      '--state-dir',
-      path.join(app.getPath('userData'), 'state'),
-    ],
-    {
-      stdio: 'ignore',
-      windowsHide: true,
-    },
-  )
+function startBackend(settings = loadCurrentSettings()) {
+  if (backendProcess && !backendProcess.killed) return
+
+  const launch = buildBackendLaunch(settings, {
+    isDev,
+    repoRoot: getRepoRoot(),
+    resourcesPath: process.resourcesPath,
+    modelConfigPath: getModelConfigPath(),
+    env: process.env,
+  })
+  const child = spawn(launch.command, launch.args, {
+    cwd: launch.cwd,
+    env: launch.env,
+    stdio: 'ignore',
+    windowsHide: true,
+  })
+  backendProcess = child
+  child.once('exit', () => {
+    if (backendProcess === child) {
+      backendProcess = null
+    }
+  })
 }
 
 function stopBackend() {
@@ -118,11 +118,59 @@ function stopBackend() {
   backendProcess = null
 }
 
-async function createWindow() {
-  if (!(await requestUrl(`${backendUrl}/api/health`))) {
-    startBackend()
+async function restartBackend() {
+  stopBackend()
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  const settings = loadCurrentSettings()
+  startBackend(settings)
+  await waitForUrl(`${buildBackendUrl(settings)}/api/health`)
+  return getDesktopState(settings)
+}
+
+function registerIpcHandlers() {
+  ipcMain.handle('relief:desktop:get-state', () => {
+    const settings = loadCurrentSettings()
+    return getDesktopState(settings)
+  })
+
+  ipcMain.handle('relief:desktop:save-settings', (_event, input) => {
+    currentSettings = saveSettings(getUserDataDir(), input)
+    return getDesktopState(currentSettings)
+  })
+
+  ipcMain.handle('relief:desktop:reset-settings', () => {
+    currentSettings = saveSettings(
+      getUserDataDir(),
+      createDefaultSettings(getUserDataDir()),
+    )
+    return getDesktopState(currentSettings)
+  })
+
+  ipcMain.handle('relief:desktop:restart-backend', () => restartBackend())
+
+  ipcMain.handle('relief:desktop:open-logs', async () => {
+    const settings = loadCurrentSettings()
+    fs.mkdirSync(settings.logDir, { recursive: true })
+    const error = await shell.openPath(settings.logDir)
+    return {
+      opened: error === '',
+      path: settings.logDir,
+      error: error || null,
+    }
+  })
+}
+
+async function ensureBackendReady(settings) {
+  const backendHealthUrl = `${buildBackendUrl(settings)}/api/health`
+  if (!(await requestUrl(backendHealthUrl))) {
+    startBackend(settings)
   }
-  await waitForUrl(`${backendUrl}/api/health`)
+  await waitForUrl(backendHealthUrl)
+}
+
+async function createWindow() {
+  const settings = loadCurrentSettings()
+  await ensureBackendReady(settings)
 
   const win = new BrowserWindow({
     width: 1280,
@@ -147,13 +195,16 @@ async function createWindow() {
   })
 
   if (isDev) {
-    await win.loadURL(frontendDevUrl)
+    await win.loadURL(buildFrontendDevUrl(settings))
   } else {
     await win.loadFile(path.join(process.resourcesPath, 'frontend', 'index.html'))
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  registerIpcHandlers()
+  return createWindow()
+})
 
 app.on('before-quit', stopBackend)
 

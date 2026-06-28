@@ -5,18 +5,25 @@ param(
   [int]$BackendPort = 8891,
   [int]$FrontendPort = 5173,
   [string]$HostAddress = "127.0.0.1",
-  [string]$ComfyUiEndpoint = "http://127.0.0.1:8188"
+  [string]$ComfyUiEndpoint = "http://127.0.0.1:8188",
+  [string]$StateDir = "",
+  [string]$LogDir = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
 $FrontendDir = Join-Path $RepoRoot "frontend"
-$StateDir = Join-Path $RepoRoot "relief_story_state"
-$LogDir = Join-Path $StateDir "launcher-logs"
+if ([string]::IsNullOrWhiteSpace($StateDir)) {
+  $StateDir = Join-Path $RepoRoot "relief_story_state"
+}
+if ([string]::IsNullOrWhiteSpace($LogDir)) {
+  $LogDir = Join-Path $StateDir "launcher-logs"
+}
 $ModelConfig = Join-Path $RepoRoot "relief_story_agent\examples\model_config.local.example.json"
 $BackendUrl = "http://${HostAddress}:${BackendPort}"
 $FrontendUrl = "http://${HostAddress}:${FrontendPort}/"
+$FrontendOrigin = "http://${HostAddress}:${FrontendPort}"
 $BackendLog = Join-Path $LogDir "backend.log"
 $FrontendLog = Join-Path $LogDir "frontend.log"
 
@@ -63,7 +70,7 @@ function Start-HiddenPowerShell {
 
 $backendCommand = @"
 `$env:PYTHONPATH = '$RepoRoot;' + `$env:PYTHONPATH
-python -m relief_story_agent.server --host $HostAddress --port $BackendPort --state-dir '$StateDir' --model-config '$ModelConfig' --comfyui-endpoint '$ComfyUiEndpoint' --max-workers 2 --lease-seconds 300 --recovery-poll-seconds 5 *> '$BackendLog'
+python -m relief_story_agent.server --host $HostAddress --port $BackendPort --ui-origin '$FrontendOrigin' --state-dir '$StateDir' --model-config '$ModelConfig' --comfyui-endpoint '$ComfyUiEndpoint' --max-workers 2 --lease-seconds 300 --recovery-poll-seconds 5 *> '$BackendLog'
 "@
 
 $frontendCommand = @"
@@ -79,6 +86,8 @@ if ($DryRun) {
     logDir = $LogDir
     backendPort = $BackendPort
     frontendPort = $FrontendPort
+    hostAddress = $HostAddress
+    comfyUiEndpoint = $ComfyUiEndpoint
     backendUrl = $BackendUrl
     frontendUrl = $FrontendUrl
     backendLog = $BackendLog

@@ -6,6 +6,7 @@
   "main": "src/main.js",
   "scripts": {
     "check": "node --check src/main.js && node --check src/preload.js",
+    "test": "node --test src/*.test.js",
     "dev": "electron . --dev",
     "pack": "electron-builder --dir",
     "dist": "electron-builder --win nsis"

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .comfyui_endpoint import normalize_comfyui_endpoint
 
@@ -293,6 +293,34 @@ class TemplatePaths(BaseModel):
     prompt_audit_template_path: str | None = None
 
 
+class StoryInputSpec(BaseModel):
+    mode: Literal["auto", "idea", "requirements", "script", "mixed"] = "auto"
+    content: str = ""
+    source_name: str | None = None
+    language: str = "zh-CN"
+    preserve_original_plot: bool = True
+
+
+class CreationSpec(BaseModel):
+    duration_seconds: int = 240
+    video_aspect_ratio: Literal["16:9", "9:16"] = "16:9"
+    image_resolution: Literal["2k", "1080p"] = "2k"
+    style_preset_id: str = "cinematic_suspense"
+    series_name: str = ""
+    audience: str = ""
+    creative_constraints: list[str] = Field(default_factory=list)
+
+
+class PromptProfileBinding(BaseModel):
+    profile_id: str = "prompt_profile_default"
+    profile_version: int = 1
+    stage_overrides: dict[str, str] = Field(default_factory=dict)
+
+
+class RenderBackendSpec(BaseModel):
+    provider: Literal["comfyui", "runninghub_workflow"] = "comfyui"
+
+
 class ExecutionPolicy(BaseModel):
     max_total_stage_executions: int = Field(default=0, ge=0)
     max_stage_executions: dict[str, int] = Field(default_factory=dict)
@@ -310,7 +338,11 @@ class ExecutionPolicy(BaseModel):
 
 class RunRequest(BaseModel):
     idempotency_key: str = ""
-    idea: str
+    idea: str = ""
+    input_spec: StoryInputSpec = Field(default_factory=StoryInputSpec)
+    creation_spec: CreationSpec = Field(default_factory=CreationSpec)
+    prompt_profile: PromptProfileBinding = Field(default_factory=PromptProfileBinding)
+    render_backend: RenderBackendSpec = Field(default_factory=RenderBackendSpec)
     queue_priority: int = 0
     audience_pressure: str = ""
     preferred_series: str = ""
@@ -325,8 +357,39 @@ class RunRequest(BaseModel):
     model_configs: dict[str, StageModelConfig] = Field(default_factory=dict)
     execution_policy: ExecutionPolicy = Field(default_factory=ExecutionPolicy)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_v1_to_v2(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            idea_val = data.get("idea", "")
+            if idea_val and "input_spec" not in data:
+                data["input_spec"] = {
+                    "mode": "idea",
+                    "content": idea_val
+                }
+            
+            if "creation_spec" not in data:
+                creation_spec = {}
+                if "duration_seconds" in data:
+                    creation_spec["duration_seconds"] = data["duration_seconds"]
+                if "preferred_series" in data:
+                    creation_spec["series_name"] = data["preferred_series"]
+                if "preferred_style" in data:
+                    creation_spec["style_preset_id"] = data["preferred_style"]
+                if "audience_pressure" in data:
+                    creation_spec["audience"] = data["audience_pressure"]
+                
+                if creation_spec:
+                    data["creation_spec"] = creation_spec
+
+        return data
+
 
 class RunRequestDefaults(BaseModel):
+    input_spec: StoryInputSpec | None = None
+    creation_spec: CreationSpec | None = None
+    prompt_profile: PromptProfileBinding | None = None
+    render_backend: RenderBackendSpec | None = None
     queue_priority: int | None = None
     audience_pressure: str | None = None
     preferred_series: str | None = None

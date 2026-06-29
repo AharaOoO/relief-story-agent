@@ -1,7 +1,11 @@
 type UiApprovalMode = 'manual' | 'auto_after_audit_pass' | 'auto'
 
 type UiRunRequest = {
-  idea: string
+  idea?: string
+  input_spec?: any
+  creation_spec?: any
+  prompt_profile?: any
+  render_backend?: any
   approval_mode?: UiApprovalMode
   duration_seconds?: number
   dry_run?: boolean
@@ -9,14 +13,22 @@ type UiRunRequest = {
 }
 
 export type BackendRunRequest = {
-  idea: string
+  idea?: string
+  input_spec?: any
+  creation_spec?: any
+  prompt_profile?: any
+  render_backend?: any
   approval_mode: 'manual' | 'auto'
   duration_seconds?: number
 }
 
 export function toBackendRunRequest(request: UiRunRequest): BackendRunRequest {
   return {
-    idea: request.idea.trim(),
+    idea: request.idea ? request.idea.trim() : undefined,
+    input_spec: request.input_spec,
+    creation_spec: request.creation_spec,
+    prompt_profile: request.prompt_profile,
+    render_backend: request.render_backend,
     approval_mode:
       request.approval_mode === 'auto_after_audit_pass' ? 'auto' : 'manual',
     duration_seconds: request.duration_seconds,

@@ -838,7 +838,7 @@ def _model_check(args: argparse.Namespace) -> int:
     if args.run_request:
         request_payload = _read_json_file(args.run_request)
         request = _validate_request_model(RunRequest, request_payload, source=args.run_request)
-        if request.comfyui.enabled:
+        if request.comfyui and request.comfyui.enabled:
             image_config = request.comfyui.grid_image
     result = run_model_probe(
         registry,

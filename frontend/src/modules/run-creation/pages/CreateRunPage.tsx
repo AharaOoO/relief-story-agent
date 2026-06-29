@@ -43,7 +43,7 @@ export function CreateRunPage() {
         <div className="stack">
           <PreflightPanel />
           <CreateRunSubmitPanel
-            canSubmit={mergedRequest.idea.trim().length > 0}
+            canSubmit={(mergedRequest.idea || '').trim().length > 0}
             request={mergedRequest}
           />
         </div>

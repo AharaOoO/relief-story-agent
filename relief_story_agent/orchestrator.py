@@ -780,12 +780,13 @@ class StoryRunOrchestrator:
     def _run_chief_screenwriter(self, run: RunState) -> None:
         run.current_stage = "chief_screenwriter"
         run.add_log("chief_screenwriter", "Generating core candidates and draft script.")
+        idea_text = run.request.input_spec.content if run.request.input_spec.content else run.request.idea
         prompt = build_chief_screenwriter_prompt(
-            idea=run.request.idea,
-            audience_pressure=run.request.audience_pressure,
-            preferred_style=run.request.preferred_style,
-            preferred_series=run.request.preferred_series,
-            duration_seconds=run.request.duration_seconds,
+            idea=idea_text,
+            audience_pressure=run.request.creation_spec.audience,
+            preferred_style=run.request.creation_spec.style_preset_id,
+            preferred_series=run.request.creation_spec.series_name,
+            duration_seconds=run.request.creation_spec.duration_seconds,
         )
         payload = self._generate_model_json(
             run,

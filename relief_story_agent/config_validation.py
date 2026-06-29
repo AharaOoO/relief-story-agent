@@ -41,6 +41,8 @@ def validate_run_configuration(
 ) -> dict[str, Any]:
     checks = [
         _validate_model_environment(model_registry),
+        _validate_input_spec(request),
+        _validate_creation_spec(request),
         _validate_template(
             "prompt_writer_template",
             request.template_paths.prompt_writer_template_path,
@@ -174,6 +176,22 @@ def _validate_model_environment(model_registry: ModelConfigRegistry) -> dict[str
         "Model profile environment variables are configured.",
         {"profile_count": len(status.get("profiles") or {})},
     )
+
+
+def _validate_input_spec(request: RunRequest) -> dict[str, Any]:
+    spec = request.input_spec
+    if spec.mode == "script" and not spec.content.strip():
+        return _check("input_spec", "failed", "Content cannot be empty in script mode.")
+    return _check("input_spec", "passed", "Input spec is valid.")
+
+
+def _validate_creation_spec(request: RunRequest) -> dict[str, Any]:
+    spec = request.creation_spec
+    if spec.video_aspect_ratio not in ("16:9", "9:16"):
+        return _check("creation_spec", "failed", f"Unsupported video aspect ratio: {spec.video_aspect_ratio}")
+    if spec.image_resolution not in ("2k", "1080p"):
+        return _check("creation_spec", "failed", f"Unsupported image resolution: {spec.image_resolution}")
+    return _check("creation_spec", "passed", "Creation spec is valid.")
 
 
 def _validate_template(

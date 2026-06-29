@@ -1,7 +1,8 @@
-const { app, BrowserWindow, shell } = require('electron')
+const { app, BrowserWindow, shell, ipcMain, safeStorage } = require('electron')
 const { spawn } = require('child_process')
 const http = require('http')
 const path = require('path')
+const fs = require('fs').promises
 
 const host = process.env.RELIEF_DESKTOP_HOST || '127.0.0.1'
 const backendPort = Number(process.env.RELIEF_BACKEND_PORT || 8891)
@@ -11,6 +12,53 @@ const frontendDevUrl = `http://${host}:${frontendPort}/`
 const isDev = process.argv.includes('--dev') || !app.isPackaged
 
 let backendProcess = null
+
+async function loadSettings() {
+  const settingsPath = path.join(app.getPath('userData'), 'settings.json')
+  try {
+    const data = await fs.readFile(settingsPath, 'utf8')
+    const settings = JSON.parse(data)
+    if (safeStorage.isEncryptionAvailable()) {
+      for (const [key, value] of Object.entries(settings)) {
+        if (key.endsWith('API_KEY') && value) {
+          try {
+            settings[key] = safeStorage.decryptString(Buffer.from(value, 'base64'))
+          } catch (e) {
+            console.error('Failed to decrypt', key, e)
+          }
+        }
+      }
+    }
+    return settings
+  } catch (err) {
+    if (err.code !== 'ENOENT') {
+      console.error('Error loading settings:', err)
+    }
+    return {}
+  }
+}
+
+async function saveSettings(newSettings) {
+  const settingsPath = path.join(app.getPath('userData'), 'settings.json')
+  const current = await loadSettings()
+  const settings = { ...current, ...newSettings }
+  const toSave = { ...settings }
+  
+  if (safeStorage.isEncryptionAvailable()) {
+    for (const [key, value] of Object.entries(toSave)) {
+      if (key.endsWith('API_KEY') && value) {
+        try {
+          toSave[key] = safeStorage.encryptString(value).toString('base64')
+        } catch (e) {
+          console.error('Failed to encrypt', key, e)
+        }
+      }
+    }
+  }
+  
+  await fs.writeFile(settingsPath, JSON.stringify(toSave, null, 2), 'utf8')
+  return settings
+}
 
 function requestUrl(url) {
   return new Promise((resolve) => {
@@ -40,8 +88,11 @@ async function waitForUrl(url, timeoutMs = 45_000) {
   return false
 }
 
-function startBackend() {
+async function startBackend() {
   if (backendProcess) return
+
+  const settings = await loadSettings()
+  const env = { ...process.env, ...settings }
 
   if (isDev) {
     const repoRoot = path.resolve(__dirname, '../../..')
@@ -79,7 +130,7 @@ function startBackend() {
       {
         cwd: repoRoot,
         env: {
-          ...process.env,
+          ...env,
           PYTHONPATH: pythonPath,
         },
         stdio: 'ignore',
@@ -105,6 +156,7 @@ function startBackend() {
       path.join(app.getPath('userData'), 'state'),
     ],
     {
+      env,
       stdio: 'ignore',
       windowsHide: true,
     },
@@ -120,7 +172,7 @@ function stopBackend() {
 
 async function createWindow() {
   if (!(await requestUrl(`${backendUrl}/api/health`))) {
-    startBackend()
+    await startBackend()
   }
   await waitForUrl(`${backendUrl}/api/health`)
 
@@ -153,7 +205,17 @@ async function createWindow() {
   }
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  ipcMain.handle('get-settings', async () => await loadSettings())
+  ipcMain.handle('save-settings', async (event, settings) => await saveSettings(settings))
+  ipcMain.handle('get-handshake', () => ({
+    backendUrl,
+    backendPort,
+    platform: process.platform,
+    version: app.getVersion()
+  }))
+  createWindow()
+})
 
 app.on('before-quit', stopBackend)
 

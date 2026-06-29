@@ -312,7 +312,7 @@ class CreationSpec(BaseModel):
 
 
 class PromptProfileBinding(BaseModel):
-    profile_id: str = "prompt_profile_default"
+    profile_id: str = "system-default"
     profile_version: int = 1
     stage_overrides: dict[str, str] = Field(default_factory=dict)
 
@@ -486,6 +486,10 @@ class RunState(BaseModel):
     current_stage: str = "queued"
     logs: list[RunLog] = Field(default_factory=list)
     events: list[RunEvent] = Field(default_factory=list)
+    prompt_profile_id: str = ""
+    prompt_profile_version: int = 0
+    prompt_profile_hash: str = ""
+    prompt_snapshot: dict[str, str] = Field(default_factory=dict)
     core_candidates: list[dict[str, Any]] = Field(default_factory=list)
     selected_core: dict[str, Any] = Field(default_factory=dict)
     script: dict[str, Any] = Field(default_factory=dict)

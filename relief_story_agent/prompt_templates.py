@@ -142,13 +142,14 @@ def build_prompt_writer_prompt(
     request: RunRequest,
     script: dict[str, Any],
     workflow_context: str = "",
+    template: str | None = None,
 ) -> str:
-    template = _load_template(
-        request.template_paths.prompt_writer_template_path,
-        DEFAULT_PROMPT_WRITER_TEMPLATE,
-    )
+    if request.template_paths and request.template_paths.prompt_writer_template_path:
+        tmpl = _load_template(request.template_paths.prompt_writer_template_path, DEFAULT_PROMPT_WRITER_TEMPLATE)
+    else:
+        tmpl = template or DEFAULT_PROMPT_WRITER_TEMPLATE
     return _render_template(
-        template,
+        tmpl,
         {
             "script_json": _json(script),
             "storyboard_json": "",
@@ -167,13 +168,14 @@ def build_prompt_audit_prompt(
     script: dict[str, Any],
     storyboard: list[dict[str, Any]],
     workflow_context: str = "",
+    template: str | None = None,
 ) -> str:
-    template = _load_template(
-        request.template_paths.prompt_audit_template_path,
-        DEFAULT_PROMPT_AUDIT_TEMPLATE,
-    )
+    if request.template_paths and request.template_paths.prompt_audit_template_path:
+        tmpl = _load_template(request.template_paths.prompt_audit_template_path, DEFAULT_PROMPT_AUDIT_TEMPLATE)
+    else:
+        tmpl = template or DEFAULT_PROMPT_AUDIT_TEMPLATE
     return _render_template(
-        template,
+        tmpl,
         {
             "script_json": _json(script),
             "storyboard_json": _json(storyboard),
@@ -193,9 +195,11 @@ def build_prompt_reviser_prompt(
     storyboard: list[dict[str, Any]],
     audit: dict[str, Any],
     workflow_context: str = "",
+    template: str | None = None,
 ) -> str:
+    tmpl = template or getattr(request.template_paths, "prompt_reviser_template_path", None) or DEFAULT_PROMPT_REVISER_TEMPLATE
     return _render_template(
-        DEFAULT_PROMPT_REVISER_TEMPLATE,
+        tmpl,
         {
             "script_json": _json(script),
             "storyboard_json": _json(storyboard),

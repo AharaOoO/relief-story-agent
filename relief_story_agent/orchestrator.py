@@ -161,6 +161,7 @@ class StoryRunOrchestrator:
         model_registry: ModelConfigRegistry | None = None,
         grid_image_provider: GridImageProvider | None = None,
         resource_limits: ExecutionResourceLimits | None = None,
+        profile_store: Any = None,
     ):
         self.provider = provider
         self.store = store or InMemoryRunStore()
@@ -169,6 +170,13 @@ class StoryRunOrchestrator:
         self.model_registry = model_registry or ModelConfigRegistry()
         self.grid_image_provider = grid_image_provider or OpenAICompatibleGridImageProvider()
         self.resource_limits = resource_limits or ExecutionResourceLimits()
+        
+        if profile_store is None:
+            from .prompt_profiles import PromptProfileStore
+            from pathlib import Path
+            self.profile_store = PromptProfileStore(Path.home() / ".relief_story" / "profiles")
+        else:
+            self.profile_store = profile_store
 
     def create_run(self, request: RunRequest) -> RunState:
         existing = self._find_idempotent_run(request)
@@ -204,12 +212,29 @@ class StoryRunOrchestrator:
             existing = self._find_idempotent_run(request)
             if existing:
                 return existing
+        profile_id = "system-default"
+        if request.prompt_profile:
+            profile_id = request.prompt_profile.profile_id
+        try:
+            profile = self.profile_store.get(profile_id)
+            profile_version = profile.version
+            profile_hash = profile.content_hash
+            prompt_snapshot = profile.stages.model_dump()
+            if request.prompt_profile and request.prompt_profile.stage_overrides:
+                prompt_snapshot.update(request.prompt_profile.stage_overrides)
+        except Exception as exc:
+            raise ValueError(f"Failed to load prompt profile {profile_id!r}: {exc}") from exc
+
         now = datetime.now(timezone.utc).isoformat()
         run = RunState(
             run_id="run_" + uuid.uuid4().hex[:12],
             request=request,
             idempotency_key=request.idempotency_key,
             request_fingerprint=self._run_request_fingerprint(request),
+            prompt_profile_id=profile_id,
+            prompt_profile_version=profile_version,
+            prompt_profile_hash=profile_hash,
+            prompt_snapshot=prompt_snapshot,
             status="queued",
             current_stage="queued",
             parent_batch_id=parent_batch_id,
@@ -787,6 +812,7 @@ class StoryRunOrchestrator:
             preferred_style=run.request.creation_spec.style_preset_id,
             preferred_series=run.request.creation_spec.series_name,
             duration_seconds=run.request.creation_spec.duration_seconds,
+            template=run.prompt_snapshot.get("chief_screenwriter"),
         )
         payload = self._generate_model_json(
             run,
@@ -806,7 +832,8 @@ class StoryRunOrchestrator:
             {
                 "selected_core": run.selected_core,
                 "draft_script": run.script,
-            }
+            },
+            template=run.prompt_snapshot.get("deepseek_polish"),
         )
         payload = self._generate_model_json(
             run,
@@ -832,6 +859,7 @@ class StoryRunOrchestrator:
             request=run.request,
             script=run.script,
             workflow_context=self._build_workflow_context(run.request),
+            template=run.prompt_snapshot.get("gpt_prompt_writer"),
         )
         payload = self._generate_model_json(
             run,
@@ -853,6 +881,7 @@ class StoryRunOrchestrator:
             script=run.script,
             storyboard=run.storyboard,
             workflow_context=self._build_workflow_context(run.request),
+            template=run.prompt_snapshot.get("gpt_prompt_audit"),
         )
         audit = self._generate_model_json(
             run,
@@ -874,6 +903,7 @@ class StoryRunOrchestrator:
             storyboard=run.storyboard,
             audit=run.prompt_audit,
             workflow_context=self._build_workflow_context(run.request),
+            template=run.prompt_snapshot.get("gpt_prompt_reviser"),
         )
         payload = self._generate_model_json(
             run,

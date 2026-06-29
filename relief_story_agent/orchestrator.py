@@ -871,6 +871,11 @@ class StoryRunOrchestrator:
             stage="gpt_prompt_writer",
         )
         run.storyboard = shots
+        
+        gate = self.quality_gate.check_storyboard_object(run.storyboard)
+        if not gate.passed:
+            raise ValueError(f"gpt_prompt_writer quality gate failed: {gate.issues}")
+            
         run.final_storyboard = []
 
     def _run_prompt_audit(self, run: RunState) -> None:

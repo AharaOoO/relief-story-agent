@@ -13,6 +13,8 @@ class QualityGate:
     high_conflict_terms = ("大吵大闹", "激烈争吵", "咆哮", "互相辱骂", "压迫观众")
     preachy_terms = ("生活很美好", "你要加油", "必须坚强", "努力就会", "鸡汤")
     total_resolution_terms = ("彻底解决", "问题全部解决", "大圆满", "从此再也")
+    gore_terms = ("血腥", "断肢", "残忍", "blood", "gore", "violence", "杀戮", "碎尸")
+    ooc_terms = ("ooc", "out of character", "违背人设", "崩坏", "崩人设")
     required_beats = ("压力入口", "轻微冲突", "温柔异动", "情绪释放", "余味结尾")
 
     def check_script_text(self, text: str) -> QualityGateResult:
@@ -23,6 +25,19 @@ class QualityGate:
             issues.append("preachy")
         if self._contains_any(text, self.total_resolution_terms):
             issues.append("total_resolution")
+        if self._contains_any(text.lower(), self.gore_terms):
+            issues.append("gore")
+        if self._contains_any(text.lower(), self.ooc_terms):
+            issues.append("ooc")
+        return QualityGateResult(passed=not issues, issues=issues)
+
+    def check_storyboard_object(self, storyboard: list[dict]) -> QualityGateResult:
+        issues: list[str] = []
+        text = str(storyboard).lower()
+        if self._contains_any(text, self.gore_terms):
+            issues.append("gore")
+        if self._contains_any(text, self.ooc_terms):
+            issues.append("ooc")
         return QualityGateResult(passed=not issues, issues=issues)
 
     def check_script_object(self, script: dict) -> QualityGateResult:

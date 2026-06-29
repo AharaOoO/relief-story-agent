@@ -47,3 +47,17 @@ def test_quality_gate_rejects_preachy_or_high_conflict_script():
     assert "preachy" in result.issues
     assert "total_resolution" in result.issues
 
+
+def test_quality_gate_rejects_gore_or_ooc_in_script_and_storyboard():
+    gate = QualityGate()
+    
+    script_result = gate.check_script_text("角色在这里突然表现得非常血腥，简直是崩人设了！")
+    assert not script_result.passed
+    assert "gore" in script_result.issues
+    assert "ooc" in script_result.issues
+    
+    storyboard = [{"prompt": "There is a lot of blood and violence, totally out of character."}]
+    storyboard_result = gate.check_storyboard_object(storyboard)
+    assert not storyboard_result.passed
+    assert "gore" in storyboard_result.issues
+    assert "ooc" in storyboard_result.issues

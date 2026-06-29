@@ -155,6 +155,22 @@ def test_quality_gate_runs_after_deepseek_not_on_rough_chief_draft():
     assert run.prompt_revision_count == 0
 
 
+def test_prompt_writer_blocked_by_quality_gate():
+    import pytest
+    from relief_story_agent.quality import QualityGate
+    from relief_story_agent.models import RunState
+    
+    provider = CapturingProvider(
+        {"gpt_prompt_writer": {"shots": [{"id": 1, "time_range": "0-5", "description": "foo", "negative_prompt": "bar", "image_prompt": "This contains blood and gore", "comfyui_inputs": {}}]}}
+    )
+    orchestrator = StoryRunOrchestrator(provider=provider, store=InMemoryRunStore())
+    
+    run = orchestrator.create_run(RunRequest(idea="test", comfyui=None))
+    run.script = {"duration_seconds": 90, "core_sentence": "test", "beats": [{"name": b} for b in QualityGate.required_beats]}
+
+
+    with pytest.raises(ValueError, match="gpt_prompt_writer quality gate failed"):
+        orchestrator._run_prompt_writer(run)
 def test_custom_writer_template_is_used_by_prompt_writer_stage(tmp_path):
     writer_template = tmp_path / "writer.md"
     writer_template.write_text("CUSTOM TEMPLATE {{script_json}} {{workflow_context}}", encoding="utf-8")

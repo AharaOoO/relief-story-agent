@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate, type RouteObject } from 'react-router-dom'
+import { createHashRouter, Navigate, type RouteObject } from 'react-router-dom'
 import { WorkbenchShell } from './workbench/WorkbenchShell'
 import DashboardPage from '../pages/DashboardPage'
 import AutopilotPage from '../pages/AutopilotPage'
@@ -26,4 +26,4 @@ export const routes: RouteObject[] = [
   { path: '*', element: <NotFoundPage /> },
 ]
 
-export const router = createBrowserRouter(routes)
+export const router = createHashRouter(routes)

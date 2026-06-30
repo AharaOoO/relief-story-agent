@@ -1,7 +1,7 @@
-# Relief Story Agent Desktop Shell
+# Relief Story Agent Desktop Client
 
-This is the future fan-facing desktop package skeleton. It is separate from the
-immediate PowerShell desktop shortcut under `tools/desktop`.
+This Electron client supervises the local Python API, loads the offline React
+workbench, and stores API keys with Windows secure storage.
 
 ## Development
 
@@ -27,7 +27,26 @@ npm --prefix desktop/electron run dev
 In development, Electron starts the Python API from the repository root and
 loads `http://127.0.0.1:5173/` inside a desktop window.
 
-## Future Fan Installer Pipeline
+## Windows Installer
+
+Run the complete build from the repository root:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/desktop/Build-Desktop.ps1
+```
+
+The script builds the offline frontend, creates the Python API sidecar, and
+produces the NSIS installer under `desktop/electron/release/`.
+The build machine needs the Windows Python launcher with Python 3.12 available
+as `py -3.12`; the script creates its own isolated build environment.
+
+To build only the frontend and sidecar while iterating:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools/desktop/Build-Desktop.ps1 -SkipInstaller
+```
+
+## Manual Pipeline
 
 1. Build the React frontend:
 
@@ -38,8 +57,8 @@ loads `http://127.0.0.1:5173/` inside a desktop window.
 2. Build the Python backend sidecar with PyInstaller:
 
    ```powershell
-   python -m pip install pyinstaller
-   pyinstaller --name relief-story-agent-api --onefile relief_story_agent/server.py
+   py -3.12 -m pip install pyinstaller
+   py -3.12 -m PyInstaller --name relief-story-agent-api --onefile desktop/electron/sidecar/entry.py
    ```
 
 3. Copy the backend executable to:
@@ -48,12 +67,8 @@ loads `http://127.0.0.1:5173/` inside a desktop window.
    desktop/electron/sidecar/bin/relief-story-agent-api.exe
    ```
 
-4. Make sure the icon exists:
-
-   ```powershell
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools/desktop/Install-Shortcut.ps1 -DryRun
-   powershell -NoProfile -ExecutionPolicy Bypass -File tools/desktop/Install-Shortcut.ps1
-   ```
+4. Keep the tracked application icon at
+   `tools/desktop/assets/relief-story-agent.ico`.
 
 5. Build the Windows installer:
 

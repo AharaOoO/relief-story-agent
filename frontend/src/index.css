@@ -1,4 +1,9 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap");
+@import '@fontsource/inter/latin-400.css';
+@import '@fontsource/inter/latin-500.css';
+@import '@fontsource/inter/latin-600.css';
+@import '@fontsource/inter/latin-700.css';
+@import '@fontsource/instrument-serif/latin-400.css';
+@import '@fontsource/instrument-serif/latin-400-italic.css';
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -107,7 +112,12 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
 
 .production-band, .process-band, .recent-band { position: relative; padding: 104px 0; }
 .production-band { background: linear-gradient(180deg, var(--coast-bg), #f5f8fc); }
-.process-band { background: #f0f5fa; border-block: 1px solid rgba(114,132,161,.1); }
+.process-band {
+  background:
+    linear-gradient(180deg, rgba(247,249,252,.82), rgba(240,246,251,.72)),
+    url('/coast-workspace.webp') center / cover no-repeat;
+  border-block: 1px solid rgba(114,132,161,.1);
+}
 .recent-band { min-height: 500px; background: linear-gradient(180deg, #f8fafc, #eff5fa); }
 .section-intro { margin-bottom: 34px; }
 .section-intro.is-row { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
@@ -151,7 +161,7 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
 .preflight-result ul { margin: 8px 0 0; padding-left: 20px; }
 
 .process-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 0; padding: 0; list-style: none; }
-.process-grid li { min-height: 120px; display: flex; flex-direction: column; justify-content: space-between; padding: 18px; border: 1px solid rgba(255,255,255,.9); border-radius: 18px; background: rgba(255,255,255,.58); box-shadow: inset 0 0 0 1px rgba(103,128,168,.06); }
+.process-grid li { min-height: 120px; display: flex; flex-direction: column; justify-content: space-between; padding: 18px; border: 1px solid rgba(255,255,255,.92); border-radius: 18px; background: rgba(255,255,255,.68); box-shadow: 0 10px 30px rgba(70,91,126,.05), inset 0 0 0 1px rgba(103,128,168,.06); backdrop-filter: blur(14px); }
 .process-number { color: var(--coast-accent); font-family: "Instrument Serif", Georgia, serif; font-size: 24px; }
 .process-grid li div { display: flex; flex-direction: column; gap: 5px; }
 .process-grid strong { font-size: 16px; }

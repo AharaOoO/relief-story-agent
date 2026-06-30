@@ -23,6 +23,10 @@ outputs/
 !frontend/public/beach_bg.mp4
 !frontend/public/beach-poster.webp
 !frontend/public/coast-*.webp
+
+# Local desktop packaging output.
+desktop/electron/sidecar/bin/
+desktop/electron/release/
 *.safetensors
 *.ckpt
 *.pt

@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 export function OceanVideoBackground() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const assetBase = import.meta.env.BASE_URL;
 
   useEffect(() => {
     const video = videoRef.current;
@@ -22,8 +23,8 @@ export function OceanVideoBackground() {
       <div className="ocean-video-layer">
         <video
           ref={videoRef}
-          src="/beach_bg.mp4"
-          poster="/beach-poster.webp"
+          src={`${assetBase}beach_bg.mp4`}
+          poster={`${assetBase}beach-poster.webp`}
           autoPlay
           muted
           loop

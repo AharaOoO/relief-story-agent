@@ -52,3 +52,23 @@ class OpenAICompatibleGridImageProvider:
             max_retries=0,
             timeout=config.timeout_seconds,
         )
+
+
+class GridImageProviderRouter:
+    def __init__(
+        self,
+        *,
+        openai_provider: object | None = None,
+        runninghub_provider: object | None = None,
+    ):
+        self.openai_provider = openai_provider or OpenAICompatibleGridImageProvider()
+        if runninghub_provider is None:
+            from .runninghub_image import RunningHubImageTaskProvider
+
+            runninghub_provider = RunningHubImageTaskProvider()
+        self.runninghub_provider = runninghub_provider
+
+    def generate(self, *, prompt: str, config: GridImageConfig) -> GeneratedImage:
+        if config.provider == "runninghub_image_task":
+            return self.runninghub_provider.generate(prompt=prompt, config=config)
+        return self.openai_provider.generate(prompt=prompt, config=config)

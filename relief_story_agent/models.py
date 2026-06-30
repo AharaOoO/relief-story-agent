@@ -9,6 +9,7 @@ from .comfyui_endpoint import normalize_comfyui_endpoint
 from .provider_catalog import (
     RUNNINGHUB_API_KEY_ENVS,
     RUNNINGHUB_BASE_URLS,
+    RUNNINGHUB_WEB_BASE_URLS,
     validate_runninghub_model,
 )
 
@@ -131,12 +132,15 @@ class PlaceholderTarget(BaseModel):
 class GridImageConfig(BaseModel):
     mode: Literal["auto", "manual_override"] = "auto"
     manual_image_path: str | None = None
-    provider: Literal["openai_compatible"] = "openai_compatible"
+    provider: Literal["openai_compatible", "runninghub_image_task"] = "openai_compatible"
+    runninghub_site: Literal["cn", "ai"] | None = None
     base_url: str = "https://api.openai.com/v1"
     api_key: str = Field(default="", exclude=True, repr=False)
     api_key_env: str = "OPENAI_API_KEY"
     model: str = "gpt-image-2"
     size: str = "1024x1024"
+    aspect_ratio: Literal["16:9", "9:16"] = "16:9"
+    resolution: Literal["1k", "2k"] = "2k"
     quality: Literal["low", "medium", "high", "auto"] = "medium"
     output_format: Literal["png", "jpeg", "webp"] = "png"
     timeout_seconds: float = Field(default=180.0, gt=0)
@@ -144,6 +148,20 @@ class GridImageConfig(BaseModel):
     prompt_max_chars: int = Field(default=4000, ge=500, le=16000)
     min_dimension: int = Field(default=512, ge=64)
     max_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
+    output_timeout_seconds: float = Field(default=600.0, gt=0)
+    output_poll_interval_seconds: float = Field(default=3.0, ge=0)
+
+    @model_validator(mode="after")
+    def _configure_runninghub_image(self) -> "GridImageConfig":
+        if self.provider != "runninghub_image_task":
+            return self
+        if self.runninghub_site is None:
+            raise ValueError("runninghub_site is required for RunningHub image provider")
+        if self.model != "rhart-image-g-2":
+            raise ValueError("RunningHub image provider requires model 'rhart-image-g-2'")
+        self.base_url = RUNNINGHUB_WEB_BASE_URLS[self.runninghub_site]
+        self.api_key_env = RUNNINGHUB_API_KEY_ENVS[self.runninghub_site]
+        return self
 
     def effective_mode(self) -> Literal["auto", "manual_override"]:
         return "manual_override" if self.manual_image_path else self.mode
@@ -169,6 +187,9 @@ class GridImageAsset(BaseModel):
     prompt: str = ""
     provider: str = ""
     model: str = ""
+    task_id: str = ""
+    aspect_ratio: str = ""
+    resolution: str = ""
     generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     comfyui_filename: str = ""
     upload_status: Literal["pending", "accepted", "unknown", "rejected"] = "pending"

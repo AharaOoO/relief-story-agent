@@ -31,14 +31,20 @@ class FakeGeneratedGridProvider:
 
 def _grid_png_bytes(tmp_path):
     path = tmp_path / "fixture_grid.png"
-    image = Image.new("RGB", (1024, 1024), "white")
+    width, height = 1600, 900
+    half_w, half_h = width // 2, height // 2
+    image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
     colors = ["red", "green", "blue", "yellow"]
     for index, color in enumerate(colors):
-        left = (index % 2) * 512
-        top = (index // 2) * 512
-        image.paste(color, (left, top, left + 512, top + 512))
-        draw.line((left + 20, top + 20, left + 492, top + 492), fill="black", width=8)
+        left = (index % 2) * half_w
+        top = (index // 2) * half_h
+        image.paste(color, (left, top, left + half_w, top + half_h))
+        draw.line(
+            (left + 20, top + 20, left + half_w - 20, top + half_h - 20),
+            fill="black",
+            width=8,
+        )
     image.save(path)
     return path.read_bytes()
 

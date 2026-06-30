@@ -15,6 +15,11 @@ RUNNINGHUB_API_KEY_ENVS: dict[RunningHubSite, str] = {
     "ai": "RUNNINGHUB_AI_API_KEY",
 }
 
+RUNNINGHUB_WEB_BASE_URLS: dict[RunningHubSite, str] = {
+    "cn": "https://www.runninghub.cn",
+    "ai": "https://www.runninghub.ai",
+}
+
 _CURATED_MODELS: dict[RunningHubSite, dict[str, tuple[str, ...]]] = {
     "cn": {
         "chief_screenwriter": ("qwen/qwen3.7-plus", "qwen/qwen3.7-max"),
@@ -97,4 +102,3 @@ def build_provider_catalog() -> dict:
             for site, stage_catalog in _CURATED_MODELS.items()
         }
     }
-

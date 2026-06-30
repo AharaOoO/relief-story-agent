@@ -44,7 +44,7 @@ from .grid_image import (
     compile_four_grid_prompt,
     deterministic_comfyui_filename,
 )
-from .image_providers import OpenAICompatibleGridImageProvider
+from .image_providers import GridImageProviderRouter
 from .ltx_workflow import find_ltx_injection_points
 from .model_config import ModelConfigRegistry
 from .model_runtime import ModelCallExecutor
@@ -175,7 +175,7 @@ class StoryRunOrchestrator:
         self.quality_gate = quality_gate or QualityGate()
         self.model_executor = model_executor or ModelCallExecutor(provider)
         self.model_registry = model_registry or ModelConfigRegistry()
-        self.grid_image_provider = grid_image_provider or OpenAICompatibleGridImageProvider()
+        self.grid_image_provider = grid_image_provider or GridImageProviderRouter()
         self.resource_limits = resource_limits or ExecutionResourceLimits()
         
         if profile_store is None:

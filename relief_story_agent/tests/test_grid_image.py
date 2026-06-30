@@ -25,7 +25,8 @@ def test_grid_image_config_defaults_to_gpt_image_2_auto_mode():
     assert config.mode == "auto"
     assert config.provider == "openai_compatible"
     assert config.model == "gpt-image-2"
-    assert config.size == "1024x1024"
+    assert config.aspect_ratio == "16:9"
+    assert config.resolution == "2k"
     assert config.quality == "medium"
     assert config.output_format == "png"
     assert config.prompt_max_chars == 4000
@@ -124,6 +125,34 @@ def test_validate_grid_image_reports_dimensions_hash_and_quadrants(tmp_path):
     assert len(validated.sha256) == 64
 
 
+def test_validate_grid_image_uses_the_selected_landscape_or_portrait_ratio(tmp_path):
+    landscape = tmp_path / "landscape.png"
+    portrait = tmp_path / "portrait.png"
+    _make_grid(landscape, size=(1600, 900))
+    _make_grid(portrait, size=(900, 1600))
+
+    assert validate_grid_image(
+        landscape,
+        min_dimension=512,
+        max_bytes=10_000_000,
+        expected_aspect_ratio="16:9",
+    ).width == 1600
+    assert validate_grid_image(
+        portrait,
+        min_dimension=512,
+        max_bytes=10_000_000,
+        expected_aspect_ratio="9:16",
+    ).height == 1600
+
+    with pytest.raises(ValueError, match="16:9"):
+        validate_grid_image(
+            portrait,
+            min_dimension=512,
+            max_bytes=10_000_000,
+            expected_aspect_ratio="16:9",
+        )
+
+
 def test_validate_grid_image_rejects_empty_quadrant(tmp_path):
     path = tmp_path / "blank.png"
     _make_grid(
@@ -139,7 +168,7 @@ def test_validate_grid_image_rejects_empty_quadrant(tmp_path):
 def test_manual_asset_is_copied_without_modifying_source(tmp_path):
     source = tmp_path / "source.png"
     artifact_dir = tmp_path / "run"
-    _make_grid(source)
+    _make_grid(source, size=(1600, 900))
     before = source.read_bytes()
 
     asset = acquire_manual_grid_image(
@@ -183,7 +212,7 @@ class FakeGridProvider:
 
 def test_generated_asset_is_saved_and_validated(tmp_path):
     source = tmp_path / "source.png"
-    _make_grid(source)
+    _make_grid(source, size=(1600, 900))
     provider = FakeGridProvider(source.read_bytes())
 
     asset = acquire_generated_grid_image(

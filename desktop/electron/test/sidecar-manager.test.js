@@ -1,0 +1,109 @@
+const assert = require('node:assert/strict')
+const { EventEmitter } = require('node:events')
+const fs = require('node:fs/promises')
+const os = require('node:os')
+const path = require('node:path')
+const { PassThrough } = require('node:stream')
+const test = require('node:test')
+
+const { SidecarManager } = require('../src/sidecar-manager')
+
+class FakeChild extends EventEmitter {
+  constructor() {
+    super()
+    this.stdout = new PassThrough()
+    this.stderr = new PassThrough()
+    this.killed = false
+  }
+
+  kill() {
+    this.killed = true
+    queueMicrotask(() => this.emit('exit', 0, null))
+    return true
+  }
+}
+
+async function makeManager(overrides = {}) {
+  const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'relief-sidecar-'))
+  const spawns = []
+  const children = []
+  const manager = new SidecarManager({
+    host: '127.0.0.1',
+    preferredPort: 8891,
+    userDataPath,
+    portResolver: async () => 19001,
+    requestUrl: async () => true,
+    spawnFn: (command, args, options) => {
+      const child = new FakeChild()
+      children.push(child)
+      spawns.push({ command, args, options })
+      return child
+    },
+    commandFactory: ({ host, port }) => ({
+      command: 'python',
+      args: ['-m', 'relief_story_agent.server', '--host', host, '--port', String(port)],
+      cwd: 'D:/repo',
+      env: { TEST_SECRET: 'secret' },
+    }),
+    pollIntervalMs: 1,
+    startupTimeoutMs: 50,
+    ...overrides,
+  })
+  return { manager, spawns, children, userDataPath }
+}
+
+test('starts on a resolved free port and exposes an actual handshake', async () => {
+  const { manager, spawns } = await makeManager()
+
+  const status = await manager.start()
+
+  assert.equal(status.status, 'running')
+  assert.equal(status.port, 19001)
+  assert.equal(status.backendUrl, 'http://127.0.0.1:19001')
+  assert.deepEqual(spawns[0].args.slice(-4), [
+    '--host',
+    '127.0.0.1',
+    '--port',
+    '19001',
+  ])
+  assert.equal(spawns[0].options.windowsHide, true)
+  assert.equal(spawns[0].options.env.TEST_SECRET, 'secret')
+})
+
+test('captures stdout and stderr in the desktop log', async () => {
+  const { manager, children, userDataPath } = await makeManager()
+  await manager.start()
+
+  children[0].stdout.write('backend ready\n')
+  children[0].stderr.write('diagnostic line\n')
+  await new Promise((resolve) => setTimeout(resolve, 10))
+
+  const log = await fs.readFile(path.join(userDataPath, 'logs', 'backend.log'), 'utf8')
+  assert.match(log, /backend ready/)
+  assert.match(log, /diagnostic line/)
+})
+
+test('restart stops the old process and starts a new process', async () => {
+  const { manager, children, spawns } = await makeManager()
+  await manager.start()
+
+  const status = await manager.restart()
+
+  assert.equal(children[0].killed, true)
+  assert.equal(spawns.length, 2)
+  assert.equal(status.status, 'running')
+})
+
+test('startup timeout kills the process and exposes the failure', async () => {
+  const { manager, children } = await makeManager({
+    requestUrl: async () => false,
+    startupTimeoutMs: 5,
+  })
+
+  await assert.rejects(manager.start(), /failed to become healthy/)
+
+  assert.equal(children[0].killed, true)
+  assert.equal(manager.getStatus().status, 'failed')
+  assert.match(manager.getStatus().lastError, /failed to become healthy/)
+})
+

@@ -1,9 +1,7 @@
 const { contextBridge, ipcRenderer } = require('electron')
+const { createDesktopBridge } = require('./ipc-contract')
 
-contextBridge.exposeInMainWorld('reliefDesktop', {
-  platform: process.platform,
-  shell: 'electron',
-  getSettings: () => ipcRenderer.invoke('get-settings'),
-  saveSettings: (settings) => ipcRenderer.invoke('save-settings', settings),
-  getHandshake: () => ipcRenderer.invoke('get-handshake'),
-})
+contextBridge.exposeInMainWorld(
+  'reliefDesktop',
+  createDesktopBridge(ipcRenderer.invoke.bind(ipcRenderer), process.platform),
+)

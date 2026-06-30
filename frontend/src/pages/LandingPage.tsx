@@ -17,7 +17,7 @@ gsap.registerPlugin(ScrollTrigger);
 function LoadingScreen({ onComplete }: { onComplete: () => void }) {
   const [count, setCount] = useState(0);
   const [wordIndex, setWordIndex] = useState(0);
-  const words = ["生成 Generate", "执导 Direct", "渲染 Render"];
+  const words = ["Generate", "Direct", "Render"];
   const isDesktop = typeof window !== 'undefined' && !!window.reliefDesktop;
 
   useEffect(() => {
@@ -129,18 +129,21 @@ function Navbar() {
         <div className="hidden md:block w-px h-5 bg-stroke mx-3" />
 
         <div className="flex items-center gap-1">
-          {["Dashboard", "Batches", "Artifacts"].map((link, i) => {
-            const routes: Record<string, string> = { "Dashboard": "/", "Batches": "/batches", "Artifacts": "/artifacts" };
+          {[
+            { label: '控制台', en: 'Dashboard', path: '/' },
+            { label: '任务流', en: 'Batches', path: '/batches' },
+            { label: '资产库', en: 'Artifacts', path: '/artifacts' }
+          ].map((link, i) => {
             return (
-              <Magnetic intensity={0.1} key={link}>
+              <Magnetic intensity={0.1} key={link.en}>
                 <button 
                   onClick={() => {
-                    if (link === "Dashboard") window.scrollTo({ top: 0, behavior: 'smooth' });
-                    else navigate(routes[link]);
+                    if (link.en === "Dashboard") window.scrollTo({ top: 0, behavior: 'smooth' });
+                    else navigate(link.path);
                   }}
                   className={`text-xs sm:text-sm rounded-full px-3 sm:px-4 py-1.5 sm:py-2 transition-colors cursor-pointer ${i === 0 ? 'text-text-primary bg-stroke/50' : 'text-muted hover:text-text-primary hover:bg-stroke/50'}`}
                 >
-                  {link}
+                  {link.label}
                 </button>
               </Magnetic>
             );
@@ -153,7 +156,7 @@ function Navbar() {
           <button onClick={() => navigate('/create-run')} className="group relative text-xs sm:text-sm rounded-full px-3 sm:px-4 py-1.5 sm:py-2 text-text-primary cursor-pointer">
             <span className="absolute inset-[-2px] rounded-full bg-gradient-to-r from-[#89AACC] to-[#4E85BF] opacity-0 group-hover:opacity-100 transition-opacity" />
             <div className="relative flex items-center gap-2 bg-surface rounded-full backdrop-blur-md px-3 py-1.5 h-full w-full">
-              New Run <Play size={14} className="fill-current" />
+              新建流 <Play size={14} className="fill-current" />
             </div>
           </button>
         </Magnetic>
@@ -166,7 +169,8 @@ function HeroSection() {
   const navigate = useNavigate();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [roleIndex, setRoleIndex] = useState(0);
-  const roles = ["Director", "Pipeline", "Generator", "Studio"];
+  const rolesEN = ["Director", "Pipeline", "Generator", "Studio"];
+  const rolesCN = ["执导", "管线", "生成", "工作室"];
 
   useEffect(() => {
     if (videoRef.current) {
@@ -181,7 +185,7 @@ function HeroSection() {
     }
 
     const interval = setInterval(() => {
-      setRoleIndex(prev => (prev + 1) % roles.length);
+      setRoleIndex(prev => (prev + 1) % rolesEN.length);
     }, 2000);
 
     gsap.to(".blur-in", { opacity: 1, filter: "blur(0px)", y: 0, duration: 1, stagger: 0.1, delay: 0.8, ease: "power3.out" });
@@ -213,11 +217,43 @@ function HeroSection() {
         />
 
         <div className="blur-in opacity-0 translate-y-5 filter blur-[10px] text-xl md:text-2xl text-text-primary mb-4 flex items-center gap-2">
-          高度自动化的 AI 执导中枢 (Automated <span key={roleIndex} className="font-display italic text-text-primary inline-block animate-role-fade-in">{roles[roleIndex]}</span> Node).
+            <div className="flex items-center whitespace-nowrap">
+              高度自动化的 AI&nbsp;
+              <div className="relative inline-grid place-items-center">
+                <AnimatePresence mode="popLayout">
+                  <motion.span 
+                    key={roleIndex}
+                    initial={{ y: 20, opacity: 0, filter: "blur(4px)" }}
+                    animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+                    exit={{ y: -20, opacity: 0, filter: "blur(4px)" }}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
+                    className="font-display italic text-text-primary text-center px-1"
+                  >
+                    {rolesCN[roleIndex]}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
+              &nbsp;中枢 (Automated&nbsp;
+              <div className="relative inline-grid place-items-center">
+                <AnimatePresence mode="popLayout">
+                  <motion.span 
+                    key={roleIndex}
+                    initial={{ y: 20, opacity: 0, filter: "blur(4px)" }}
+                    animate={{ y: 0, opacity: 1, filter: "blur(0px)" }}
+                    exit={{ y: -20, opacity: 0, filter: "blur(4px)" }}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
+                    className="font-display italic text-text-primary text-center px-1"
+                  >
+                    {rolesEN[roleIndex]}
+                  </motion.span>
+                </AnimatePresence>
+              </div>
+              &nbsp;Node).
+            </div>
         </div>
 
         <p className="blur-in opacity-0 translate-y-5 filter blur-[10px] text-sm md:text-base text-muted max-w-md mb-12">
-          专注于 AI 视频管线的毫厘之差，为您重塑无缝数字叙事 (Orchestrating seamless digital cinematography).
+            专注于 AI 视频管线的毫厘之差，为您重塑无缝数字叙事 (Orchestrating seamless digital cinematography).
         </p>
 
         <div className="blur-in opacity-0 translate-y-5 filter blur-[10px] inline-flex flex-col sm:flex-row gap-6">
@@ -253,10 +289,10 @@ function HeroSection() {
 function SelectedWorks() {
   const navigate = useNavigate();
   const projects = [
-    { title: "Run: Ocean Cinematic", col: "md:col-span-7" },
-    { title: "Batch: Urban Architecture", col: "md:col-span-5" },
-    { title: "Log: Resource Optimization", col: "md:col-span-5" },
-    { title: "Run: Cyberpunk Abyss", col: "md:col-span-7" },
+    { title: "Run: Ocean Cinematic", cnTitle: "运行: 海洋电影", col: "md:col-span-7" },
+    { title: "Batch: Urban Architecture", cnTitle: "批次: 城市建筑", col: "md:col-span-5" },
+    { title: "Log: Resource Optimization", cnTitle: "日志: 资源优化", col: "md:col-span-5" },
+    { title: "Run: Cyberpunk Abyss", cnTitle: "运行: 赛博朋克深渊", col: "md:col-span-7" },
   ];
 
   return (
@@ -277,13 +313,13 @@ function SelectedWorks() {
             <h2 className="text-4xl md:text-5xl font-medium tracking-tight mb-2">
               生成的数字分镜 <span className="font-display italic text-muted">(Generated Storyboards)</span>
             </h2>
-            <p className="text-muted text-sm md:text-base">A selection of recent AI video runs, from concept to render.</p>
+            <p className="text-muted text-sm md:text-base">精选近期 AI 视频生成任务，从概念到最终渲染 (A selection of recent AI video runs, from concept to render).</p>
           </div>
           <Magnetic intensity={0.1}>
             <button onClick={() => navigate('/batches')} className="hidden md:inline-flex items-center gap-2 group text-sm text-text-primary rounded-full border border-stroke px-5 py-2 hover:border-transparent relative cursor-pointer">
               <span className="absolute inset-[-1px] rounded-full bg-gradient-to-r from-[#89AACC] to-[#4E85BF] opacity-0 group-hover:opacity-100 transition-opacity z-0" />
               <span className="absolute inset-[1px] rounded-full bg-bg z-10" />
-              <span className="relative z-20 flex items-center gap-2">View all batches <ArrowUpRight size={14} /></span>
+              <span className="relative z-20 flex items-center gap-2">查看所有任务流 (View all batches) <ArrowUpRight size={14} /></span>
             </button>
           </Magnetic>
         </motion.div>
@@ -300,7 +336,7 @@ function SelectedWorks() {
               
               <div className="absolute inset-0 bg-bg/60 opacity-0 group-hover:opacity-100 backdrop-blur-md transition-opacity duration-500 flex items-center justify-center">
                 <div className="relative rounded-full px-6 py-3 bg-white text-black font-medium text-sm flex items-center gap-2 transform translate-y-4 group-hover:translate-y-0 transition-all duration-500">
-                  Inspect — <span className="font-display italic text-base">{p.title}</span>
+                  查看 (Inspect) — <span className="font-display italic text-base">{p.cnTitle}</span>
                 </div>
               </div>
             </SpotlightCard>
@@ -314,10 +350,10 @@ function SelectedWorks() {
 // --- Section 4: Journal ---
 function JournalSection() {
   const journals = [
-    { title: "Node initialized: local-sdxl-01", date: "System", time: "0ms delay" },
-    { title: "Artifact compilation finished", date: "Render", time: "4.2s runtime" },
-    { title: "Fetching external dependencies", date: "Network", time: "20ms ping" },
-    { title: "Run #4092 aborted by user", date: "User", time: "Terminated" },
+    { title: "节点初始化 (Node initialized): local-sdxl-01", date: "System", time: "0ms 延迟" },
+    { title: "资产编译完成 (Artifact compilation finished)", date: "Render", time: "4.2s 运行时间" },
+    { title: "获取外部依赖 (Fetching external dependencies)", date: "Network", time: "20ms 延迟" },
+    { title: "任务终止 (Run #4092 aborted by user)", date: "User", time: "已终止 (Terminated)" },
   ];
 
   return (
@@ -361,82 +397,13 @@ function JournalSection() {
   );
 }
 
-// --- Section 5: Explorations (Parallax Gallery) ---
-function ExplorationsSection() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const pinRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!containerRef.current || !pinRef.current) return;
-    
-    ScrollTrigger.create({
-      trigger: containerRef.current,
-      start: "top top",
-      end: "bottom bottom",
-      pin: pinRef.current,
-      pinSpacing: false,
-    });
-
-    gsap.utils.toArray<HTMLElement>('.parallax-item').forEach(item => {
-      const speed = item.dataset.speed || 1;
-      gsap.to(item, {
-        y: () => -100 * Number(speed),
-        ease: "none",
-        scrollTrigger: {
-          trigger: containerRef.current,
-          start: "top bottom",
-          end: "bottom top",
-          scrub: 1
-        }
-      });
-    });
-
-  }, []);
-
-  return (
-    <section ref={containerRef} className="relative min-h-[300vh] bg-bg">
-      <div ref={pinRef} className="h-screen w-full flex items-center justify-center sticky top-0 z-30 pointer-events-none">
-        <div className="text-center bg-bg/80 backdrop-blur-xl p-8 rounded-[40px] border border-stroke pointer-events-auto shadow-2xl">
-          <div className="flex items-center justify-center gap-4 mb-4">
-            <div className="w-8 h-px bg-stroke" />
-            <span className="text-xs text-muted uppercase tracking-[0.3em]">Artifacts</span>
-            <div className="w-8 h-px bg-stroke" />
-          </div>
-          <h2 className="text-5xl md:text-7xl font-medium tracking-tight mb-4">
-            核心资产库 <span className="font-display italic text-muted">(Asset Library)</span>
-          </h2>
-          <p className="text-muted text-sm max-w-sm mx-auto mb-6">A collection of cached environments, character meshes, and reference frames.</p>
-          <Magnetic intensity={0.2}>
-            <button className="text-xs font-medium bg-white text-black px-5 py-2 rounded-full hover:bg-opacity-90">
-              Browse Files
-            </button>
-          </Magnetic>
-        </div>
-      </div>
-
-      <div className="absolute top-0 left-0 w-full h-full z-10 pointer-events-none flex justify-center py-[20vh]">
-        <div className="grid grid-cols-2 gap-12 md:gap-40 w-full max-w-[1400px] px-8">
-          {[1, 2, 3, 4, 5, 6].map((item, i) => (
-            <SpotlightCard 
-              key={item} 
-              data-speed={i % 2 === 0 ? "2" : "3.5"}
-              className={`parallax-item aspect-square max-w-[320px] w-full pointer-events-auto ${i % 2 === 0 ? 'mt-[20vh] mr-auto' : 'ml-auto'}`}
-            >
-              <div className="w-full h-full" />
-            </SpotlightCard>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// --- Section 6: Stats ---
+// --- Section 5: Stats ---
 function StatsSection() {
   const stats = [
-    { value: "10+", label: "Model Nodes" },
-    { value: "400+", label: "Generated Frames" },
-    { value: "99%", label: "Pipeline Uptime" },
+    { value: "10+", label: "模型节点 (Model Nodes)" },
+    { value: "400+", label: "生成帧数 (Generated Frames)" },
+    { value: "99%", label: "管线运行时间 (Pipeline Uptime)" },
   ];
 
   return (
@@ -453,7 +420,7 @@ function StatsSection() {
   );
 }
 
-// --- Section 7: Footer ---
+// --- Section 6: Footer ---
 function FooterSection() {
   const videoRef = useRef<HTMLVideoElement>(null);
 
@@ -502,23 +469,23 @@ function FooterSection() {
         <div className="overflow-hidden w-full border-y border-stroke/50 py-4 mb-12 bg-bg/40 backdrop-blur-sm">
           <div className="marquee-inner whitespace-nowrap flex w-[200%]">
             <div className="text-4xl md:text-6xl font-display italic text-text-primary/50 tracking-widest flex-1 flex justify-around">
-              {Array(5).fill("GENERATING THE FUTURE • ").map((text, i) => <span key={i}>{text}</span>)}
+              {Array(5).fill("生成未来 (GENERATING THE FUTURE) • ").map((text, i) => <span key={i}>{text}</span>)}
             </div>
             <div className="text-4xl md:text-6xl font-display italic text-text-primary/50 tracking-widest flex-1 flex justify-around">
-              {Array(5).fill("GENERATING THE FUTURE • ").map((text, i) => <span key={i}>{text}</span>)}
+              {Array(5).fill("生成未来 (GENERATING THE FUTURE) • ").map((text, i) => <span key={i}>{text}</span>)}
             </div>
           </div>
         </div>
 
         <div className="max-w-[1200px] mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-6">
           <div className="flex gap-6 text-sm text-muted">
-            <a href="#" className="hover:text-text-primary transition-colors">Documentation</a>
-            <a href="#" className="hover:text-text-primary transition-colors">API</a>
-            <a href="#" className="hover:text-text-primary transition-colors">Status</a>
+            <a href="#" className="hover:text-text-primary transition-colors">文档 (Documentation)</a>
+            <a href="#" className="hover:text-text-primary transition-colors">接口 (API)</a>
+            <a href="#" className="hover:text-text-primary transition-colors">状态 (Status)</a>
           </div>
           <div className="flex items-center gap-3 text-sm text-muted bg-surface/50 rounded-full px-4 py-2 border border-stroke">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            System Online
+            系统在线 (System Online)
           </div>
         </div>
       </div>
@@ -527,10 +494,10 @@ function FooterSection() {
 }
 
 // --- Main Page Assembly ---
-let hasPlayedLoading = false;
+const initialHasPlayed = typeof window !== 'undefined' ? sessionStorage.getItem('hasPlayedLoading') === 'true' : false;
 
 export default function LandingPage() {
-  const [isLoading, setIsLoading] = useState(!hasPlayedLoading);
+  const [isLoading, setIsLoading] = useState(!initialHasPlayed);
 
   return (
     <div className="bg-bg text-text-primary min-h-screen overflow-x-hidden selection:bg-text-primary selection:text-bg">
@@ -541,7 +508,7 @@ export default function LandingPage() {
           <LoadingScreen 
             key="loading" 
             onComplete={() => {
-              hasPlayedLoading = true;
+              if (typeof window !== 'undefined') sessionStorage.setItem('hasPlayedLoading', 'true');
               setIsLoading(false);
             }} 
           />
@@ -556,7 +523,6 @@ export default function LandingPage() {
             <HeroSection />
             <SelectedWorks />
             <JournalSection />
-            <ExplorationsSection />
             <StatsSection />
             <FooterSection />
           </motion.div>

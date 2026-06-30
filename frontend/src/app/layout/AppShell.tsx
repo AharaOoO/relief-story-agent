@@ -24,14 +24,14 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { id: 'overview', label: 'System Overview' },
-  { id: 'setup', label: 'Environment' },
-  { id: 'config', label: 'Model Config' },
-  { id: 'create', label: 'Initialize Run' },
-  { id: 'batches', label: 'Batch Queue' },
-  { id: 'storyboard', label: 'Review' },
-  { id: 'artifacts', label: 'Artifacts' },
-  { id: 'recovery', label: 'Diagnostics' },
+  { id: 'overview', label: '系统总览' },
+  { id: 'setup', label: '环境设置' },
+  { id: 'config', label: '模型配置' },
+  { id: 'create', label: '初始化流' },
+  { id: 'batches', label: '任务队列' },
+  { id: 'storyboard', label: '分镜审查' },
+  { id: 'artifacts', label: '资产库' },
+  { id: 'recovery', label: '恢复与诊断' },
 ]
 
 const pathMap: Record<string, string> = {
@@ -115,10 +115,10 @@ export function AppShell() {
 
   const stats = useMemo(
     () => [
-      { label: 'Environment Probe', value: 'Ready', status: 'ready' as const },
-      { label: 'Prompt Engine', value: 'Optimized', status: 'ready' as const },
-      { label: 'ComfyUI Handshake', value: 'Connected', status: 'ready' as const },
-      { label: 'Cloud RunningHub', value: 'Standby', status: 'idle' as const },
+      { label: '环境探测', value: '就绪', status: 'ready' as const },
+      { label: '提示词引擎', value: '已优化', status: 'ready' as const },
+      { label: 'ComfyUI 握手', value: '已连接', status: 'ready' as const },
+      { label: '云端 RunningHub', value: '待命', status: 'idle' as const },
     ],
     []
   )
@@ -137,7 +137,7 @@ export function AppShell() {
       <div className="w-[280px] shrink-0 border-r border-stroke bg-surface p-6 flex flex-col justify-between overflow-y-auto">
         <div>
           <button onClick={() => navigate('/')} className="flex items-center gap-2 text-xs text-muted hover:text-text-primary uppercase tracking-[0.2em] mb-8 transition-colors cursor-pointer">
-            <ArrowLeft size={14} /> Back to Landing
+            <ArrowLeft size={14} /> 返回首页
           </button>
           
           <div className="flex items-center gap-3 mb-8">
@@ -174,7 +174,7 @@ export function AppShell() {
         <div>
           <div className="mt-8 pt-4 border-t border-stroke flex items-center justify-center gap-2 text-[10px] text-muted font-bold uppercase tracking-[0.1em]">
             <Activity size={10} className="text-[#89AACC] animate-pulse" />
-            Active Runtime: OK
+            运行时状态: 正常
           </div>
         </div>
       </div>
@@ -186,10 +186,10 @@ export function AppShell() {
           <section id="overview" className="scroll-mt-12 mb-12">
             <div className="mb-12">
               <h1 className="font-display italic text-5xl md:text-6xl font-semibold tracking-tight mb-4">
-                Dashboard
+                控制台
               </h1>
               <p className="text-muted text-sm md:text-base uppercase tracking-[0.2em]">
-                Ai Video Production Console #01
+                AI 视频生产控制台 #01
               </p>
             </div>
 
@@ -197,28 +197,28 @@ export function AppShell() {
               <SpotlightCard className="min-h-[380px] p-8 flex flex-col justify-between">
                 <div>
                   <div className="mb-6 flex flex-wrap items-center gap-3">
-                    <span className="px-3 py-1 rounded-full bg-[#89AACC]/10 text-[#89AACC] border border-[#89AACC]/20 text-xs font-medium">LTX2.3 Core Active</span>
-                    <span className="px-3 py-1 rounded-full bg-stroke/50 text-text-primary border border-stroke text-xs font-medium">Workflow Configured</span>
+                    <span className="px-3 py-1 rounded-full bg-[#89AACC]/10 text-[#89AACC] border border-[#89AACC]/20 text-xs font-medium">LTX2.3 核心已激活</span>
+                    <span className="px-3 py-1 rounded-full bg-stroke/50 text-text-primary border border-stroke text-xs font-medium">工作流已配置</span>
                   </div>
 
                   <p className="mb-4 text-xs uppercase tracking-[0.32em] text-muted font-bold">
-                    PRODUCER CABINET / PIPELINE
+                    制片中枢 / 管线
                   </p>
 
                   <p className="mt-4 text-sm leading-8 text-muted">
-                    Automated director workspace running on the LTX 2.3 framework. Supports full lifecycle generation from script drafting and pre-flight checks, to model orchestration and final artifact delivery.
+                    基于 LTX 2.3 框架的自动化导演工作区。支持从剧本起草、飞行前检查，到模型编排和最终资产交付的全生命周期生成。
                   </p>
                 </div>
 
                 <div className="mt-8 flex flex-wrap gap-4">
                   <Magnetic intensity={0.2}>
                     <button onClick={() => navigate('/create-run')} className="relative group rounded-full text-sm px-6 py-3 bg-text-primary text-bg font-medium cursor-pointer">
-                      Initialize Run <ArrowUpRight className="inline ml-1" size={14} />
+                      初始化流 <ArrowUpRight className="inline ml-1" size={14} />
                     </button>
                   </Magnetic>
                   <Magnetic intensity={0.2}>
                     <button onClick={() => navigate('/local-setup')} className="relative group rounded-full text-sm px-6 py-3 border border-stroke text-text-primary hover:bg-stroke/50 transition-colors cursor-pointer">
-                      System Checks
+                      系统检查
                     </button>
                   </Magnetic>
                 </div>
@@ -228,8 +228,8 @@ export function AppShell() {
                 <div>
                   <div className="mb-6 flex items-center justify-between">
                     <div>
-                      <p className="text-xs uppercase tracking-[0.22em] text-muted font-bold">TELEMETRY</p>
-                      <h2 className="mt-2 text-2xl font-medium">System Status</h2>
+                      <p className="text-xs uppercase tracking-[0.22em] text-muted font-bold">遥测</p>
+                      <h2 className="mt-2 text-2xl font-medium">系统状态</h2>
                     </div>
                     <div className="grid h-10 w-10 place-items-center rounded-xl bg-stroke/50">
                       <Command size={18} className="text-muted" />
@@ -250,8 +250,8 @@ export function AppShell() {
                 </div>
 
                 <div className="mt-6 pt-4 border-t border-stroke flex justify-between text-xs text-muted">
-                  <span>Console: v2.3-LTX</span>
-                  <span>Env: System Stable</span>
+                  <span>控制台: v2.3-LTX</span>
+                  <span>环境: 系统稳定</span>
                 </div>
               </SpotlightCard>
             </div>

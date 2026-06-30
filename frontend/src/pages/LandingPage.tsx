@@ -395,8 +395,8 @@ function ExplorationsSection() {
 
   return (
     <section ref={containerRef} className="relative min-h-[300vh] bg-bg">
-      <div ref={pinRef} className="h-screen w-full flex items-center justify-center sticky top-0 z-10 pointer-events-none">
-        <div className="text-center bg-bg/80 backdrop-blur-xl p-8 rounded-[40px] border border-stroke pointer-events-auto">
+      <div ref={pinRef} className="h-screen w-full flex items-center justify-center sticky top-0 z-30 pointer-events-none">
+        <div className="text-center bg-bg/80 backdrop-blur-xl p-8 rounded-[40px] border border-stroke pointer-events-auto shadow-2xl">
           <div className="flex items-center justify-center gap-4 mb-4">
             <div className="w-8 h-px bg-stroke" />
             <span className="text-xs text-muted uppercase tracking-[0.3em]">Artifacts</span>
@@ -414,17 +414,15 @@ function ExplorationsSection() {
         </div>
       </div>
 
-      <div className="absolute top-0 left-0 w-full h-full z-20 pointer-events-none flex justify-center py-[20vh]">
+      <div className="absolute top-0 left-0 w-full h-full z-10 pointer-events-none flex justify-center py-[20vh]">
         <div className="grid grid-cols-2 gap-12 md:gap-40 w-full max-w-[1400px] px-8">
           {[1, 2, 3, 4, 5, 6].map((item, i) => (
             <SpotlightCard 
               key={item} 
+              data-speed={i % 2 === 0 ? "2" : "3.5"}
               className={`parallax-item aspect-square max-w-[320px] w-full pointer-events-auto ${i % 2 === 0 ? 'mt-[20vh] mr-auto' : 'ml-auto'}`}
             >
-              <div 
-                data-speed={i % 2 === 0 ? "2" : "3.5"}
-                className="w-full h-full"
-              />
+              <div className="w-full h-full" />
             </SpotlightCard>
           ))}
         </div>

@@ -11,10 +11,12 @@ export function SpotlightCard({
   children,
   className,
   spotlightColor = 'rgba(137, 170, 204, 0.15)',
+  ...props
 }: {
   children: React.ReactNode;
   className?: string;
   spotlightColor?: string;
+  [key: string]: any;
 }) {
   const mouseX = useMotionValue(0);
   const mouseY = useMotionValue(0);
@@ -36,6 +38,7 @@ export function SpotlightCard({
         className
       )}
       onMouseMove={handleMouseMove}
+      {...props}
     >
       <motion.div
         className="pointer-events-none absolute -inset-px rounded-3xl opacity-0 transition duration-300 group-hover:opacity-100"

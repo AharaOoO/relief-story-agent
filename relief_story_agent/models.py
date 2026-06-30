@@ -6,9 +6,16 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .comfyui_endpoint import normalize_comfyui_endpoint
+from .provider_catalog import (
+    RUNNINGHUB_API_KEY_ENVS,
+    RUNNINGHUB_BASE_URLS,
+    validate_runninghub_model,
+)
 
 
 class StageModelConfig(BaseModel):
+    provider_mode: Literal["openai_compatible", "runninghub"] = "openai_compatible"
+    runninghub_site: Literal["cn", "ai"] | None = None
     base_url: str = "http://127.0.0.1:8045/v1"
     api_key: str = Field(default="", exclude=True, repr=False)
     api_key_env: str = ""
@@ -23,6 +30,19 @@ class StageModelConfig(BaseModel):
     requests_per_minute: float = Field(default=0, ge=0)
     input_cost_per_million: float = Field(default=0, ge=0)
     output_cost_per_million: float = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _configure_runninghub(self) -> "StageModelConfig":
+        if self.provider_mode != "runninghub":
+            return self
+        if self.runninghub_site is None:
+            raise ValueError("runninghub_site is required for RunningHub provider mode")
+        if not self.model:
+            raise ValueError("model is required for RunningHub provider mode")
+        validate_runninghub_model(site=self.runninghub_site, model=self.model)
+        self.base_url = RUNNINGHUB_BASE_URLS[self.runninghub_site]
+        self.api_key_env = RUNNINGHUB_API_KEY_ENVS[self.runninghub_site]
+        return self
 
 
 class ModelUsage(BaseModel):

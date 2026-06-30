@@ -41,6 +41,7 @@ BASE_RUNTIME_STAGE_ORDER = (
 MODEL_STAGE_IDS = (
     "chief_screenwriter",
     "deepseek_polish",
+    "quality_gate",
     "gpt_prompt_writer",
     "gpt_prompt_audit",
     "gpt_prompt_reviser",
@@ -63,8 +64,9 @@ STAGE_SPECS = {
     ),
     "quality_gate": StageSpec(
         stage_id="quality_gate",
-        category="validation",
-        retryable=False,
+        category="model",
+        retryable=True,
+        side_effects=("model_call",),
         outputs=("quality_gate",),
     ),
     "gpt_prompt_writer": StageSpec(

@@ -1499,3 +1499,70 @@ def test_api_comfyui_discover_workflows_returns_candidates(tmp_path):
     assert response.status_code == 200
     assert body["recommended"]["path"] == str(good)
     assert body["items"][0]["status"] == "recommended"
+
+
+def test_comfyui_backpressure_waits_for_queue_slot(tmp_path, monkeypatch):
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text(json.dumps({
+        "3": {"inputs": {"noise_seed": 123, "text": "test"}, "class_type": "KSampler"}
+    }))
+
+    from relief_story_agent.models import ComfyUIRunConfig, GridImageAsset
+    from relief_story_agent.comfyui import submit_storyboard
+
+    asset = GridImageAsset(
+        source="manual",
+        local_path=str(tmp_path / "grid.png"),
+        sha256="c" * 64,
+        mime_type="image/png",
+        width=1024,
+        height=1024,
+        byte_size=100,
+        comfyui_filename="uploaded_grid.png",
+        upload_status="accepted",
+    )
+
+    config = ComfyUIRunConfig(
+        enabled=True,
+        endpoint="http://comfy.local",
+        workflow_api_path=str(workflow_path),
+        max_queue_size=2,
+    )
+
+    storyboard = [{"shot_id": 1, "image_prompt": "prompt 1"}]
+
+    requests = []
+    call_count = 0
+
+    def handler(request: httpx.Request):
+        nonlocal call_count
+        requests.append(request.url.path)
+        if request.url.path == "/object_info":
+            return httpx.Response(200, json={})
+        if request.url.path == "/queue":
+            call_count += 1
+            if call_count == 1:
+                return httpx.Response(200, json={"queue_running": [{}], "queue_pending": [{}]})
+            else:
+                return httpx.Response(200, json={"queue_running": [], "queue_pending": [{}]})
+        if request.url.path == "/prompt":
+            payload = json.loads(request.content)
+            return httpx.Response(200, json={"prompt_id": payload["prompt_id"]})
+        return httpx.Response(404)
+
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda secs: sleeps.append(secs))
+
+    submit_storyboard(
+        config,
+        storyboard,
+        "backpressure_run",
+        duration_seconds=4,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        grid_image_asset=asset,
+    )
+
+    assert requests == ["/queue", "/queue", "/prompt"]
+    assert len(sleeps) == 1
+    assert sleeps[0] == 1.0
+

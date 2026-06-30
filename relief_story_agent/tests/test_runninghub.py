@@ -216,3 +216,151 @@ def test_runninghub_cli_check_and_dry_submit(tmp_path, monkeypatch):
     assert submit.returncode == 0
     assert json.loads(submit.stdout)["payload"]["apiKey"] == "<redacted:RUNNINGHUB_API_KEY>"
     assert "secret-value" not in submit.stdout
+
+
+def test_submit_runninghub_storyboard_and_wait(monkeypatch, tmp_path):
+    monkeypatch.setenv("RUNNINGHUB_API_KEY", "secret-value")
+
+    wf_path = tmp_path / "wf.json"
+    wf_path.write_text(json.dumps({
+        "3": {
+            "inputs": {
+                "noise_seed": 123,
+                "text": "test"
+            },
+            "class_type": "KSampler"
+        }
+    }))
+
+    from relief_story_agent.models import ComfyUIRunConfig
+    from relief_story_agent.runninghub import submit_runninghub_storyboard, wait_for_runninghub_outputs
+
+    config = ComfyUIRunConfig(
+        enabled=True,
+        workflow_api_path=str(wf_path),
+        runninghub_workflow_id="rh-123",
+        max_queue_size=2,
+        wait_for_completion=True
+    )
+
+    storyboard = [{
+        "time_range": "0-10s",
+        "description": "shot 1",
+        "image_prompt": "prompt 1",
+        "negative_prompt": "",
+        "comfyui_inputs": {
+            "seed": 12345
+        }
+    }]
+
+    monkeypatch.setattr(
+        "relief_story_agent.comfyui.plan_storyboard_workflows",
+        lambda *args, **kwargs: [
+            type("Planned", (), {
+                "submission_key": "ltx",
+                "workflow": {
+                    "3": {"inputs": {"noise_seed": 12345, "text": "prompt 1"}}
+                },
+                "replacements": [
+                    {"node": "3", "input": "noise_seed", "key": "seed"},
+                    {"node": "3", "input": "text", "key": "ltx_payload"}
+                ]
+            })
+        ]
+    )
+
+    requests = []
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content.decode("utf-8"))
+        requests.append((request.url.path, payload))
+        if request.url.path == "/task/openapi/create":
+            return httpx.Response(200, json={"code": 0, "data": {"taskId": "task-cloud-99"}})
+        if request.url.path == "/task/openapi/status":
+            return httpx.Response(200, json={"code": 0, "data": {"status": "SUCCESS"}})
+        if request.url.path == "/task/openapi/outputs":
+            return httpx.Response(200, json={"code": 0, "data": [{"fileUrl": "https://cdn.example/vid99.mp4"}]})
+        return httpx.Response(404)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+
+    subs = submit_runninghub_storyboard(
+        config,
+        storyboard,
+        "run-99",
+        client=client
+    )
+
+    assert len(subs) == 1
+    assert subs[0].prompt_id == "task-cloud-99"
+    assert subs[0].status == "accepted"
+
+    outputs = wait_for_runninghub_outputs(
+        config,
+        [sub.prompt_id for sub in subs],
+        client=client
+    )
+
+    assert len(outputs) == 1
+    assert outputs[0].url == "https://cdn.example/vid99.mp4"
+    assert outputs[0].filename == "vid99.mp4"
+
+
+def test_orchestrator_submits_to_runninghub_when_provider_is_configured(monkeypatch, tmp_path):
+    submitted = False
+    waited = False
+
+    def mock_submit(config, storyboard, run_id, **kwargs):
+        nonlocal submitted
+        submitted = True
+        from relief_story_agent.models import ComfyUISubmission
+        return [ComfyUISubmission(
+            submission_key="ltx",
+            content_fingerprint="abc",
+            prompt_id="task-123",
+            client_id="runninghub",
+            status="accepted"
+        )]
+
+    def mock_wait(config, task_ids, **kwargs):
+        nonlocal waited
+        waited = True
+        from relief_story_agent.models import ComfyUIOutput
+        return [ComfyUIOutput(
+            prompt_id="task-123",
+            filename="output.mp4"
+        )]
+
+    monkeypatch.setattr("relief_story_agent.orchestrator.submit_runninghub_storyboard", mock_submit)
+    monkeypatch.setattr("relief_story_agent.orchestrator.wait_for_runninghub_outputs", mock_wait)
+
+    from relief_story_agent.orchestrator import StoryRunOrchestrator
+    from relief_story_agent.models import RunRequest, ComfyUIRunConfig, RenderBackendSpec
+    from relief_story_agent.providers import FakeModelProvider
+    from relief_story_agent.orchestrator import InMemoryRunStore
+
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore()
+    )
+
+    req = RunRequest(
+        idea="runninghub test",
+        render_backend=RenderBackendSpec(provider="runninghub_workflow"),
+        comfyui=ComfyUIRunConfig(
+            enabled=True,
+            workflow_api_path="some_path.json",
+            runninghub_workflow_id="rh-123",
+            wait_for_completion=True
+        )
+    )
+
+    run = orchestrator.create_run(req)
+    run.storyboard = [{"time_range": "0-10s", "description": "shot 1", "image_prompt": "prompt 1", "negative_prompt": "", "comfyui_inputs": {}}]
+    run.final_storyboard = run.storyboard
+
+    orchestrator._run_stage(run, "comfyui")
+
+    assert submitted is True
+    assert waited is True
+    assert run.comfyui_outputs[0].filename == "output.mp4"
+

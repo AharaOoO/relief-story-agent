@@ -18,7 +18,7 @@ export function DangerZone({
   onAction,
 }: DangerZoneProps) {
   return (
-    <div className="alert-box">
+    <div className="liquid-glass bg-red-500/10 backdrop-blur-xl border border-red-500/30 shadow-[0_8px_32px_rgba(239,68,68,0.15)] rounded-3xl p-6">
       <h3>
         <AlertTriangle size={18} /> {title}
       </h3>

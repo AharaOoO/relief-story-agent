@@ -24,6 +24,12 @@ from .comfyui import (
     upload_grid_image,
     wait_for_prompt_outputs,
 )
+from .runninghub import (
+    submit_runninghub_storyboard,
+    wait_for_runninghub_outputs,
+    RunningHubWaitCancelled,
+    RunningHubOutputTimeout,
+)
 from .content import (
     build_chief_screenwriter_prompt,
     build_deepseek_polish_prompt,
@@ -1037,7 +1043,6 @@ class StoryRunOrchestrator:
 
     def _run_comfyui(self, run: RunState) -> None:
         run.current_stage = "comfyui"
-        run.add_log("comfyui", "Submitting storyboard shots to ComfyUI.")
         assert run.request.comfyui is not None
 
         def persist_submissions(submissions):
@@ -1047,58 +1052,102 @@ class StoryRunOrchestrator:
             ]
             self.store.save(run)
 
-        with self.resource_limits.comfyui_submission():
-            run.comfyui_submissions = submit_storyboard(
-                run.request.comfyui,
-                run.final_storyboard or run.storyboard,
-                run.run_id,
-                duration_seconds=run.request.duration_seconds,
-                existing_submissions=run.comfyui_submissions,
-                on_update=persist_submissions,
-                grid_image_asset=run.grid_image_asset,
-            )
-        persist_submissions(run.comfyui_submissions)
-        if run.request.comfyui.wait_for_completion and run.comfyui_prompt_ids:
-            run.add_log("comfyui", "Waiting for ComfyUI outputs.")
-            try:
-                run.comfyui_outputs = wait_for_prompt_outputs(
+        provider = run.request.render_backend.provider
+        if provider == "runninghub_workflow":
+            run.add_log("comfyui", "Submitting storyboard shots to RunningHub.")
+            with self.resource_limits.comfyui_submission():
+                run.comfyui_submissions = submit_runninghub_storyboard(
                     run.request.comfyui,
-                    run.comfyui_prompt_ids,
-                    should_cancel=lambda: self.store.get(run.run_id).cancel_requested,
+                    run.final_storyboard or run.storyboard,
+                    run.run_id,
+                    duration_seconds=run.request.duration_seconds,
+                    existing_submissions=run.comfyui_submissions,
+                    on_update=persist_submissions,
+                    grid_image_asset=run.grid_image_asset,
                 )
-            except ComfyUIWaitCancelled as exc:
-                run.cancel_requested = True
-                run.comfyui_cancellations = cancel_prompt_jobs(
+            persist_submissions(run.comfyui_submissions)
+            if run.request.comfyui.wait_for_completion and run.comfyui_prompt_ids:
+                run.add_log("comfyui", "Waiting for RunningHub outputs.")
+                try:
+                    run.comfyui_outputs = wait_for_runninghub_outputs(
+                        run.request.comfyui,
+                        run.comfyui_prompt_ids,
+                        should_cancel=lambda: self.store.get(run.run_id).cancel_requested,
+                    )
+                except RunningHubWaitCancelled as exc:
+                    run.cancel_requested = True
+                    run.add_log(
+                        "comfyui",
+                        "Cancellation observed while waiting for RunningHub; task cancellation requested locally.",
+                    )
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise RunCancellationRequested(
+                        "run cancellation requested while waiting for RunningHub"
+                    ) from exc
+                except RunningHubOutputTimeout as exc:
+                    run.comfyui_diagnostics = exc.diagnostics
+                    run.add_log("comfyui", str(exc), level="warn")
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise
+        else:
+            run.add_log("comfyui", "Submitting storyboard shots to ComfyUI.")
+            with self.resource_limits.comfyui_submission():
+                run.comfyui_submissions = submit_storyboard(
                     run.request.comfyui,
-                    run.comfyui_prompt_ids,
+                    run.final_storyboard or run.storyboard,
+                    run.run_id,
+                    duration_seconds=run.request.duration_seconds,
+                    existing_submissions=run.comfyui_submissions,
+                    on_update=persist_submissions,
+                    grid_image_asset=run.grid_image_asset,
                 )
-                run.add_log(
-                    "comfyui",
-                    "Cancellation observed while waiting; requested precise remote job cancellation.",
-                )
-                run.add_event(
-                    "comfyui_cancellation_requested",
-                    stage="comfyui",
-                    data={
-                        "results": [
-                            item.model_dump() for item in run.comfyui_cancellations
-                        ]
-                    },
-                )
-                if run.artifact_dir or run.request.output_root:
-                    write_artifact_manifest(run)
-                self.store.save(run)
-                raise RunCancellationRequested(
-                    "run cancellation requested while waiting for ComfyUI"
-                ) from exc
-            except ComfyUIOutputTimeout as exc:
-                run.comfyui_diagnostics = exc.diagnostics
-                run.add_log("comfyui", str(exc), level="warn")
-                if run.artifact_dir or run.request.output_root:
-                    write_artifact_manifest(run)
-                self.store.save(run)
-                raise
+            persist_submissions(run.comfyui_submissions)
+            if run.request.comfyui.wait_for_completion and run.comfyui_prompt_ids:
+                run.add_log("comfyui", "Waiting for ComfyUI outputs.")
+                try:
+                    run.comfyui_outputs = wait_for_prompt_outputs(
+                        run.request.comfyui,
+                        run.comfyui_prompt_ids,
+                        should_cancel=lambda: self.store.get(run.run_id).cancel_requested,
+                    )
+                except ComfyUIWaitCancelled as exc:
+                    run.cancel_requested = True
+                    run.comfyui_cancellations = cancel_prompt_jobs(
+                        run.request.comfyui,
+                        run.comfyui_prompt_ids,
+                    )
+                    run.add_log(
+                        "comfyui",
+                        "Cancellation observed while waiting; requested precise remote job cancellation.",
+                    )
+                    run.add_event(
+                        "comfyui_cancellation_requested",
+                        stage="comfyui",
+                        data={
+                            "results": [
+                                item.model_dump() for item in run.comfyui_cancellations
+                            ]
+                        },
+                    )
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise RunCancellationRequested(
+                        "run cancellation requested while waiting for ComfyUI"
+                    ) from exc
+                except ComfyUIOutputTimeout as exc:
+                    run.comfyui_diagnostics = exc.diagnostics
+                    run.add_log("comfyui", str(exc), level="warn")
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise
             run.comfyui_diagnostics = {}
+
             if run.request.comfyui.download_outputs:
                 artifact_dir = write_artifact_manifest(run)
                 run.comfyui_outputs = download_prompt_outputs(

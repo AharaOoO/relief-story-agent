@@ -26,7 +26,9 @@ export type PromptProfileBinding = {
 
 export type RenderBackendSpec = {
   provider: 'comfyui' | 'runninghub_workflow'
+  runninghub_workflow_id?: string
 }
+
 
 export type RunRequest = {
   idea?: string

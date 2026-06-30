@@ -159,6 +159,9 @@ class ComfyUIRunConfig(BaseModel):
     enabled: bool = False
     endpoint: str = "http://127.0.0.1:8188"
     workflow_api_path: str | None = None
+    runninghub_workflow_id: str = ""
+    api_key_env: str = ""
+
     placeholder_map_path: str | None = None
     placeholder_map: dict[str, PlaceholderTarget] = Field(default_factory=dict)
     wait_for_completion: bool = False
@@ -166,11 +169,15 @@ class ComfyUIRunConfig(BaseModel):
     output_timeout_seconds: float = Field(default=600.0, ge=0)
     output_poll_interval_seconds: float = Field(default=5.0, ge=0)
     grid_image: GridImageConfig = Field(default_factory=GridImageConfig)
+    max_queue_size: int = Field(default=0, ge=0)
+
+
 
     @field_validator("endpoint")
     @classmethod
     def _normalize_endpoint(cls, value: str) -> str:
         return normalize_comfyui_endpoint(value)
+
 
 
 class ComfyUIConnectionRequest(BaseModel):

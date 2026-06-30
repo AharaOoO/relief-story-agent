@@ -1016,10 +1016,17 @@ def submit_storyboard(
                     _notify(on_update, submissions)
                     continue
 
+            if config.max_queue_size > 0:
+                _wait_for_queue_slot(
+                    active_client,
+                    config.endpoint,
+                    max_queue_size=config.max_queue_size,
+                )
             _update_submission(submission, status="prepared", error="")
             _notify(on_update, submissions)
             try:
                 returned_prompt_id = enqueue_workflow(
+
                     config.endpoint,
                     planned.workflow,
                     prompt_id=submission.prompt_id,
@@ -1569,3 +1576,21 @@ def _read_storyboard_seed(storyboard: list[dict[str, Any]]) -> int | None:
         if "seed" in comfyui_inputs:
             return int(comfyui_inputs["seed"])
     return None
+
+
+def _wait_for_queue_slot(client: httpx.Client, endpoint: str, max_queue_size: int = 2, poll_interval: float = 1.0) -> None:
+    import time
+    while True:
+        try:
+            res = client.get(f"{endpoint.rstrip('/')}/queue")
+            res.raise_for_status()
+            payload = res.json()
+            running = len(payload.get("queue_running") or [])
+            pending = len(payload.get("queue_pending") or [])
+            total = running + pending
+            if total < max_queue_size:
+                return
+        except Exception:
+            return
+        time.sleep(poll_interval)
+

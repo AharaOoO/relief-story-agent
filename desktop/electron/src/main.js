@@ -4,7 +4,7 @@ const http = require('http')
 const path = require('path')
 const fs = require('fs').promises
 
-const host = process.env.RELIEF_DESKTOP_HOST || '127.0.0.1'
+const host = process.env.RELIEF_DESKTOP_HOST || 'localhost'
 const backendPort = Number(process.env.RELIEF_BACKEND_PORT || 8891)
 const frontendPort = Number(process.env.RELIEF_FRONTEND_PORT || 5173)
 const backendUrl = `http://${host}:${backendPort}`
@@ -12,6 +12,32 @@ const frontendDevUrl = `http://${host}:${frontendPort}/`
 const isDev = process.argv.includes('--dev') || !app.isPackaged
 
 let backendProcess = null
+let frontendProcess = null
+
+async function startFrontend() {
+  if (frontendProcess) return
+
+  if (isDev) {
+    const repoRoot = path.resolve(__dirname, '../../..')
+    frontendProcess = spawn(
+      'npm',
+      ['run', 'dev'],
+      {
+        cwd: path.join(repoRoot, 'frontend'),
+        stdio: 'ignore',
+        windowsHide: true,
+        shell: true,
+      }
+    )
+  }
+}
+
+function stopFrontend() {
+  if (frontendProcess && !frontendProcess.killed) {
+    frontendProcess.kill()
+  }
+  frontendProcess = null
+}
 
 async function loadSettings() {
   const settingsPath = path.join(app.getPath('userData'), 'settings.json')
@@ -171,18 +197,20 @@ function stopBackend() {
 }
 
 async function createWindow() {
-  if (!(await requestUrl(`${backendUrl}/api/health`))) {
-    await startBackend()
-  }
-  await waitForUrl(`${backendUrl}/api/health`)
-
   const win = new BrowserWindow({
     width: 1280,
     height: 820,
     minWidth: 1040,
     minHeight: 720,
     title: 'Relief Story Agent',
-    backgroundColor: '#fff2df',
+    frame: false,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: process.platform === 'win32' ? {
+      color: '#0a0a0a',
+      symbolColor: '#f5f5f5',
+      height: 36,
+    } : false,
+    backgroundColor: '#0a0a0a',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -197,12 +225,45 @@ async function createWindow() {
     shell.openExternal(url)
     return { action: 'deny' }
   })
-
+  
   if (isDev) {
-    await win.loadURL(frontendDevUrl)
-  } else {
-    await win.loadFile(path.join(process.resourcesPath, 'frontend', 'index.html'))
+    win.webContents.openDevTools()
   }
+
+  // Load splash screen immediately
+  await win.loadFile(path.join(__dirname, 'splash.html'))
+
+  // Start background services asynchronously
+  const bootServices = async () => {
+    try {
+      if (isDev) {
+        await startFrontend()
+        const frontendReady = await waitForUrl(frontendDevUrl)
+        if (!frontendReady) throw new Error(`Frontend failed to start at ${frontendDevUrl}`)
+      }
+
+      if (!(await requestUrl(`${backendUrl}/api/health`))) {
+        await startBackend()
+      }
+      const backendReady = await waitForUrl(`${backendUrl}/api/health`)
+      if (!backendReady) throw new Error(`Backend failed to start at ${backendUrl}`)
+
+      if (isDev) {
+        await win.loadURL(frontendDevUrl)
+      } else {
+        await win.loadFile(path.join(process.resourcesPath, 'frontend', 'index.html'))
+      }
+    } catch (err) {
+      console.error('Failed to boot services:', err)
+      win.webContents.executeJavaScript(`
+        document.querySelector('.text').innerText = 'Boot Failed: ${err.message}';
+        document.querySelector('.spinner').style.borderColor = 'red';
+        document.querySelector('.spinner').style.animation = 'none';
+      `)
+    }
+  }
+
+  bootServices()
 }
 
 app.whenReady().then(() => {
@@ -217,7 +278,10 @@ app.whenReady().then(() => {
   createWindow()
 })
 
-app.on('before-quit', stopBackend)
+app.on('before-quit', () => {
+  stopBackend()
+  stopFrontend()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

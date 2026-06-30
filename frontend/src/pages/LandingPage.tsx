@@ -527,8 +527,10 @@ function FooterSection() {
 }
 
 // --- Main Page Assembly ---
+let hasPlayedLoading = false;
+
 export default function LandingPage() {
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!hasPlayedLoading);
 
   return (
     <div className="bg-bg text-text-primary min-h-screen overflow-x-hidden selection:bg-text-primary selection:text-bg">
@@ -536,7 +538,13 @@ export default function LandingPage() {
       <DesktopTitlebar />
       <AnimatePresence mode="wait">
         {isLoading ? (
-          <LoadingScreen key="loading" onComplete={() => setIsLoading(false)} />
+          <LoadingScreen 
+            key="loading" 
+            onComplete={() => {
+              hasPlayedLoading = true;
+              setIsLoading(false);
+            }} 
+          />
         ) : (
           <motion.div
             key="content"

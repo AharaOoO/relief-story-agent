@@ -7,6 +7,7 @@ export const endpointPaths = {
   localAcceptanceStatus: '/api/local/acceptance-status',
   localSetupBundle: '/api/local/setup-bundle',
   configModels: '/api/config/models',
+  providerCatalog: '/api/config/provider-catalog',
   configValidate: '/api/config/validate',
   modelCheck: '/api/config/model-check',
   comfyuiConnect: '/api/comfyui/connect',
@@ -14,6 +15,12 @@ export const endpointPaths = {
   comfyuiOutputs: '/api/comfyui/outputs',
   runninghubCheck: '/api/runninghub/check',
   runs: '/api/runs',
+  promptProfiles: '/api/prompt-profiles',
+  promptProfile: (profileId: string) => `/api/prompt-profiles/${profileId}`,
+  promptProfileClone: (profileId: string) =>
+    `/api/prompt-profiles/${profileId}/clone`,
+  promptProfileReset: (profileId: string) =>
+    `/api/prompt-profiles/${profileId}/reset`,
   runDetail: (runId: string) => `/api/runs/${runId}`,
   runEvents: (runId: string) => `/api/runs/${runId}/events`,
   runTimeline: (runId: string) => `/api/runs/${runId}/timeline`,

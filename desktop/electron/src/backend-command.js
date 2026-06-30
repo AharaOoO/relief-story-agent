@@ -7,6 +7,8 @@ function createBackendCommand({
   userDataPath,
   host,
   port,
+  uiOrigin = 'null',
+  extraCorsOrigins = [],
   environment,
   processEnvironment,
 }) {
@@ -18,6 +20,8 @@ function createBackendCommand({
     String(port),
     '--state-dir',
     stateDir,
+    '--ui-origin',
+    uiOrigin,
     '--max-workers',
     '2',
     '--lease-seconds',
@@ -25,6 +29,9 @@ function createBackendCommand({
     '--recovery-poll-seconds',
     '5',
   ]
+  for (const origin of extraCorsOrigins) {
+    commonArgs.push('--cors-origin', origin)
+  }
   const env = { ...processEnvironment, ...environment }
 
   if (!isDev) {
@@ -60,4 +67,3 @@ function createBackendCommand({
 }
 
 module.exports = { createBackendCommand }
-

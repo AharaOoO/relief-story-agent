@@ -7,14 +7,16 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
 
 describe('visual system tokens', () => {
-  it('uses the refined Moblinks-inspired console theme instead of the old toy UI tokens', () => {
-    expect(css).toContain('--surface-cream: #fff2df;')
-    expect(css).toContain('--ink-navy: #203d6f;')
-    expect(css).toContain('--accent-gold: #ffc400;')
-    expect(css).toContain('--radius-card: 18px;')
+  it('uses the approved ice coast glass design tokens', () => {
+    expect(css).toContain('--coast-bg: #f7f9fc;')
+    expect(css).toContain('--coast-ink: #252832;')
+    expect(css).toContain('--coast-accent: #6e9fff;')
+    expect(css).toContain('--coast-glass: rgba(255, 255, 255, 0.64);')
+    expect(css).toContain('--radius-card: 24px;')
 
-    expect(css).not.toContain('--radius-card: 24px;')
-    expect(css).not.toContain('radial-gradient(circle at 18% 12%')
-    expect(css).not.toContain('.mobile-menu')
+    expect(css).not.toContain('--surface-cream: #fff2df;')
+    expect(css).not.toContain('--accent-gold: #ffc400;')
+    expect(css).not.toContain('font-size: clamp(')
+    expect(css).not.toContain('letter-spacing: -')
   })
 })

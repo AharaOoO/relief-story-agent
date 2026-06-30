@@ -20,20 +20,19 @@ function renderRoute(path: string) {
   )
 }
 
-describe('router', () => {
+describe('workbench router', () => {
   it.each([
-    ['/local-setup', '本地环境检查'],
-    ['/model-config', '模型配置'],
-    ['/create-run', '创作任务'],
-    ['/runs/demo-run/review', '分镜审查'],
-    ['/batches', '批量队列'],
-    ['/artifacts', '产物库'],
-    ['/recovery', '故障恢复'],
-  ])('renders %s', async (path, heading) => {
+    ['/', '把一个想法，交给整条制片流水线'],
+    ['/autopilot', '自动执行'],
+    ['/run/demo-run', '自动执行'],
+    ['/tasks', '任务队列'],
+    ['/assets', '资产库'],
+  ])('renders %s in the new workbench', async (path, heading) => {
     renderRoute(path)
 
     expect(
       await screen.findByRole('heading', { name: heading }),
     ).toBeInTheDocument()
+    expect(screen.queryByText('LTX 2.3 Studio Console')).not.toBeInTheDocument()
   })
 })

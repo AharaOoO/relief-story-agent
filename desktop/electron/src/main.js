@@ -15,7 +15,7 @@ const { SettingsStore } = require('./settings-store')
 const { SidecarManager, findAvailablePort } = require('./sidecar-manager')
 const { createBackendCommand } = require('./backend-command')
 
-const host = process.env.RELIEF_DESKTOP_HOST || 'localhost'
+const host = process.env.RELIEF_DESKTOP_HOST || '127.0.0.1'
 const preferredBackendPort = Number(process.env.RELIEF_BACKEND_PORT || 8891)
 const preferredFrontendPort = Number(process.env.RELIEF_FRONTEND_PORT || 5173)
 const isDev = process.argv.includes('--dev') || !app.isPackaged
@@ -186,11 +186,11 @@ async function createWindow() {
     frame: false,
     titleBarStyle: 'hidden',
     titleBarOverlay: process.platform === 'win32' ? {
-      color: '#0a0a0a',
-      symbolColor: '#f5f5f5',
+      color: '#f7f9fc',
+      symbolColor: '#252832',
       height: 36,
     } : false,
-    backgroundColor: '#0a0a0a',
+    backgroundColor: '#f7f9fc',
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -263,6 +263,10 @@ app.whenReady().then(() => {
         userDataPath: app.getPath('userData'),
         host: sidecarHost,
         port,
+        uiOrigin: isDev ? frontendDevUrl.replace(/\/$/, '') : 'null',
+        extraCorsOrigins: isDev
+          ? [`http://localhost:${frontendPort}`]
+          : [],
         environment: await settingsStore.getEnvironment(),
         processEnvironment: process.env,
       }),

@@ -9,7 +9,17 @@ describe('apiError', () => {
 
     expect(error.kind).toBe('network_error')
     expect(error.endpoint).toBe('/api/local/readiness')
-    expect(error.suggestedAction).toContain('启动')
+    expect(error.suggestedAction).toContain('重启')
+  })
+
+  it('extracts FastAPI validation details', () => {
+    const error = normalizeApiError(
+      { detail: [{ msg: 'model is required' }] },
+      { statusCode: 422 },
+    )
+
+    expect(error.kind).toBe('validation')
+    expect(error.message).toBe('model is required')
   })
 
   it('redacts API keys from diagnostic text', () => {

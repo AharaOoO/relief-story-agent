@@ -12,7 +12,7 @@ const CHANNELS = Object.freeze({
   getHandshake: 'relief:desktop:get-handshake',
 })
 
-function createDesktopBridge(invoke, platform) {
+function createDesktopBridge(invoke, platform, getPathForFile = () => '') {
   return {
     platform,
     shell: 'electron',
@@ -24,6 +24,7 @@ function createDesktopBridge(invoke, platform) {
     pickWorkflow: () => invoke(CHANNELS.pickWorkflow),
     pickScript: () => invoke(CHANNELS.pickScript),
     pickDirectory: () => invoke(CHANNELS.pickDirectory),
+    getPathForFile,
     openPath: (targetPath) => invoke(CHANNELS.openPath, targetPath),
     restartBackend: () => invoke(CHANNELS.restartBackend),
     getHandshake: () => invoke(CHANNELS.getHandshake),
@@ -34,4 +35,3 @@ module.exports = {
   CHANNELS,
   createDesktopBridge,
 }
-

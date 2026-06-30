@@ -3,6 +3,7 @@ const net = require('node:net')
 const path = require('node:path')
 
 function findAvailablePort(host, preferredPort) {
+  const bindHost = host === 'localhost' ? '127.0.0.1' : host
   return new Promise((resolve, reject) => {
     const server = net.createServer()
     server.unref()
@@ -14,13 +15,13 @@ function findAvailablePort(host, preferredPort) {
       const fallback = net.createServer()
       fallback.unref()
       fallback.once('error', reject)
-      fallback.listen(0, host, () => {
+      fallback.listen(0, bindHost, () => {
         const address = fallback.address()
         const port = typeof address === 'object' && address ? address.port : 0
         fallback.close(() => resolve(port))
       })
     })
-    server.listen(preferredPort, host, () => {
+    server.listen(preferredPort, bindHost, () => {
       server.close(() => resolve(preferredPort))
     })
   })
@@ -161,4 +162,3 @@ module.exports = {
   SidecarManager,
   findAvailablePort,
 }
-

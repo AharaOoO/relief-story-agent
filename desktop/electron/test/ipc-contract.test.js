@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
 const test = require('node:test')
 
 const {
@@ -19,6 +21,7 @@ test('renderer bridge exposes only the approved desktop operations', async () =>
   assert.deepEqual(Object.keys(bridge).sort(), [
     'deleteSecret',
     'getHandshake',
+    'getPathForFile',
     'getRuntimeConfig',
     'getSecretStatus',
     'openPath',
@@ -50,3 +53,9 @@ test('legacy plaintext settings methods are not part of the contract', () => {
   assert.equal(bridge.saveSettings, undefined)
 })
 
+test('sandboxed preload does not import local CommonJS modules', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'preload.js'), 'utf8')
+  assert.doesNotMatch(source, /require\(['"]\.\//)
+  assert.match(source, /contextBridge\.exposeInMainWorld/)
+  assert.match(source, /webUtils\.getPathForFile/)
+})

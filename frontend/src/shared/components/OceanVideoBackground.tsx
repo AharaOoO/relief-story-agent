@@ -6,8 +6,13 @@ export function OceanVideoBackground() {
   useEffect(() => {
     const video = videoRef.current;
     if (video) {
-      video.play().catch(() => {
-        // Autoplay may be blocked by some browsers initially
+      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        video.pause();
+        return;
+      }
+      const result = video.play();
+      result?.catch?.(() => {
+        // Autoplay may be blocked; the poster/background remains visible.
       });
     }
   }, []);
@@ -18,6 +23,7 @@ export function OceanVideoBackground() {
         <video
           ref={videoRef}
           src="/beach_bg.mp4"
+          poster="/beach-poster.webp"
           autoPlay
           muted
           loop

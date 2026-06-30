@@ -18,6 +18,11 @@ outputs/
 *.jpg
 *.jpeg
 *.webp
+
+# Packaged desktop UI media is intentionally versioned.
+!frontend/public/beach_bg.mp4
+!frontend/public/beach-poster.webp
+!frontend/public/coast-*.webp
 *.safetensors
 *.ckpt
 *.pt

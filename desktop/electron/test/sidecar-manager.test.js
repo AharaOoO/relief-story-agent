@@ -4,9 +4,10 @@ const fs = require('node:fs/promises')
 const os = require('node:os')
 const path = require('node:path')
 const { PassThrough } = require('node:stream')
+const net = require('node:net')
 const test = require('node:test')
 
-const { SidecarManager } = require('../src/sidecar-manager')
+const { SidecarManager, findAvailablePort } = require('../src/sidecar-manager')
 
 class FakeChild extends EventEmitter {
   constructor() {
@@ -70,6 +71,23 @@ test('starts on a resolved free port and exposes an actual handshake', async () 
   assert.equal(spawns[0].options.env.TEST_SECRET, 'secret')
 })
 
+test('localhost port discovery notices a port occupied on 127.0.0.1', async () => {
+  const occupied = net.createServer()
+  await new Promise((resolve, reject) => {
+    occupied.once('error', reject)
+    occupied.listen(0, '127.0.0.1', resolve)
+  })
+  const address = occupied.address()
+  const occupiedPort = typeof address === 'object' && address ? address.port : 0
+  try {
+    const resolved = await findAvailablePort('localhost', occupiedPort)
+    assert.notEqual(resolved, occupiedPort)
+    assert.ok(resolved > 0)
+  } finally {
+    await new Promise((resolve) => occupied.close(resolve))
+  }
+})
+
 test('captures stdout and stderr in the desktop log', async () => {
   const { manager, children, userDataPath } = await makeManager()
   await manager.start()
@@ -106,4 +124,3 @@ test('startup timeout kills the process and exposes the failure', async () => {
   assert.equal(manager.getStatus().status, 'failed')
   assert.match(manager.getStatus().lastError, /failed to become healthy/)
 })
-

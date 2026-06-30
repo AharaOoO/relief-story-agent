@@ -18,7 +18,13 @@ def test_retry_failed_run_resumes_from_failed_stage_without_rerunning_prior_stag
 
     assert failed.status == "failed"
     assert failed.failed_stage == "gpt_prompt_audit"
-    assert provider.calls == ["chief_screenwriter", "deepseek_polish", "gpt_prompt_writer", "gpt_prompt_audit"]
+    assert provider.calls == [
+        "chief_screenwriter",
+        "deepseek_polish",
+        "quality_gate",
+        "gpt_prompt_writer",
+        "gpt_prompt_audit",
+    ]
 
     provider.responses["gpt_prompt_audit"] = {
         "passed": True,
@@ -31,11 +37,12 @@ def test_retry_failed_run_resumes_from_failed_stage_without_rerunning_prior_stag
     assert retried.status == "completed"
     assert retried.failed_stage == ""
     assert retried.retry_count == 1
-    assert retried.model_usage_summary.total_requests == 4
-    assert retried.model_usage_summary.total_attempts == 5
+    assert retried.model_usage_summary.total_requests == 5
+    assert retried.model_usage_summary.total_attempts == 6
     assert provider.calls == [
         "chief_screenwriter",
         "deepseek_polish",
+        "quality_gate",
         "gpt_prompt_writer",
         "gpt_prompt_audit",
         "gpt_prompt_audit",

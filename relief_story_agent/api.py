@@ -52,6 +52,7 @@ from .local_runtime import (
 )
 from .orchestrator import StoryRunOrchestrator
 from .pipeline import build_pipeline_schema
+from .provider_catalog import build_provider_catalog
 from .planning import build_batch_plan
 from .prompt_profiles import (
     PromptProfile,
@@ -257,6 +258,10 @@ def create_app(
     @app.get("/api/config/models")
     def get_model_config_status():
         return orchestrator.model_registry.status()
+
+    @app.get("/api/config/provider-catalog")
+    def get_provider_catalog():
+        return build_provider_catalog()
 
     @app.get("/api/prompt-profiles")
     def list_prompt_profiles():
@@ -724,9 +729,12 @@ def create_app(
         try:
             run = orchestrator.store.get(run_id)
             events = [event for event in run.events if event.sequence > after]
+            next_cursor = events[-1].sequence if events else after
             return {
                 "run_id": run_id,
                 "after": after,
+                "next_cursor": next_cursor,
+                "is_terminal": run.status in {"completed", "failed", "cancelled"},
                 "events": [event.model_dump() for event in events],
             }
         except KeyError as exc:

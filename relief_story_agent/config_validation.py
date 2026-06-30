@@ -60,8 +60,23 @@ def validate_run_configuration(
     ]
     if check_comfyui_connection:
         checks.append(_validate_comfyui_endpoint(request))
+    passed = all(check["status"] != "failed" for check in checks)
+    blockers = [
+        {"check": check["name"], "message": check["message"]}
+        for check in checks
+        if check["status"] == "failed"
+    ]
+    warnings = [
+        {"check": check["name"], "message": check["message"]}
+        for check in checks
+        if check["status"] == "warning"
+    ]
     return {
-        "passed": all(check["status"] != "failed" for check in checks),
+        "ready": passed,
+        "passed": passed,
+        "blockers": blockers,
+        "warnings": warnings,
+        "suggested_actions": _suggest_actions_for_checks(checks),
         "checks": checks,
     }
 
@@ -189,7 +204,7 @@ def _validate_creation_spec(request: RunRequest) -> dict[str, Any]:
     spec = request.creation_spec
     if spec.video_aspect_ratio not in ("16:9", "9:16"):
         return _check("creation_spec", "failed", f"Unsupported video aspect ratio: {spec.video_aspect_ratio}")
-    if spec.image_resolution not in ("2k", "1080p"):
+    if spec.image_resolution not in ("1k", "2k"):
         return _check("creation_spec", "failed", f"Unsupported image resolution: {spec.image_resolution}")
     return _check("creation_spec", "passed", "Creation spec is valid.")
 
@@ -304,6 +319,7 @@ def _validate_grid_image_config(request: RunRequest) -> dict[str, Any]:
                 path,
                 min_dimension=image.min_dimension,
                 max_bytes=image.max_bytes,
+                expected_aspect_ratio=image.aspect_ratio,
             )
         except ValueError as exc:
             return _check("grid_image", "failed", str(exc))

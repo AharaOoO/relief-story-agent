@@ -352,17 +352,35 @@ class StoryInputSpec(BaseModel):
 class CreationSpec(BaseModel):
     duration_seconds: int = 240
     video_aspect_ratio: Literal["16:9", "9:16"] = "16:9"
-    image_resolution: Literal["2k", "1080p"] = "2k"
+    image_resolution: Literal["1k", "2k"] = "2k"
     style_preset_id: str = "cinematic_suspense"
     series_name: str = ""
     audience: str = ""
     creative_constraints: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_resolution(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("image_resolution") == "1080p":
+            data = dict(data)
+            data["image_resolution"] = "1k"
+        return data
 
 
 class PromptProfileBinding(BaseModel):
     profile_id: str = "system-default"
     profile_version: int = 1
     stage_overrides: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("stage_overrides")
+    @classmethod
+    def _validate_stage_overrides(cls, value: dict[str, str]) -> dict[str, str]:
+        from .pipeline import MODEL_STAGE_IDS
+
+        unknown = sorted(set(value) - set(MODEL_STAGE_IDS))
+        if unknown:
+            raise ValueError(f"Unknown prompt stage(s): {', '.join(unknown)}")
+        return value
 
 
 class RenderBackendSpec(BaseModel):
@@ -431,6 +449,32 @@ class RunRequest(BaseModel):
                     data["creation_spec"] = creation_spec
 
         return data
+
+    @model_validator(mode="after")
+    def _validate_autopilot_bindings(self) -> "RunRequest":
+        from .pipeline import MODEL_STAGE_IDS
+
+        model_stage_ids = set(MODEL_STAGE_IDS)
+        unknown_configs = sorted(set(self.model_configs) - model_stage_ids)
+        if unknown_configs:
+            raise ValueError(f"Unknown model stage(s): {', '.join(unknown_configs)}")
+        unknown_profiles = sorted(set(self.model_profiles) - model_stage_ids)
+        if unknown_profiles:
+            raise ValueError(
+                f"Unknown model profile stage(s): {', '.join(unknown_profiles)}"
+            )
+        for stage, config in self.model_configs.items():
+            if config.provider_mode == "runninghub":
+                assert config.runninghub_site is not None
+                validate_runninghub_model(
+                    site=config.runninghub_site,
+                    stage=stage,
+                    model=config.model,
+                )
+        if self.comfyui is not None:
+            self.comfyui.grid_image.aspect_ratio = self.creation_spec.video_aspect_ratio
+            self.comfyui.grid_image.resolution = self.creation_spec.image_resolution
+        return self
 
 
 class RunRequestDefaults(BaseModel):

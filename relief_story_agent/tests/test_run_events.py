@@ -31,10 +31,20 @@ def test_run_events_record_stage_timeline_and_can_be_polled():
         assert "stage_completed" in names
         assert names[-1] == "run_completed"
         assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
+        assert response.json()["next_cursor"] == events[-1]["sequence"]
+        assert response.json()["is_terminal"] is True
 
         after = events[-2]["sequence"]
         tail = client.get(f"/api/runs/{run_id}/events", params={"after": after}).json()
         assert [event["event_type"] for event in tail["events"]] == ["run_completed"]
+        assert tail["next_cursor"] == events[-1]["sequence"]
+
+        empty = client.get(
+            f"/api/runs/{run_id}/events",
+            params={"after": tail["next_cursor"]},
+        ).json()
+        assert empty["events"] == []
+        assert empty["next_cursor"] == tail["next_cursor"]
 
 
 def test_run_events_are_persisted_with_json_store(tmp_path):

@@ -55,8 +55,8 @@ def test_json_file_store_persists_runs_and_batches_across_instances(tmp_path):
     assert saved_batch.summary["awaiting_approval"] == 1
     assert saved_auto_run.request.idea == "便利店夜晚"
     assert saved_auto_run.status == "completed"
-    assert len(saved_auto_run.model_attempts) == 4
-    assert saved_auto_run.model_usage_summary.total_requests == 4
+    assert len(saved_auto_run.model_attempts) == 5
+    assert saved_auto_run.model_usage_summary.total_requests == 5
     assert saved_manual_run.request.idea == "压力小怪物"
     assert saved_manual_run.status == "awaiting_approval"
 

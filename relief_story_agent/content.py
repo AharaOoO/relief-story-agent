@@ -143,6 +143,31 @@ DEFAULT_DEEPSEEK_POLISH_TEMPLATE = """
 {"polished_script": <完整剧本对象>}
 """.strip()
 
+DEFAULT_QUALITY_GATE_TEMPLATE = """
+You are the script quality gate for an automated short-film pipeline.
+Audit the polished script for story logic, character consistency, emotional
+coherence, producibility, timing, and compliance with a low-stimulation tone.
+Do not rewrite the script. Return strict JSON only.
+
+Script JSON:
+{{script_json}}
+
+Return:
+{
+  "passed": true,
+  "issues": [{"code": "...", "message": "..."}],
+  "revision_instructions": ["..."],
+  "scores": {
+    "story_logic": 1,
+    "character_consistency": 1,
+    "emotional_coherence": 1,
+    "producibility": 1,
+    "timing": 1
+  }
+}
+Use an empty issues and revision_instructions array when the script passes.
+""".strip()
+
 def build_chief_screenwriter_prompt(
     *,
     idea: str,
@@ -173,6 +198,13 @@ def build_deepseek_polish_prompt(draft_payload: dict, template: str | None = Non
     from .prompt_templates import _json
     tmpl = template or DEFAULT_DEEPSEEK_POLISH_TEMPLATE
     return tmpl.replace("{{draft_payload}}", _json(draft_payload))
+
+
+def build_quality_gate_prompt(script: dict, template: str | None = None) -> str:
+    from .prompt_templates import _json
+
+    tmpl = template or DEFAULT_QUALITY_GATE_TEMPLATE
+    return tmpl.replace("{{script_json}}", _json(script))
 
 
 def build_storyboard_prompt(script: dict) -> str:
@@ -213,4 +245,3 @@ def build_storyboard_prompt(script: dict) -> str:
         }}
         """
     ).strip()
-

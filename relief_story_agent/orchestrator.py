@@ -33,6 +33,7 @@ from .runninghub import (
 from .content import (
     build_chief_screenwriter_prompt,
     build_deepseek_polish_prompt,
+    build_quality_gate_prompt,
 )
 from .execution_policy import ExecutionPolicyExceeded, enforce_execution_policy
 from .failure_policy import classify_failure
@@ -853,10 +854,65 @@ class StoryRunOrchestrator:
 
     def _run_quality_gate(self, run: RunState) -> None:
         run.current_stage = "quality_gate"
-        run.add_log("quality_gate", "Checking polished script quality gates.")
-        gate = self.quality_gate.check_script_object(run.script)
-        if not gate.passed:
-            raise ValueError(f"deepseek_polish quality gate failed: {gate.issues}")
+        run.add_log(
+            "quality_gate",
+            "Auditing the polished script with the configured model and local hard rules.",
+        )
+        prompt = build_quality_gate_prompt(
+            run.script,
+            template=run.prompt_snapshot.get("quality_gate"),
+        )
+        model_report = self._generate_model_json(
+            run,
+            stage="quality_gate",
+            prompt=prompt,
+        )
+        model_passed = require_bool(model_report, "quality_gate", "passed")
+        model_issues = self._normalize_quality_issues(
+            model_report.get("issues"),
+            source="model",
+        )
+        rule_report = self.quality_gate.check_script_object(run.script)
+        rule_issues = [
+            {"source": "local_rule", "code": code, "message": code}
+            for code in rule_report.issues
+        ]
+        passed = model_passed and rule_report.passed
+        run.quality_gate_report = {
+            "passed": passed,
+            "model_passed": model_passed,
+            "rule_passed": rule_report.passed,
+            "issues": model_issues + rule_issues,
+            "revision_instructions": list(
+                model_report.get("revision_instructions") or []
+            ),
+            "scores": dict(model_report.get("scores") or {}),
+        }
+        self.store.save(run)
+        if not passed:
+            codes = [issue["code"] for issue in run.quality_gate_report["issues"]]
+            raise ValueError(f"deepseek_polish quality gate failed: {codes}")
+
+    @staticmethod
+    def _normalize_quality_issues(value: Any, *, source: str) -> list[dict[str, str]]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("quality_gate issues must be an array")
+        normalized: list[dict[str, str]] = []
+        for index, item in enumerate(value):
+            if isinstance(item, str):
+                code = item.strip()
+                message = code
+            elif isinstance(item, dict):
+                code = str(item.get("code") or "").strip()
+                message = str(item.get("message") or code).strip()
+            else:
+                raise ValueError(f"quality_gate issues[{index}] must be a string or object")
+            if not code:
+                raise ValueError(f"quality_gate issues[{index}] requires code")
+            normalized.append({"source": source, "code": code, "message": message})
+        return normalized
 
     def _run_prompt_writer(self, run: RunState) -> None:
         run.current_stage = "gpt_prompt_writer"

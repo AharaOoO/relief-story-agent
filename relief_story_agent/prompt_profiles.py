@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from .content import (
     DEFAULT_CHIEF_SCREENWRITER_TEMPLATE,
     DEFAULT_DEEPSEEK_POLISH_TEMPLATE,
+    DEFAULT_QUALITY_GATE_TEMPLATE,
 )
 from .prompt_templates import (
     DEFAULT_PROMPT_WRITER_TEMPLATE,
@@ -57,7 +58,7 @@ def _get_system_default_stages() -> PromptProfileStages:
     return PromptProfileStages(
         chief_screenwriter=DEFAULT_CHIEF_SCREENWRITER_TEMPLATE,
         deepseek_polish=DEFAULT_DEEPSEEK_POLISH_TEMPLATE,
-        quality_gate="",
+        quality_gate=DEFAULT_QUALITY_GATE_TEMPLATE,
         gpt_prompt_writer=DEFAULT_PROMPT_WRITER_TEMPLATE,
         gpt_prompt_audit=DEFAULT_PROMPT_AUDIT_TEMPLATE,
         gpt_prompt_reviser=DEFAULT_PROMPT_REVISER_TEMPLATE,

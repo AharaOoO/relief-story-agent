@@ -396,7 +396,7 @@ def test_orchestrator_runs_multimodel_pipeline_without_comfyui(tmp_path):
                     "closing_caption": "没完成，不代表你不够好。",
                 },
             },
-            "deepseek_polish": {
+                "deepseek_polish": {
                 "polished_script": {
                     "title": "未完成也能睡",
                     "story_type": "Q版幻想",
@@ -412,9 +412,15 @@ def test_orchestrator_runs_multimodel_pipeline_without_comfyui(tmp_path):
                         {"name": "余味结尾", "time_range": "70-80s", "content": "电脑自动整理成明天慢慢来。"},
                     ],
                     "closing_caption": "没完成，不代表你不够好。",
-                }
-            },
-            "gpt_prompt_writer": {
+                    }
+                },
+                "quality_gate": {
+                    "passed": True,
+                    "issues": [],
+                    "revision_instructions": [],
+                    "scores": {"story_logic": 9},
+                },
+                "gpt_prompt_writer": {
                 "shots": [
                     {
                         "shot_id": 1,
@@ -467,7 +473,13 @@ def test_orchestrator_runs_multimodel_pipeline_without_comfyui(tmp_path):
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     assert timeline["summary"]["stage_event_counts"]["chief_screenwriter"] == 2
     assert timeline["summary"]["stage_event_counts"]["artifacts"] == 2
-    assert provider.calls == ["chief_screenwriter", "deepseek_polish", "gpt_prompt_writer", "gpt_prompt_audit"]
+    assert provider.calls == [
+        "chief_screenwriter",
+        "deepseek_polish",
+        "quality_gate",
+        "gpt_prompt_writer",
+        "gpt_prompt_audit",
+    ]
 
 
 def test_comfyui_workflow_replaces_only_declared_fields():
@@ -579,6 +591,7 @@ def test_prompt_audit_output_contract_fails_at_audit_stage():
     assert provider.calls == [
         "chief_screenwriter",
         "deepseek_polish",
+        "quality_gate",
         "gpt_prompt_writer",
         "gpt_prompt_audit",
     ]

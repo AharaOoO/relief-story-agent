@@ -520,6 +520,7 @@ class RunState(BaseModel):
     core_candidates: list[dict[str, Any]] = Field(default_factory=list)
     selected_core: dict[str, Any] = Field(default_factory=dict)
     script: dict[str, Any] = Field(default_factory=dict)
+    quality_gate_report: dict[str, Any] = Field(default_factory=dict)
     storyboard: list[dict[str, Any]] = Field(default_factory=list)
     final_storyboard: list[dict[str, Any]] = Field(default_factory=list)
     prompt_audit: dict[str, Any] = Field(default_factory=dict)

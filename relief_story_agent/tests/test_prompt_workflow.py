@@ -16,6 +16,13 @@ class CapturingProvider:
     def generate_json(self, stage: str, prompt: str, config: StageModelConfig | None = None) -> dict[str, Any]:
         self.calls.append(stage)
         self.prompts[stage] = prompt
+        if stage == "quality_gate" and stage not in self.responses:
+            return {
+                "passed": True,
+                "issues": [],
+                "revision_instructions": [],
+                "scores": {"story_logic": 9, "character_consistency": 9},
+            }
         return self.responses[stage]
 
 
@@ -150,9 +157,87 @@ def test_quality_gate_runs_after_deepseek_not_on_rough_chief_draft():
     run = orchestrator.create_run(RunRequest(idea="unfinished folder", approval_mode="auto"))
 
     assert run.status == "completed"
-    assert provider.calls == ["chief_screenwriter", "deepseek_polish", "gpt_prompt_writer", "gpt_prompt_audit"]
+    assert provider.calls == [
+        "chief_screenwriter",
+        "deepseek_polish",
+        "quality_gate",
+        "gpt_prompt_writer",
+        "gpt_prompt_audit",
+    ]
+    assert run.quality_gate_report["passed"] is True
+    assert run.quality_gate_report["model_passed"] is True
+    assert run.quality_gate_report["rule_passed"] is True
     assert run.final_storyboard == run.storyboard
     assert run.prompt_revision_count == 0
+
+
+def test_quality_gate_uses_stage_override_template():
+    provider = CapturingProvider(
+        {
+            "chief_screenwriter": _chief_response(),
+            "deepseek_polish": {"polished_script": _polished_script()},
+            "gpt_prompt_writer": {"shots": [_shot()]},
+            "gpt_prompt_audit": {
+                "passed": True,
+                "issues": [],
+                "revision_instructions": [],
+                "scores": {},
+            },
+        }
+    )
+    orchestrator = StoryRunOrchestrator(provider=provider, store=InMemoryRunStore())
+
+    run = orchestrator.create_run(
+        RunRequest(
+            idea="quality template",
+            approval_mode="auto",
+            prompt_profile={
+                "profile_id": "system-default",
+                "profile_version": 1,
+                "stage_overrides": {
+                    "quality_gate": "CUSTOM QUALITY {{script_json}}"
+                },
+            },
+        )
+    )
+
+    assert run.status == "completed"
+    assert provider.prompts["quality_gate"].startswith("CUSTOM QUALITY")
+    assert '"title": "' in provider.prompts["quality_gate"]
+
+
+def test_local_quality_rules_veto_a_model_pass():
+    invalid_script = _polished_script()
+    invalid_script["core_sentence"] = ""
+    provider = CapturingProvider(
+        {
+            "chief_screenwriter": _chief_response(),
+            "deepseek_polish": {"polished_script": invalid_script},
+            "quality_gate": {
+                "passed": True,
+                "issues": [],
+                "revision_instructions": [],
+                "scores": {"story_logic": 10},
+            },
+        }
+    )
+    store = InMemoryRunStore()
+    orchestrator = StoryRunOrchestrator(provider=provider, store=store)
+
+    run = orchestrator.create_run(
+        RunRequest(idea="local veto", approval_mode="auto")
+    )
+
+    saved = store.get(run.run_id)
+    assert saved.status == "failed"
+    assert saved.failed_stage == "quality_gate"
+    assert saved.quality_gate_report["model_passed"] is True
+    assert saved.quality_gate_report["rule_passed"] is False
+    assert saved.quality_gate_report["passed"] is False
+    assert any(
+        issue["code"] == "missing_core_sentence"
+        for issue in saved.quality_gate_report["issues"]
+    )
 
 
 def test_prompt_writer_blocked_by_quality_gate():
@@ -292,6 +377,7 @@ def test_failed_prompt_audit_triggers_exactly_one_revision_and_uses_revised_prom
     assert provider.calls == [
         "chief_screenwriter",
         "deepseek_polish",
+        "quality_gate",
         "gpt_prompt_writer",
         "gpt_prompt_audit",
         "gpt_prompt_reviser",
@@ -339,7 +425,12 @@ def test_prompt_writer_shot_contract_rejects_missing_image_prompt():
     assert saved.status == "failed"
     assert saved.failed_stage == "gpt_prompt_writer"
     assert "gpt_prompt_writer shots[0] missing required field: image_prompt" in saved.error
-    assert provider.calls == ["chief_screenwriter", "deepseek_polish", "gpt_prompt_writer"]
+    assert provider.calls == [
+        "chief_screenwriter",
+        "deepseek_polish",
+        "quality_gate",
+        "gpt_prompt_writer",
+    ]
 
 
 def test_prompt_reviser_shot_contract_rejects_missing_comfyui_inputs():
@@ -371,6 +462,7 @@ def test_prompt_reviser_shot_contract_rejects_missing_comfyui_inputs():
     assert provider.calls == [
         "chief_screenwriter",
         "deepseek_polish",
+        "quality_gate",
         "gpt_prompt_writer",
         "gpt_prompt_audit",
         "gpt_prompt_reviser",

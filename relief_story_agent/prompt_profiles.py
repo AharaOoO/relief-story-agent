@@ -49,6 +49,10 @@ class PromptProfile(BaseModel):
         self.updated_at = datetime.now(timezone.utc).isoformat()
 
 
+class PromptProfileCloneRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
 def _get_system_default_stages() -> PromptProfileStages:
     return PromptProfileStages(
         chief_screenwriter=DEFAULT_CHIEF_SCREENWRITER_TEMPLATE,
@@ -95,7 +99,10 @@ class PromptProfileStore:
                 profiles.append(PromptProfile.model_validate(data))
             except Exception:
                 pass
-        return profiles
+        return sorted(
+            profiles,
+            key=lambda profile: (profile.id != SYSTEM_DEFAULT_ID, profile.name.lower()),
+        )
 
     def get(self, profile_id: str) -> PromptProfile:
         path = self._get_path(profile_id)
@@ -123,10 +130,8 @@ class PromptProfileStore:
             raise ValueError(f"Profile {profile.id} not found")
         
         existing = self.get(profile.id)
-        if existing.source == "system" and profile.id == SYSTEM_DEFAULT_ID:
-            # For simplicity, don't allow modifying system default stages from user actions,
-            # but we can just bump version if needed.
-            pass
+        if existing.source == "system" or profile.id == SYSTEM_DEFAULT_ID:
+            raise ValueError("Cannot update the system default profile")
             
         profile.version = existing.version + 1
         profile.update_hash()
@@ -134,6 +139,13 @@ class PromptProfileStore:
         
         path.write_text(profile.model_dump_json(indent=2), encoding="utf-8")
         return profile
+
+    def reset(self, profile_id: str) -> PromptProfile:
+        if profile_id == SYSTEM_DEFAULT_ID:
+            raise ValueError("Cannot reset the system default profile")
+        profile = self.get(profile_id)
+        profile.stages = _get_system_default_stages()
+        return self.update(profile)
 
     def delete(self, profile_id: str) -> None:
         if profile_id == SYSTEM_DEFAULT_ID:

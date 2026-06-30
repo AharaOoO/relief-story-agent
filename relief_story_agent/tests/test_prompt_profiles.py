@@ -1,7 +1,11 @@
 import json
 import pytest
 from pathlib import Path
-from relief_story_agent.prompt_profiles import PromptProfileStore, PromptProfile, SYSTEM_DEFAULT_ID
+from relief_story_agent.prompt_profiles import (
+    PromptProfile,
+    PromptProfileStore,
+    SYSTEM_DEFAULT_ID,
+)
 
 def test_system_default_profile_creation(tmp_path: Path):
     store = PromptProfileStore(tmp_path)
@@ -67,3 +71,30 @@ def test_system_default_cannot_be_created_explicitly(tmp_path: Path):
     profile = PromptProfile(id=SYSTEM_DEFAULT_ID, name="Hack")
     with pytest.raises(ValueError, match="Cannot explicitly create system default"):
         store.create(profile)
+
+
+def test_system_default_cannot_be_updated(tmp_path: Path):
+    store = PromptProfileStore(tmp_path)
+    profile = store.get(SYSTEM_DEFAULT_ID)
+    profile.stages.chief_screenwriter = "Broken system template"
+
+    with pytest.raises(ValueError, match="Cannot update the system default profile"):
+        store.update(profile)
+
+
+def test_reset_restores_custom_profile_stages_and_increments_version(tmp_path: Path):
+    store = PromptProfileStore(tmp_path)
+    profile = store.clone(SYSTEM_DEFAULT_ID, "Reset me")
+    profile.stages.chief_screenwriter = "Custom template"
+    profile = store.update(profile)
+
+    reset = store.reset(profile.id)
+
+    assert reset.id == profile.id
+    assert reset.name == "Reset me"
+    assert reset.version == 3
+    assert reset.source == "user"
+    assert (
+        reset.stages.chief_screenwriter
+        == store.get(SYSTEM_DEFAULT_ID).stages.chief_screenwriter
+    )

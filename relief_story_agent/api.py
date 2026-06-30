@@ -53,6 +53,11 @@ from .local_runtime import (
 from .orchestrator import StoryRunOrchestrator
 from .pipeline import build_pipeline_schema
 from .planning import build_batch_plan
+from .prompt_profiles import (
+    PromptProfile,
+    PromptProfileCloneRequest,
+    SYSTEM_DEFAULT_ID,
+)
 from .recovery import build_batch_recovery_plan
 from .run_audit import audit_run_state
 from .run_timeline import build_run_timeline
@@ -68,6 +73,36 @@ from .runninghub import (
 from .scheduler import PersistentRunScheduler
 from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import ComfyUISmokeRequest, run_comfyui_smoke
+
+
+def _prompt_profile_http_error(exc: ValueError) -> HTTPException:
+    message = str(exc)
+    if "system default" in message.lower():
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": "prompt_profile_read_only",
+                "message": message,
+                "action": "Clone the system profile and edit the copy.",
+            },
+        )
+    if "not found" in message.lower():
+        return HTTPException(
+            status_code=404,
+            detail={
+                "code": "prompt_profile_not_found",
+                "message": message,
+                "action": "Refresh the profile list and choose an existing profile.",
+            },
+        )
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "prompt_profile_conflict",
+            "message": message,
+            "action": "Reload the profile and retry the operation.",
+        },
+    )
 
 
 def create_app(
@@ -222,6 +257,71 @@ def create_app(
     @app.get("/api/config/models")
     def get_model_config_status():
         return orchestrator.model_registry.status()
+
+    @app.get("/api/prompt-profiles")
+    def list_prompt_profiles():
+        return {"items": orchestrator.profile_store.list_profiles()}
+
+    @app.get("/api/prompt-profiles/{profile_id}")
+    def get_prompt_profile(profile_id: str):
+        try:
+            return orchestrator.profile_store.get(profile_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "prompt_profile_not_found",
+                    "message": str(exc),
+                    "action": "Refresh the profile list and choose an existing profile.",
+                },
+            ) from exc
+
+    @app.post("/api/prompt-profiles", status_code=201)
+    def create_prompt_profile(profile: PromptProfile):
+        profile.source = "user"
+        profile.version = 1
+        try:
+            return orchestrator.profile_store.create(profile)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.put("/api/prompt-profiles/{profile_id}")
+    def update_prompt_profile(profile_id: str, profile: PromptProfile):
+        if profile_id != profile.id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "prompt_profile_id_mismatch",
+                    "message": "Prompt profile path id does not match the body id.",
+                    "action": "Reload the profile before saving it again.",
+                },
+            )
+        try:
+            return orchestrator.profile_store.update(profile)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.post("/api/prompt-profiles/{profile_id}/clone", status_code=201)
+    def clone_prompt_profile(profile_id: str, request: PromptProfileCloneRequest):
+        try:
+            return orchestrator.profile_store.clone(profile_id, request.name)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.post("/api/prompt-profiles/{profile_id}/reset")
+    def reset_prompt_profile(profile_id: str):
+        try:
+            return orchestrator.profile_store.reset(profile_id)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.delete("/api/prompt-profiles/{profile_id}", status_code=204)
+    def delete_prompt_profile(profile_id: str):
+        try:
+            orchestrator.profile_store.delete(profile_id)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+        return Response(status_code=204)
 
     @app.post("/api/config/model-check")
     def check_model_config(request: ModelProbeRequest):

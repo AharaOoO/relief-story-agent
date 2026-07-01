@@ -4,32 +4,7 @@ import { ChevronDown, Info, Save } from 'lucide-react'
 import { AUTOPILOT_STAGES } from './stages'
 import { fetchProviderCatalog } from '../workbench/workbench.api'
 import { useRunDraft } from '../run-composer/runDraft.store'
-import { defaultRunningHubModel, MODEL_STAGE_IDS, runningHubModelOptions, type ModelStageId, type RunningHubSite, type RunRequestPayload } from '../run-composer/runRequest.builder'
-
-const STANDARD_PRESETS: Record<ModelStageId, Array<{ label: string; model: string; base_url: string; api_key_env: string }>> = {
-  chief_screenwriter: [
-    { label: 'Gemini 2.5 Pro', model: 'gemini-2.5-pro', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai', api_key_env: 'GEMINI_API_KEY' },
-    { label: 'Gemini 2.5 Flash', model: 'gemini-2.5-flash', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai', api_key_env: 'GEMINI_API_KEY' },
-  ],
-  deepseek_polish: [
-    { label: 'DeepSeek Chat', model: 'deepseek-chat', base_url: 'https://api.deepseek.com/v1', api_key_env: 'DEEPSEEK_API_KEY' },
-    { label: 'DeepSeek Reasoner', model: 'deepseek-reasoner', base_url: 'https://api.deepseek.com/v1', api_key_env: 'DEEPSEEK_API_KEY' },
-  ],
-  quality_gate: [
-    { label: 'DeepSeek Chat', model: 'deepseek-chat', base_url: 'https://api.deepseek.com/v1', api_key_env: 'DEEPSEEK_API_KEY' },
-    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
-  ],
-  gpt_prompt_writer: [
-    { label: 'GPT-5', model: 'gpt-5', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
-    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
-  ],
-  gpt_prompt_audit: [
-    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
-  ],
-  gpt_prompt_reviser: [
-    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
-  ],
-}
+import { defaultRunningHubModel, MODEL_STAGE_IDS, runningHubModelOptions, STANDARD_STAGE_MODEL_PRESETS, type ModelStageId, type RunningHubSite, type RunRequestPayload } from '../run-composer/runRequest.builder'
 
 const PROMPT_HINTS: Record<ModelStageId, string> = {
   chief_screenwriter: '指挥总编剧如何确定题材、内核、人物动机与核心矛盾。',
@@ -55,13 +30,13 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
   const modelStageId = isModelStage ? (stage.id as ModelStageId) : null
   const frozenModel = modelStageId && readOnly ? runRequest?.model_configs?.[modelStageId] : undefined
   const currentModel = modelStageId ? (frozenModel ?? draft.stageModels[modelStageId]) : undefined
-  const providerMode = currentModel?.provider_mode ?? 'runninghub'
+  const providerMode = currentModel?.provider_mode ?? 'openai_compatible'
   const site = (currentModel?.runninghub_site ?? draft.runninghubSite) as RunningHubSite
   const models = modelStageId ? Array.from(new Set([
     ...(readOnly && currentModel?.model ? [currentModel.model] : []),
     ...runningHubModelOptions(site, modelStageId),
   ])) : []
-  const standardModels = modelStageId ? (STANDARD_PRESETS[modelStageId] ?? []) : []
+  const standardModels = modelStageId ? (STANDARD_STAGE_MODEL_PRESETS[modelStageId] ?? []) : []
   const [runtime, setRuntime] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
@@ -139,17 +114,20 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
       {modelStageId ? (
         <div className="stage-config-body">
           <div className="provider-mode-row">
-            <div><strong>模型调用模式</strong><span>RunningHub 一个 key 覆盖整条流；普通 API 分别使用各服务商 key。</span></div>
+            <div><strong>模型调用模式</strong><span>普通模型 API 适合个人 key；RunningHub LLM 端点需要企业共享 key。</span></div>
             <div className="segmented-control">
-              <button type="button" disabled={readOnly} className={providerMode === 'runninghub' ? 'is-active' : ''} onClick={() => switchProviderMode('runninghub')}>RunningHub 便捷 API</button>
+              <button type="button" disabled={readOnly} className={providerMode === 'runninghub' ? 'is-active' : ''} onClick={() => switchProviderMode('runninghub')}>RunningHub 企业模型 API</button>
               <button type="button" disabled={readOnly} className={providerMode === 'openai_compatible' ? 'is-active' : ''} onClick={() => switchProviderMode('openai_compatible')}>普通模型 API</button>
             </div>
           </div>
           {providerMode === 'runninghub' ? (
-          <div className="stage-config-row">
-            <label className="field-stack"><span>服务站点</span><div className="select-shell"><select disabled={readOnly} value={site} onChange={(event) => { const targetSite = event.target.value as RunningHubSite; const targetModel = defaultRunningHubModel(targetSite, modelStageId); patchDraft({ stageModels: { ...draft.stageModels, [modelStageId]: { provider_mode: 'runninghub', runninghub_site: targetSite, model: targetModel } } }) }}><option value="cn">RunningHub 国内站 .cn</option><option value="ai">RunningHub 国际站 .ai</option></select><ChevronDown size={16} /></div></label>
-            <label className="field-stack"><span>本工序模型</span><div className="select-shell"><select disabled={readOnly || catalog.isLoading} value={currentModel?.model ?? models[0] ?? ''} onChange={(event) => patchModel({ model: event.target.value })}>{models.map((model) => <option value={model} key={model}>{model}</option>)}</select><ChevronDown size={16} /></div></label>
-          </div>
+          <>
+            <div className="stage-config-row">
+              <label className="field-stack"><span>服务站点</span><div className="select-shell"><select disabled={readOnly} value={site} onChange={(event) => { const targetSite = event.target.value as RunningHubSite; const targetModel = defaultRunningHubModel(targetSite, modelStageId); patchDraft({ stageModels: { ...draft.stageModels, [modelStageId]: { provider_mode: 'runninghub', runninghub_site: targetSite, model: targetModel } } }) }}><option value="cn">RunningHub 国内站 .cn</option><option value="ai">RunningHub 国际站 .ai</option></select><ChevronDown size={16} /></div></label>
+              <label className="field-stack"><span>本工序模型</span><div className="select-shell"><select disabled={readOnly || catalog.isLoading} value={currentModel?.model ?? models[0] ?? ''} onChange={(event) => patchModel({ model: event.target.value })}>{models.map((model) => <option value={model} key={model}>{model}</option>)}</select><ChevronDown size={16} /></div></label>
+            </div>
+            {!readOnly && <div className="editor-note"><Info size={15} /><span>RunningHub LLM 兼容端点只接受 SHARED / enterprise API key；普通个人 key 请使用“普通模型 API”。</span></div>}
+          </>
           ) : (
             <div className="stage-config-row is-single">
               <label className="field-stack"><span>本工序模型</span><div className="select-shell"><select disabled={readOnly} value={currentModel?.model ?? standardModels[0]?.model ?? ''} onChange={(event) => { const preset = standardModels.find((item) => item.model === event.target.value); if (preset) patchDraft({ stageModels: { ...draft.stageModels, [modelStageId]: { provider_mode: 'openai_compatible', ...toStageModel(preset) } } }) }}>{standardModels.map((preset) => <option value={preset.model} key={preset.model}>{preset.label}</option>)}</select><ChevronDown size={16} /></div></label>

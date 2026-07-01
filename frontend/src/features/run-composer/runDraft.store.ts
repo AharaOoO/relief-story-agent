@@ -1,21 +1,56 @@
 import { create } from 'zustand'
-import { createRunDraft, type RunDraft } from './runRequest.builder'
+import {
+  createRunDraft,
+  createStandardStageModels,
+  MODEL_STAGE_IDS,
+  type RunDraft,
+} from './runRequest.builder'
 
-const STORAGE_KEY = 'relief-story-agent:run-draft:v2'
+const STORAGE_KEY = 'relief-story-agent:run-draft:v3'
+const LEGACY_STORAGE_KEYS = ['relief-story-agent:run-draft:v2']
+
+function shouldMigrateLegacyRunningHubModels(stored: Partial<RunDraft>): boolean {
+  const stageModels = stored.stageModels
+  if (!stageModels) return false
+  return MODEL_STAGE_IDS.every((stageId) => stageModels[stageId]?.provider_mode === 'runninghub')
+}
+
+function mergeStoredDraft(stored: Partial<RunDraft>, migrateLegacyModels = false): RunDraft {
+  const base = createRunDraft()
+  return {
+    ...base,
+    ...stored,
+    stageModels: migrateLegacyModels && shouldMigrateLegacyRunningHubModels(stored)
+      ? createStandardStageModels()
+      : stored.stageModels ?? base.stageModels,
+    stagePrompts: stored.stagePrompts ?? base.stagePrompts,
+  }
+}
+
+function parseStoredDraft(value: string | null): Partial<RunDraft> | null {
+  if (!value) return null
+  try {
+    return JSON.parse(value) as Partial<RunDraft>
+  } catch {
+    return null
+  }
+}
 
 function loadDraft(): RunDraft {
   if (typeof window === 'undefined') return createRunDraft()
-  try {
-    const stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<RunDraft>
-    return {
-      ...createRunDraft(),
-      ...stored,
-      stageModels: stored.stageModels ?? {},
-      stagePrompts: stored.stagePrompts ?? {},
+  const current = parseStoredDraft(window.localStorage.getItem(STORAGE_KEY))
+  if (current) return mergeStoredDraft(current)
+
+  for (const legacyKey of LEGACY_STORAGE_KEYS) {
+    const legacy = parseStoredDraft(window.localStorage.getItem(legacyKey))
+    if (legacy) {
+      const migrated = mergeStoredDraft(legacy, true)
+      persistDraft(migrated)
+      return migrated
     }
-  } catch {
-    return createRunDraft()
   }
+
+  return createRunDraft()
 }
 
 function persistDraft(draft: RunDraft) {

@@ -21,6 +21,12 @@ function renderWorkspace(stageId: string, props: Partial<ComponentProps<typeof S
   return render(<QueryClientProvider client={client}><StageWorkspace stageId={stageId} {...props} /></QueryClientProvider>)
 }
 
+function clickRunningHubMode() {
+  const button = screen.getAllByRole('button').find((item) => item.textContent?.includes('RunningHub'))
+  expect(button).toBeTruthy()
+  fireEvent.click(button!)
+}
+
 beforeEach(() => {
   window.localStorage.clear()
   useRunDraft.getState().resetDraft()
@@ -61,6 +67,8 @@ describe('StageWorkspace run snapshot', () => {
 
     renderWorkspace('gpt_prompt_writer')
 
+    expect(await screen.findByDisplayValue('GPT-5')).toBeInTheDocument()
+    clickRunningHubMode()
     expect(await screen.findByDisplayValue('openai/gpt-5.5')).toBeInTheDocument()
     fireEvent.change(screen.getByDisplayValue('RunningHub 国际站 .ai'), { target: { value: 'cn' } })
 
@@ -88,6 +96,7 @@ describe('StageWorkspace run snapshot', () => {
 
     renderWorkspace('quality_gate')
 
+    clickRunningHubMode()
     await waitFor(() => {
       expect(screen.getByRole('option', { name: 'openai/gpt-5.5' })).toBeInTheDocument()
     })

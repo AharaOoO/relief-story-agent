@@ -16,6 +16,26 @@ describe('autopilot run request builder', () => {
     expect(request.approval_mode).toBe('auto')
   })
 
+  it('defaults LLM stages to ordinary provider APIs instead of RunningHub enterprise endpoints', () => {
+    const draft = createRunDraft()
+    const request = buildRunRequest(draft)
+
+    expect(draft.stageModels.chief_screenwriter?.provider_mode).toBe('openai_compatible')
+    expect(request.model_configs.chief_screenwriter).toMatchObject({
+      provider_mode: 'openai_compatible',
+      api_key_env: 'GEMINI_API_KEY',
+    })
+    expect(request.model_configs.deepseek_polish).toMatchObject({
+      provider_mode: 'openai_compatible',
+      api_key_env: 'DEEPSEEK_API_KEY',
+    })
+    expect(request.model_configs.gpt_prompt_writer).toMatchObject({
+      provider_mode: 'openai_compatible',
+      api_key_env: 'OPENAI_API_KEY',
+    })
+    expect(request.comfyui.grid_image.provider).toBe('runninghub_image_task')
+  })
+
   it('carries six-stage models, prompt overrides and comfyui config', () => {
     const draft = createRunDraft()
     draft.content = '保留原剧情，把它改成影视级运镜短剧。'

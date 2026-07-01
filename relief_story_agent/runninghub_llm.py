@@ -39,11 +39,21 @@ class RunningHubLLMProvider:
             max_retries=0,
             timeout=config.timeout_seconds,
         )
-        response = client.chat.completions.create(
-            model=config.model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=config.temperature,
-        )
+        try:
+            response = client.chat.completions.create(
+                model=config.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=config.temperature,
+            )
+        except Exception as exc:
+            if _is_enterprise_shared_key_error(exc):
+                raise ValueError(
+                    "RunningHub LLM 模型接口需要企业共享 API Key"
+                    f"（SHARED / enterprise key）。当前 {config.api_key_env} "
+                    "看起来是普通 OpenAPI key；请在 RunningHub 后台填入企业共享 key，"
+                    "或把前 6 道工序切换到“普通模型 API”。"
+                ) from exc
+            raise
         content = response.choices[0].message.content or ""
         usage = getattr(response, "usage", None)
         return ModelCallResult(
@@ -77,3 +87,33 @@ class RunningHubLLMProvider:
             raise ValueError("RunningHub LLM response must be a JSON object")
         return payload
 
+
+def _is_enterprise_shared_key_error(exc: Exception) -> bool:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        candidates = [body, error] if isinstance(error, dict) else [body]
+        for candidate in candidates:
+            code = str(candidate.get("code", ""))
+            message = str(candidate.get("message", ""))
+            if "auth_apikey_type_forbidden" in code or "only SHARED" in message:
+                return True
+    response = getattr(exc, "response", None)
+    if response is not None:
+        try:
+            payload = response.json()
+        except Exception:
+            payload = None
+        if isinstance(payload, dict):
+            error = payload.get("error")
+            candidates = [payload, error] if isinstance(error, dict) else [payload]
+            for candidate in candidates:
+                code = str(candidate.get("code", ""))
+                message = str(candidate.get("message", ""))
+                if "auth_apikey_type_forbidden" in code or "only SHARED" in message:
+                    return True
+    text = str(exc)
+    return (
+        "auth_apikey_type_forbidden" in text
+        or "only SHARED (enterprise) api keys are accepted" in text
+    )

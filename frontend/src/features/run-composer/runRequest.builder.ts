@@ -103,6 +103,38 @@ export type BatchRequestPayload = {
   items: RunRequestPayload[]
 }
 
+export type StandardStageModelPreset = {
+  label: string
+  model: string
+  base_url: string
+  api_key_env: string
+}
+
+export const STANDARD_STAGE_MODEL_PRESETS: Record<ModelStageId, readonly StandardStageModelPreset[]> = {
+  chief_screenwriter: [
+    { label: 'Gemini 2.5 Pro', model: 'gemini-2.5-pro', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai', api_key_env: 'GEMINI_API_KEY' },
+    { label: 'Gemini 2.5 Flash', model: 'gemini-2.5-flash', base_url: 'https://generativelanguage.googleapis.com/v1beta/openai', api_key_env: 'GEMINI_API_KEY' },
+  ],
+  deepseek_polish: [
+    { label: 'DeepSeek Chat', model: 'deepseek-chat', base_url: 'https://api.deepseek.com/v1', api_key_env: 'DEEPSEEK_API_KEY' },
+    { label: 'DeepSeek Reasoner', model: 'deepseek-reasoner', base_url: 'https://api.deepseek.com/v1', api_key_env: 'DEEPSEEK_API_KEY' },
+  ],
+  quality_gate: [
+    { label: 'DeepSeek Chat', model: 'deepseek-chat', base_url: 'https://api.deepseek.com/v1', api_key_env: 'DEEPSEEK_API_KEY' },
+    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
+  ],
+  gpt_prompt_writer: [
+    { label: 'GPT-5', model: 'gpt-5', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
+    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
+  ],
+  gpt_prompt_audit: [
+    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
+  ],
+  gpt_prompt_reviser: [
+    { label: 'GPT-5 mini', model: 'gpt-5-mini', base_url: 'https://api.openai.com/v1', api_key_env: 'OPENAI_API_KEY' },
+  ],
+}
+
 export const RUNNINGHUB_STAGE_MODEL_OPTIONS: Record<RunningHubSite, Record<ModelStageId, readonly string[]>> = {
   cn: {
     chief_screenwriter: ['qwen/qwen3.7-plus', 'qwen/qwen3.7-max'],
@@ -142,6 +174,24 @@ export function createRunningHubStageModels(
   ) as Record<ModelStageId, StageModelDraft>
 }
 
+export function defaultStandardModel(stageId: ModelStageId): StandardStageModelPreset {
+  return STANDARD_STAGE_MODEL_PRESETS[stageId][0]
+}
+
+export function createStandardStageModels(): Record<ModelStageId, StageModelDraft> {
+  return Object.fromEntries(
+    MODEL_STAGE_IDS.map((stageId) => {
+      const preset = defaultStandardModel(stageId)
+      return [stageId, {
+        provider_mode: 'openai_compatible' as const,
+        model: preset.model,
+        base_url: preset.base_url,
+        api_key_env: preset.api_key_env,
+      }]
+    }),
+  ) as Record<ModelStageId, StageModelDraft>
+}
+
 function normalizeConstraints(value: string): string[] {
   return value
     .split(/\r?\n|[；;]/)
@@ -155,11 +205,13 @@ function createRequestId(prefix: string, index = 0): string {
 }
 
 function normalizeModelConfigs(draft: RunDraft): Record<ModelStageId, StageModelDraft> {
-  const globalDefaults = createRunningHubStageModels(draft.runninghubSite)
+  const globalDefaults = createStandardStageModels()
   return Object.fromEntries(MODEL_STAGE_IDS.map((stageId) => {
     const candidate = draft.stageModels[stageId]
     const site = candidate?.runninghub_site ?? draft.runninghubSite
-    const fallback = createRunningHubStageModels(site)[stageId]
+    const fallback = candidate?.provider_mode === 'runninghub'
+      ? createRunningHubStageModels(site)[stageId]
+      : globalDefaults[stageId]
     const source = candidate?.model?.trim() ? candidate : fallback ?? globalDefaults[stageId]
     const normalized: StageModelDraft = {
       provider_mode: source.provider_mode,
@@ -190,7 +242,7 @@ export function createRunDraft(): RunDraft {
     approvalMode: 'auto',
     promptProfileId: 'system-default',
     promptProfileVersion: 1,
-    stageModels: createRunningHubStageModels('ai'),
+    stageModels: createStandardStageModels(),
     stagePrompts: {},
     comfyuiEnabled: true,
     comfyuiEndpoint: 'http://127.0.0.1:8188',

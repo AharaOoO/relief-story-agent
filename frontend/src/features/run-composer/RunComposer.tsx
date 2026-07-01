@@ -17,7 +17,6 @@ import {
 import {
   buildBatchRequest,
   buildRunRequest,
-  createRunningHubStageModels,
   type RunDraft,
 } from './runRequest.builder'
 import { useRunDraft } from './runDraft.store'
@@ -273,7 +272,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
   }
 
   const changeSite = (site: RunDraft['runninghubSite']) => {
-    patchDraft({ runninghubSite: site, stageModels: createRunningHubStageModels(site) })
+    patchDraft({ runninghubSite: site })
   }
 
   const updateInputMode = (mode: RunDraft['inputMode']) => {

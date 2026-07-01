@@ -67,6 +67,43 @@ def test_runninghub_llm_rejects_a_model_not_curated_for_the_stage(monkeypatch):
         provider.generate_json("quality_gate", "Audit", config)
 
 
+def test_runninghub_llm_explains_enterprise_shared_key_requirement(monkeypatch):
+    monkeypatch.setenv("RUNNINGHUB_AI_API_KEY", "consumer-key")
+
+    class FakeRunningHubAuthError(Exception):
+        status_code = 401
+
+        def __str__(self):
+            return (
+                "Error code: 401 - {'error': {'message': "
+                "'only SHARED (enterprise) api keys are accepted', "
+                "'type': 'invalid_request_error', "
+                "'code': 'auth_apikey_type_forbidden'}}"
+            )
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            raise FakeRunningHubAuthError()
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr("relief_story_agent.runninghub_llm.OpenAI", FakeOpenAI)
+    provider = RunningHubLLMProvider()
+
+    with pytest.raises(ValueError, match="企业共享 API Key"):
+        provider.generate_json(
+            "chief_screenwriter",
+            "Write a story",
+            StageModelConfig(
+                provider_mode="runninghub",
+                runninghub_site="ai",
+                model="google/gemini-3.5-flash",
+            ),
+        )
+
+
 def test_model_executor_routes_runninghub_without_calling_default_provider():
     class DefaultProvider:
         def generate_json(self, stage, prompt, config=None):
@@ -101,4 +138,3 @@ def test_model_executor_routes_runninghub_without_calling_default_provider():
     assert runninghub.calls == [
         ("gpt_prompt_writer", "Build shots", "openai/gpt-5.5")
     ]
-

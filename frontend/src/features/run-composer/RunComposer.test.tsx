@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RunComposer } from './RunComposer'
-import { createRun } from '../workbench/workbench.api'
+import { createRun, validateRun } from '../workbench/workbench.api'
 
 vi.mock('../workbench/workbench.api', () => ({
   createBatch: vi.fn(),
@@ -81,5 +81,20 @@ describe('RunComposer input mode detection', () => {
 
     await waitFor(() => expect(createRun).toHaveBeenCalled())
     expect(vi.mocked(createRun).mock.calls[0]?.[0].input_spec.mode).toBe('requirements')
+  })
+
+  it('treats a legacy passed preflight response as ready', async () => {
+    vi.mocked(validateRun).mockResolvedValue({
+      passed: true,
+      blockers: [],
+      warnings: [],
+      checks: [{ name: 'model_environment', status: 'passed', message: 'ok' }],
+    } as Awaited<ReturnType<typeof validateRun>>)
+    renderComposer()
+
+    fireEvent.click(screen.getByRole('button', { name: /预检/ }))
+
+    expect(await screen.findByText(/预检通过/)).toBeInTheDocument()
+    expect(screen.queryByText(/还需要处理/)).not.toBeInTheDocument()
   })
 })

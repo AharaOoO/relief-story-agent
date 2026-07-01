@@ -19,10 +19,10 @@ export type ProviderCatalog = {
 }
 
 export type PreflightResult = {
-  ready: boolean
+  ready?: boolean
   passed?: boolean
-  blockers: PreflightIssue[]
-  warnings: PreflightIssue[]
+  blockers?: PreflightIssue[]
+  warnings?: PreflightIssue[]
   suggested_actions?: Array<{ code: string; label: string; description: string }>
   checks?: Array<{ name: string; status: string; message: string }>
 }

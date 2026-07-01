@@ -60,6 +60,11 @@ function inferInputMode(content: string): RunDraft['inputMode'] {
   return 'requirements'
 }
 
+function isPreflightReady(result: PreflightResult | null) {
+  if (!result) return false
+  return result.ready ?? result.passed ?? false
+}
+
 export function RunComposer({ compact = false, heading, onDraftChange }: RunComposerProps) {
   const navigate = useNavigate()
   const { draft, patchDraft } = useRunDraft()
@@ -69,6 +74,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const manualModeRef = useRef(false)
   const inputMode = INPUT_MODES.find((item) => item.id === draft.inputMode) ?? INPUT_MODES[0]
+  const preflightReady = isPreflightReady(preflight)
 
   useEffect(() => onDraftChange?.(draft), [draft, onDraftChange])
 
@@ -102,7 +108,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
     onSuccess: (result) => {
       if (result.kind === 'preflight') {
         setPreflight(result.value)
-        setFeedback(result.value.ready ? '预检通过，可以开始生成。' : '预检发现阻塞项，请按提示修正。')
+        setFeedback(isPreflightReady(result.value) ? '预检通过，可以开始生成。' : '预检发现阻塞项，请按提示修正。')
         return
       }
       if (result.kind === 'batch') {
@@ -225,8 +231,8 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
       <footer className="composer-footer">
         <div className="composer-feedback" role="status">
           {mutation.isPending && <LoaderCircle className="spin" size={17} />}
-          {!mutation.isPending && preflight?.ready && <CheckCircle2 size={17} />}
-          {!mutation.isPending && preflight && !preflight.ready && <XCircle size={17} />}
+          {!mutation.isPending && preflightReady && <CheckCircle2 size={17} />}
+          {!mutation.isPending && preflight && !preflightReady && <XCircle size={17} />}
           <span>{feedback || `${draft.runninghubSite === 'cn' ? '国内站' : '国际站'} · ${draft.aspectRatio} · ${draft.imageResolution.toUpperCase()} · ${draft.taskCount} 个任务`}</span>
         </div>
         <div className="composer-actions">
@@ -240,10 +246,10 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
         </div>
       </footer>
 
-      {preflight && !preflight.ready && (
+      {preflight && !preflightReady && (
         <div className="preflight-result is-error">
           <strong>还需要处理：</strong>
-          <ul>{preflight.blockers.map((item, index) => {
+          <ul>{(preflight.blockers ?? []).map((item, index) => {
             const message = formatPreflightIssue(item)
             return <li key={`${message}-${index}`}>{message}</li>
           })}</ul>

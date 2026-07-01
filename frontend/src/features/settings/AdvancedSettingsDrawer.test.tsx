@@ -67,4 +67,12 @@ describe('AdvancedSettingsDrawer', () => {
     expect(await screen.findByText('深度诊断通过')).toBeInTheDocument()
     expect(screen.getByText('通过 8 · 警告 1 · 失败 0')).toBeInTheDocument()
   })
+
+  it('opens directly on the requested settings group', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><AdvancedSettingsDrawer open initialTab="comfyui" onClose={vi.fn()} /></QueryClientProvider>)
+
+    expect(screen.getByRole('tab', { name: /ComfyUI/ })).toHaveAttribute('aria-selected', 'true')
+    expect(screen.getByRole('button', { name: '分析并测试连接' })).toBeInTheDocument()
+  })
 })

@@ -1,6 +1,8 @@
 import { createContext, useContext } from 'react'
 
-export type WorkbenchContextValue = { openSettings: () => void }
+export type SettingsTab = 'secrets' | 'prompts' | 'comfyui' | 'image' | 'storage' | 'diagnostics'
+
+export type WorkbenchContextValue = { openSettings: (tab?: SettingsTab) => void }
 
 export const WorkbenchContext = createContext<WorkbenchContextValue>({
   openSettings: () => undefined,

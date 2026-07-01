@@ -10,7 +10,7 @@ import {
 import { AdvancedSettingsDrawer } from '../../features/settings/AdvancedSettingsDrawer'
 import { DesktopTitlebar } from '../../shared/components/DesktopTitlebar'
 import { useBackendHealth } from '../../shared/hooks/useBackendHealth'
-import { WorkbenchContext } from './workbench.context'
+import { WorkbenchContext, type SettingsTab } from './workbench.context'
 
 const navItems = [
   { path: '/', label: '控制台', icon: Gauge, end: true },
@@ -21,10 +21,15 @@ const navItems = [
 
 export function WorkbenchShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('secrets')
   const health = useBackendHealth()
+  const openSettings = (tab: SettingsTab = 'secrets') => {
+    setSettingsTab(tab)
+    setSettingsOpen(true)
+  }
 
   return (
-    <WorkbenchContext.Provider value={{ openSettings: () => setSettingsOpen(true) }}>
+    <WorkbenchContext.Provider value={{ openSettings }}>
       <div className="workbench-shell">
         <DesktopTitlebar />
         <header className="floating-nav-shell">
@@ -53,7 +58,7 @@ export function WorkbenchShell() {
                 <span className={health.isSuccess ? 'is-online' : 'is-offline'} />
                 <span>{health.isSuccess ? '在线' : '离线'}</span>
               </div>
-              <button type="button" className="settings-trigger" onClick={() => setSettingsOpen(true)} aria-label="高级设置">
+              <button type="button" className="settings-trigger" onClick={() => openSettings()} aria-label="高级设置">
                 <Settings2 size={17} />
                 <span>高级设置</span>
               </button>
@@ -65,7 +70,7 @@ export function WorkbenchShell() {
           <Outlet />
         </main>
 
-        <AdvancedSettingsDrawer open={settingsOpen} onClose={() => setSettingsOpen(false)} />
+        <AdvancedSettingsDrawer open={settingsOpen} initialTab={settingsTab} onClose={() => setSettingsOpen(false)} />
       </div>
     </WorkbenchContext.Provider>
   )

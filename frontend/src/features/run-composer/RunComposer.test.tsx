@@ -185,6 +185,6 @@ describe('RunComposer input mode detection', () => {
     expect(await screen.findByText('配置模型密钥')).toBeInTheDocument()
     expect(screen.getByText('在高级设置里保存 RunningHub API key。')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '打开高级设置' }))
-    expect(openSettings).toHaveBeenCalledTimes(1)
+    expect(openSettings).toHaveBeenCalledWith('secrets')
   })
 })

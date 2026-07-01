@@ -188,7 +188,7 @@ export default function AutopilotPage() {
     <div className="autopilot-page page-surface">
       <header className="page-heading content-width">
         <div><span className="eyebrow">AUTOMATED PRODUCTION</span><h1>自动执行</h1><p>{runId ? '流水线正在按顺序执行，你可以随时查看每一道工序。' : '先配置前六道模型工序，再让整条流水线自动工作。'}</p></div>
-        <button className="secondary-button" type="button" onClick={openSettings}><Settings2 size={17} /> 高级设置</button>
+        <button className="secondary-button" type="button" onClick={() => openSettings()}><Settings2 size={17} /> 高级设置</button>
       </header>
 
       {!runId && (

@@ -25,8 +25,8 @@ import {
 import { buildRunRequest, createRunningHubStageModels } from '../run-composer/runRequest.builder'
 import { useRunDraft } from '../run-composer/runDraft.store'
 import { PromptProfileSettings } from './PromptProfileSettings'
+import type { SettingsTab } from '../../app/workbench/workbench.context'
 
-type SettingsTab = 'secrets' | 'prompts' | 'comfyui' | 'image' | 'storage' | 'diagnostics'
 type SecretStatus = Record<string, { configured: boolean; masked: string }>
 type DesktopRuntimeHandshake = {
   backendUrl: string
@@ -53,6 +53,7 @@ type RuntimeConfig = {
 
 type AdvancedSettingsDrawerProps = {
   open: boolean
+  initialTab?: SettingsTab
   onClose: () => void
 }
 
@@ -68,8 +69,8 @@ function isDesktop() {
   return typeof window !== 'undefined' && Boolean(window.reliefDesktop)
 }
 
-export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawerProps) {
-  const [tab, setTab] = useState<SettingsTab>('secrets')
+export function AdvancedSettingsDrawer({ open, initialTab = 'secrets', onClose }: AdvancedSettingsDrawerProps) {
+  const [tab, setTab] = useState<SettingsTab>(initialTab)
   const [secretStatus, setSecretStatus] = useState<SecretStatus>({})
   const [secretValues, setSecretValues] = useState<Record<string, string>>({})
   const [visibleSecret, setVisibleSecret] = useState<string>('')
@@ -92,6 +93,10 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
   const drawerRef = useRef<HTMLElement>(null)
   const { draft: runDraft, patchDraft: patchRunDraft } = useRunDraft()
   const health = useBackendHealth()
+
+  useEffect(() => {
+    if (open) setTab(initialTab)
+  }, [initialTab, open])
 
   useEffect(() => {
     if (!open || !window.reliefDesktop) return

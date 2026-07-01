@@ -22,7 +22,7 @@ import {
 } from './runRequest.builder'
 import { useRunDraft } from './runDraft.store'
 import { createBatch, createRun, formatPreflightIssue, validateRun, type PreflightIssue, type PreflightResult } from '../workbench/workbench.api'
-import { useWorkbench } from '../../app/workbench/workbench.context'
+import { useWorkbench, type SettingsTab } from '../../app/workbench/workbench.context'
 
 type RunComposerProps = {
   compact?: boolean
@@ -69,6 +69,30 @@ function isPreflightReady(result: PreflightResult | null) {
 
 type PreflightCheck = NonNullable<PreflightResult['checks']>[number]
 type SuggestedAction = NonNullable<PreflightResult['suggested_actions']>[number]
+
+function settingsTabForPreflight(result: PreflightResult | null): SettingsTab {
+  if (!result) return 'diagnostics'
+  const actionCodes = (result.suggested_actions ?? []).map((action) => action.code)
+  for (const code of actionCodes) {
+    if (code === 'configure_model_environment') return 'secrets'
+    if (code === 'fix_prompt_template') return 'prompts'
+    if (code === 'fix_comfyui_workflow' || code === 'start_or_check_comfyui') return 'comfyui'
+    if (code === 'fix_output_root' || code === 'fix_execution_policy') return 'storage'
+  }
+
+  const signals = [
+    ...(result.blockers ?? []).map((issue) => typeof issue === 'string' ? issue : `${issue.check ?? ''} ${issue.code ?? ''} ${issue.message ?? ''} ${issue.description ?? ''}`),
+    ...(result.checks ?? []).filter((check) => check.status === 'failed').map((check) => `${check.name} ${check.message}`),
+    ...(result.suggested_actions ?? []).map((action) => `${action.code} ${action.label} ${action.description}`),
+  ].join(' ').toLowerCase()
+
+  if (/api[_\s-]?key|secret|model_environment|environment|runninghub|gemini|deepseek|openai/.test(signals)) return 'secrets'
+  if (/prompt|template|profile/.test(signals)) return 'prompts'
+  if (/comfy|workflow|endpoint|node/.test(signals)) return 'comfyui'
+  if (/grid|image|g2|rhart/.test(signals)) return 'image'
+  if (/output|storage|execution_policy|concurrency|worker/.test(signals)) return 'storage'
+  return 'diagnostics'
+}
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === 'object' && value !== null ? value as Record<string, unknown> : null
@@ -371,7 +395,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
                   </div>
                 ))}
               </div>
-              <button className="secondary-button compact" type="button" onClick={openSettings}>
+              <button className="secondary-button compact" type="button" onClick={() => openSettings(settingsTabForPreflight(preflight))}>
                 <Settings2 size={15} /> 打开高级设置
               </button>
             </div>

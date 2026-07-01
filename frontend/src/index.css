@@ -361,6 +361,12 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
 .batch-queue-list article { grid-template-columns: auto minmax(0,1fr) auto auto; }
 .batch-action-row { display: flex !important; flex-direction: row !important; align-items: center; gap: 3px !important; }
 .batch-action-row .icon-button { width: 32px; height: 32px; }
+.batch-child-list { grid-column: 2 / -1; min-width: 0; display: flex !important; flex-flow: row wrap !important; gap: 8px !important; padding-top: 2px; }
+.queue-list .batch-child-link { min-height: 40px; display: inline-grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; width: min(100%, 260px); padding: 8px 10px; border: 1px solid var(--coast-line); border-radius: 14px; background: rgba(255,255,255,.54); box-shadow: none; }
+.queue-list .batch-child-link:hover { transform: translateY(-1px); border-color: rgba(110,159,255,.36); }
+.queue-list .batch-child-copy { min-width: 0; display: flex !important; flex-direction: column !important; gap: 2px !important; }
+.queue-list .batch-child-copy strong { font-size: 12px; }
+.queue-list .batch-child-copy small { overflow: hidden; color: var(--coast-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .icon-button.is-danger { color: var(--coast-danger); }
 .loading-row { min-height: 160px; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--coast-muted); font-size: 13px; }
 .asset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }

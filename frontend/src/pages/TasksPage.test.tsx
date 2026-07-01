@@ -14,7 +14,17 @@ vi.mock('../features/workbench/workbench.api', () => ({
     limit: 100,
     items: [
       { batch_id: 'batch-running', status: 'running', paused: false, item_count: 3, summary: { completed: 1, failed: 0 } },
-      { batch_id: 'batch-paused', status: 'paused', paused: true, item_count: 3, summary: { completed: 1, failed: 1 } },
+      {
+        batch_id: 'batch-paused',
+        status: 'paused',
+        paused: true,
+        item_count: 3,
+        summary: { completed: 1, failed: 1 },
+        items: [
+          { run_id: 'run-child-1', idea: '海边便利店', status: 'completed', current_stage: 'comfyui' },
+          { run_id: 'run-child-2', idea: '夜班热饮', status: 'failed', current_stage: 'gpt_prompt_audit' },
+        ],
+      },
     ],
   }),
   pauseBatch: vi.fn(() => pauseBatchResult),
@@ -60,5 +70,14 @@ describe('TasksPage', () => {
 
     expect(await screen.findByRole('status')).toHaveTextContent('正在暂停 batch-running')
     expect(screen.getByRole('button', { name: '暂停 batch-running' })).toBeDisabled()
+  })
+
+  it('links each batch child item to its live ten-stage run page', async () => {
+    renderPage()
+
+    const childRun = await screen.findByRole('link', { name: /海边便利店/ })
+
+    expect(childRun).toHaveAttribute('href', '/run/run-child-1')
+    expect(childRun).toHaveTextContent('comfyui')
   })
 })

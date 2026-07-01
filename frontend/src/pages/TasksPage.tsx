@@ -55,6 +55,7 @@ export default function TasksPage() {
                 const paused = batch.paused || batch.status === 'paused'
                 const pending = batchAction.isPending && batchAction.variables?.batchId === batch.batch_id
                 const retryable = failed > 0 || ['failed', 'partial_failed', 'cancelled'].includes(batch.status)
+                const childItems = batch.items?.filter((item) => item.run_id) ?? []
                 return (
                   <article key={batch.batch_id}>
                     <span className={`run-state-dot is-${batch.status}`} />
@@ -70,6 +71,20 @@ export default function TasksPage() {
                       {!TERMINAL_BATCH.has(batch.status) && <button type="button" className="icon-button is-quiet is-danger" disabled={pending} onClick={() => act(batch.batch_id, 'cancel')} aria-label={`取消 ${batch.batch_id}`} title="取消"><XCircle size={16} /></button>}
                       {pending && <LoaderCircle className="spin" size={16} aria-label="正在执行批次操作" />}
                     </div>
+                    {childItems.length > 0 && (
+                      <div className="batch-child-list" aria-label={`${batch.batch_id} 子任务`}>
+                        {childItems.map((item, index) => (
+                          <Link className="batch-child-link" to={`/run/${item.run_id}`} key={item.run_id}>
+                            <span className={`run-state-dot is-${item.status}`} />
+                            <span className="batch-child-copy">
+                              <strong>{item.idea || `子任务 ${index + 1}`}</strong>
+                              <small>{item.current_stage || item.status}</small>
+                            </span>
+                            <ArrowRight size={14} />
+                          </Link>
+                        ))}
+                      </div>
+                    )}
                   </article>
                 )
               })}

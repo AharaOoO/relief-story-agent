@@ -210,6 +210,25 @@ export function AdvancedSettingsDrawer({ open, initialTab = 'secrets', onClose }
     }
   }
 
+  const acceptDroppedWorkflow = (files: FileList | File[]) => {
+    const droppedFiles = Array.from(files)
+    if (droppedFiles.length !== 1) {
+      setMessage(droppedFiles.length > 1 ? '一次只能拖入一个工作流 JSON 文件。' : '请拖入一个 ComfyUI workflow JSON 文件。')
+      return
+    }
+    if (!window.reliefDesktop) {
+      setMessage('请从桌面客户端拖入本机 workflow JSON 文件。')
+      return
+    }
+    const droppedPath = window.reliefDesktop.getPathForFile(droppedFiles[0])
+    if (droppedPath.toLowerCase().endsWith('.json')) {
+      setRuntime((current) => ({ ...current, workflow_path: droppedPath }))
+      setMessage('已读取工作流路径，点击“保存、分析并测试”后生效。')
+    } else {
+      setMessage('请拖入本机的 ComfyUI workflow JSON 文件。')
+    }
+  }
+
   const pickOutputRoot = async () => {
     const result = await window.reliefDesktop?.pickDirectory()
     if (!result?.canceled && result?.path) {
@@ -425,15 +444,7 @@ export function AdvancedSettingsDrawer({ open, initialTab = 'secrets', onClose }
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault()
-                    const file = event.dataTransfer.files[0]
-                    const droppedPath = file && window.reliefDesktop
-                      ? window.reliefDesktop.getPathForFile(file)
-                      : ''
-                    if (droppedPath.toLowerCase().endsWith('.json')) {
-                      setRuntime((current) => ({ ...current, workflow_path: droppedPath }))
-                    } else {
-                      setMessage('请拖入本机的 ComfyUI workflow JSON 文件。')
-                    }
+                    acceptDroppedWorkflow(event.dataTransfer.files)
                   }}
                 >
                   <FileJson size={22} />

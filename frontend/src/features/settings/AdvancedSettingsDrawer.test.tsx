@@ -75,4 +75,46 @@ describe('AdvancedSettingsDrawer', () => {
     expect(screen.getByRole('tab', { name: /ComfyUI/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('button', { name: '分析并测试连接' })).toBeInTheDocument()
   })
+
+  it('accepts exactly one workflow JSON file from drag and drop', async () => {
+    window.reliefDesktop = {
+      ...window.reliefDesktop,
+      getRuntimeConfig: vi.fn().mockResolvedValue({ comfyui_endpoint: 'http://127.0.0.1:8188', workflow_path: '' }),
+      getPathForFile: vi.fn().mockReturnValue('D:/ComfyUI/workflows/ltx23.json'),
+    } as unknown as typeof window.reliefDesktop
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><AdvancedSettingsDrawer open initialTab="comfyui" onClose={vi.fn()} /></QueryClientProvider>)
+
+    const dropZone = await screen.findByText('拖入工作流 JSON，或点击上方文件按钮')
+    fireEvent.drop(dropZone, {
+      dataTransfer: {
+        files: [new File(['{}'], 'ltx23.json', { type: 'application/json' })],
+      },
+    })
+
+    expect(screen.getByDisplayValue('D:/ComfyUI/workflows/ltx23.json')).toBeInTheDocument()
+  })
+
+  it('rejects multiple workflow files instead of silently choosing one', async () => {
+    window.reliefDesktop = {
+      ...window.reliefDesktop,
+      getRuntimeConfig: vi.fn().mockResolvedValue({ comfyui_endpoint: 'http://127.0.0.1:8188', workflow_path: '' }),
+      getPathForFile: vi.fn().mockReturnValue('D:/ComfyUI/workflows/first.json'),
+    } as unknown as typeof window.reliefDesktop
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><AdvancedSettingsDrawer open initialTab="comfyui" onClose={vi.fn()} /></QueryClientProvider>)
+
+    const dropZone = await screen.findByText('拖入工作流 JSON，或点击上方文件按钮')
+    fireEvent.drop(dropZone, {
+      dataTransfer: {
+        files: [
+          new File(['{}'], 'first.json', { type: 'application/json' }),
+          new File(['{}'], 'second.json', { type: 'application/json' }),
+        ],
+      },
+    })
+
+    expect(await screen.findByRole('status')).toHaveTextContent('一次只能拖入一个工作流 JSON 文件。')
+    expect(screen.queryByDisplayValue('D:/ComfyUI/workflows/first.json')).not.toBeInTheDocument()
+  })
 })

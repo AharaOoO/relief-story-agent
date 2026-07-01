@@ -25,6 +25,7 @@ export const endpointPaths = {
   runEvents: (runId: string) => `/api/runs/${runId}/events`,
   runTimeline: (runId: string) => `/api/runs/${runId}/timeline`,
   runArtifacts: (runId: string) => `/api/runs/${runId}/artifacts`,
+  runRefreshComfyUI: (runId: string) => `/api/runs/${runId}/refresh-comfyui`,
   runApprove: (runId: string) => `/api/runs/${runId}/approve`,
   runRetry: (runId: string) => `/api/runs/${runId}/retry`,
   runCancel: (runId: string) => `/api/runs/${runId}/cancel`,
@@ -45,4 +46,5 @@ export const endpointPaths = {
   batchCancel: (batchId: string) => `/api/batches/${batchId}/cancel`,
   batchPause: (batchId: string) => `/api/batches/${batchId}/pause`,
   batchResume: (batchId: string) => `/api/batches/${batchId}/resume`,
+  comfyuiAnalyzeWorkflow: '/api/comfyui/analyze-workflow',
 } as const

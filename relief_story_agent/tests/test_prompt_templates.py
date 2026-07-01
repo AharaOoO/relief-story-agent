@@ -13,7 +13,7 @@ from relief_story_agent.prompt_templates import (
 import pytest
 
 
-def test_prompt_writer_uses_default_template_with_concise_gpt_image2_guidance():
+def test_prompt_writer_uses_default_template_with_concise_runninghub_g2_guidance():
     prompt = build_prompt_writer_prompt(
         request=RunRequest(idea="rainy store", preferred_style="realistic"),
         script={"title": "rainy store", "duration_seconds": 90},
@@ -21,7 +21,8 @@ def test_prompt_writer_uses_default_template_with_concise_gpt_image2_guidance():
     )
 
     assert "gpt_prompt_writer" in prompt
-    assert "GPT image2" in prompt
+    assert "RunningHub G2" in prompt
+    assert "GPT image2" not in prompt
     assert "60-120" in prompt
     assert "{{script_json}}" not in prompt
 

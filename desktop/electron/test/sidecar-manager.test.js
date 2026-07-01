@@ -15,6 +15,7 @@ class FakeChild extends EventEmitter {
     this.stdout = new PassThrough()
     this.stderr = new PassThrough()
     this.killed = false
+    this.pid = FakeChild.nextPid++
   }
 
   kill() {
@@ -23,6 +24,8 @@ class FakeChild extends EventEmitter {
     return true
   }
 }
+
+FakeChild.nextPid = 30_000
 
 async function makeManager(overrides = {}) {
   const userDataPath = await fs.mkdtemp(path.join(os.tmpdir(), 'relief-sidecar-'))
@@ -46,6 +49,7 @@ async function makeManager(overrides = {}) {
       cwd: 'D:/repo',
       env: { TEST_SECRET: 'secret' },
     }),
+    processPlatform: 'linux',
     pollIntervalMs: 1,
     startupTimeoutMs: 50,
     ...overrides,
@@ -110,6 +114,44 @@ test('restart stops the old process and starts a new process', async () => {
   assert.equal(children[0].killed, true)
   assert.equal(spawns.length, 2)
   assert.equal(status.status, 'running')
+})
+
+test('uses Windows process-tree termination when stopping the packaged sidecar', async () => {
+  const terminatedPids = []
+  const { manager, children } = await makeManager({
+    processPlatform: 'win32',
+    terminateProcessTree: async (child) => {
+      terminatedPids.push(child.pid)
+      child.kill()
+    },
+  })
+  await manager.start()
+
+  await manager.stop()
+
+  assert.deepEqual(terminatedPids, [children[0].pid])
+  assert.equal(children[0].killed, true)
+})
+
+test('serializes overlapping restarts so only one sidecar remains running', async () => {
+  const { manager, children, spawns } = await makeManager({
+    requestUrl: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5))
+      return true
+    },
+  })
+  await manager.start()
+
+  await Promise.all([
+    manager.restart(),
+    manager.restart(),
+    manager.restart(),
+  ])
+
+  const runningChildren = children.filter((child) => !child.killed)
+  assert.equal(spawns.length, 4)
+  assert.equal(runningChildren.length, 1)
+  assert.equal(manager.getStatus().status, 'running')
 })
 
 test('startup timeout kills the process and exposes the failure', async () => {

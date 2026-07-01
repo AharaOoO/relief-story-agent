@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Check,
   ChevronRight,
@@ -6,16 +6,31 @@ import {
   EyeOff,
   FileJson,
   FolderOpen,
+  Image as ImageIcon,
   KeyRound,
   LoaderCircle,
   RefreshCw,
+  ScrollText,
   ServerCog,
   X,
 } from 'lucide-react'
 import { useBackendHealth } from '../../shared/hooks/useBackendHealth'
+import { applyDesktopHandshake } from '../../shared/api/desktopHandshake'
+import { analyzeComfyWorkflow, connectComfyUI } from '../workbench/workbench.api'
+import { createRunningHubStageModels } from '../run-composer/runRequest.builder'
+import { useRunDraft } from '../run-composer/runDraft.store'
+import { PromptProfileSettings } from './PromptProfileSettings'
 
-type SettingsTab = 'secrets' | 'comfyui' | 'storage' | 'diagnostics'
+type SettingsTab = 'secrets' | 'prompts' | 'comfyui' | 'image' | 'storage' | 'diagnostics'
 type SecretStatus = Record<string, { configured: boolean; masked: string }>
+type DesktopRuntimeHandshake = {
+  backendUrl: string
+  backendPort: number | null
+  backendStatus: string
+  backendLogPath: string
+  backendLastError: string
+  version: string
+}
 type RuntimeConfig = {
   comfyui_endpoint?: string
   workflow_path?: string
@@ -26,6 +41,9 @@ type RuntimeConfig = {
   deepseek_model?: string
   openai_base_url?: string
   openai_model?: string
+  max_workers?: number
+  image_generation_concurrency?: number
+  comfyui_submission_concurrency?: number
 }
 
 type AdvancedSettingsDrawerProps = {
@@ -63,6 +81,10 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
   })
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
+  const [workflowReport, setWorkflowReport] = useState<Record<string, unknown> | null>(null)
+  const [handshake, setHandshake] = useState<DesktopRuntimeHandshake | null>(null)
+  const drawerRef = useRef<HTMLElement>(null)
+  const { draft: runDraft, patchDraft: patchRunDraft } = useRunDraft()
   const health = useBackendHealth()
 
   useEffect(() => {
@@ -71,9 +93,11 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
     void Promise.all([
       window.reliefDesktop.getRuntimeConfig(),
       window.reliefDesktop.getSecretStatus(),
-    ]).then(([savedRuntime, savedStatus]) => {
+      window.reliefDesktop.getHandshake(),
+    ]).then(([savedRuntime, savedStatus, currentHandshake]) => {
       setRuntime((current) => ({ ...current, ...(savedRuntime as RuntimeConfig) }))
       setSecretStatus(savedStatus)
+      setHandshake(currentHandshake)
     }).catch((error: unknown) => {
       setMessage(error instanceof Error ? error.message : '无法读取桌面设置')
     })
@@ -81,11 +105,28 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
 
   useEffect(() => {
     if (!open) return
+    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    window.setTimeout(() => drawerRef.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus(), 0)
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
+      if (event.key !== 'Tab' || !drawerRef.current) return
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])'))
+      if (!focusable.length) return
+      const first = focusable[0]
+      const last = focusable[focusable.length - 1]
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault()
+        last.focus()
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault()
+        first.focus()
+      }
     }
     window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape)
+      previouslyFocused?.focus()
+    }
   }, [onClose, open])
 
   const configuredCount = useMemo(
@@ -102,6 +143,7 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
     setMessage('正在安全保存并重启本地后端…')
     try {
       const result = await window.reliefDesktop.saveSecret(name, value)
+      applyDesktopHandshake(result.handshake)
       setSecretStatus((current) => ({
         ...current,
         [name]: result.status,
@@ -115,14 +157,32 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
     }
   }
 
+  const deleteSecret = async (name: string) => {
+    if (!window.reliefDesktop) return
+    setBusy(name)
+    setMessage('正在移除密钥并重启本地后端…')
+    try {
+      const result = await window.reliefDesktop.deleteSecret(name)
+      applyDesktopHandshake(result.handshake)
+      setSecretStatus((current) => ({ ...current, [name]: result.status }))
+      setMessage('密钥已从 Windows 加密存储中移除。')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '密钥移除失败')
+    } finally {
+      setBusy('')
+    }
+  }
+
   const saveRuntime = async () => {
     if (!window.reliefDesktop) return
     setBusy('runtime')
     setMessage('正在保存配置并重启本地后端…')
     try {
       const result = await window.reliefDesktop.saveRuntimeConfig(runtime)
+      applyDesktopHandshake(result.handshake)
       const config = result.config as RuntimeConfig
       setRuntime((current) => ({ ...current, ...config }))
+      setHandshake(result.handshake)
       window.dispatchEvent(new CustomEvent('relief:runtime-config', { detail: config }))
       setMessage('本地配置已保存，后端已重新连接。')
     } catch (error) {
@@ -146,16 +206,50 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
     }
   }
 
+  const verifyWorkflow = async () => {
+    if (!window.reliefDesktop) return
+    const endpoint = runtime.comfyui_endpoint?.trim() || 'http://127.0.0.1:8188'
+    const workflowPath = runtime.workflow_path?.trim() || ''
+    if (!workflowPath) {
+      setMessage('请先选择或拖入 ComfyUI workflow JSON。')
+      return
+    }
+    setBusy('workflow')
+    setMessage('正在保存、分析工作流并测试 ComfyUI 连接…')
+    setWorkflowReport(null)
+    try {
+      const saved = await window.reliefDesktop.saveRuntimeConfig(runtime)
+      applyDesktopHandshake(saved.handshake)
+      setRuntime((current) => ({ ...current, ...(saved.config as RuntimeConfig) }))
+      setHandshake(saved.handshake)
+      window.dispatchEvent(new CustomEvent('relief:runtime-config', { detail: saved.config }))
+      const [analysis, connection] = await Promise.all([
+        analyzeComfyWorkflow(endpoint, workflowPath),
+        connectComfyUI(endpoint, workflowPath),
+      ])
+      const connected = Boolean(connection.connected)
+      setWorkflowReport({ analysis, connection })
+      setMessage(connected ? `工作流可用：${String(analysis.adapter_mode ?? analysis.workflow_format ?? '已识别')}，ComfyUI 已连接。` : '工作流已识别，但 ComfyUI 当前未连接。')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '工作流分析或连接失败')
+    } finally {
+      setBusy('')
+    }
+  }
+
   const tabs: Array<{ id: SettingsTab; label: string; icon: typeof KeyRound }> = [
     { id: 'secrets', label: '模型与密钥', icon: KeyRound },
+    { id: 'prompts', label: '提示词模板', icon: ScrollText },
     { id: 'comfyui', label: 'ComfyUI', icon: ServerCog },
-    { id: 'storage', label: '输出与存储', icon: FolderOpen },
+    { id: 'image', label: '图像生成', icon: ImageIcon },
+    { id: 'storage', label: '执行与存储', icon: FolderOpen },
     { id: 'diagnostics', label: '诊断', icon: RefreshCw },
   ]
 
   return (
     <div className="settings-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={drawerRef}
         className="settings-drawer"
         role="dialog"
         aria-modal="true"
@@ -168,7 +262,7 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
             <h2>高级设置</h2>
             <p>平时收起来，需要时再打开。</p>
           </div>
-          <button className="icon-button" type="button" onClick={onClose} aria-label="关闭高级设置">
+          <button className="icon-button" type="button" data-autofocus onClick={onClose} aria-label="关闭高级设置">
             <X size={20} />
           </button>
         </header>
@@ -238,15 +332,18 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                             {visibleSecret === field.name ? <EyeOff size={17} /> : <Eye size={17} />}
                           </button>
                         </div>
-                        <button
-                          className="secondary-button compact"
-                          type="button"
-                          disabled={!secretValues[field.name]?.trim() || Boolean(busy)}
-                          onClick={() => void saveSecret(field.name)}
-                        >
-                          {busy === field.name ? <LoaderCircle className="spin" size={16} /> : <KeyRound size={16} />}
-                          保存
-                        </button>
+                        <div className="secret-button-row">
+                          {status?.configured && <button className="text-button" type="button" disabled={Boolean(busy)} onClick={() => void deleteSecret(field.name)}>清除</button>}
+                          <button
+                            className="secondary-button compact"
+                            type="button"
+                            disabled={!secretValues[field.name]?.trim() || Boolean(busy)}
+                            onClick={() => void saveSecret(field.name)}
+                          >
+                            {busy === field.name ? <LoaderCircle className="spin" size={16} /> : <KeyRound size={16} />}
+                            保存
+                          </button>
+                        </div>
                       </div>
                     )
                   })}
@@ -266,6 +363,8 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                 </details>
               </div>
             )}
+
+            {tab === 'prompts' && <PromptProfileSettings />}
 
             {tab === 'comfyui' && (
               <div className="settings-section">
@@ -305,18 +404,30 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                   <FileJson size={22} />
                   <span>拖入工作流 JSON，或点击上方文件按钮</span>
                 </div>
-                <button className="primary-button" type="button" disabled={Boolean(busy) || !isDesktop()} onClick={() => void saveRuntime()}>
-                  {busy === 'runtime' ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}
-                  保存并重启本地后端
+                <button className="primary-button" type="button" aria-label="分析并测试连接" disabled={Boolean(busy) || !isDesktop()} onClick={() => void verifyWorkflow()}>
+                  {busy === 'workflow' ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}
+                  保存、分析并测试
                 </button>
+                {workflowReport && <div className="workflow-report"><Check size={17} /><div><strong>工作流可用</strong><span>{String((workflowReport.analysis as Record<string, unknown>)?.adapter_mode ?? (workflowReport.analysis as Record<string, unknown>)?.workflow_format ?? '已识别')} · {String((workflowReport.analysis as Record<string, unknown>)?.node_count ?? '?')} 个节点</span></div></div>}
+              </div>
+            )}
+
+            {tab === 'image' && (
+              <div className="settings-section">
+                <div><h3>G2 四宫格参考图</h3><p>与模型站点使用同一把 RunningHub key，生成后自动交给 LTX 工作流。</p></div>
+                <div className="image-provider-summary"><ImageIcon size={22} /><div><strong>rhart-image-g-2</strong><span>任务式便捷 API · 默认 2K</span></div></div>
+                <div className="field-stack"><span>服务站点</span><div className="segmented-control"><button type="button" className={runDraft.runninghubSite === 'cn' ? 'is-active' : ''} onClick={() => patchRunDraft({ runninghubSite: 'cn', stageModels: createRunningHubStageModels('cn') })}>国内站 .cn</button><button type="button" className={runDraft.runninghubSite === 'ai' ? 'is-active' : ''} onClick={() => patchRunDraft({ runninghubSite: 'ai', stageModels: createRunningHubStageModels('ai') })}>国际站 .ai</button></div></div>
+                <div className="field-stack"><span>画面比例</span><div className="segmented-control"><button type="button" className={runDraft.aspectRatio === '16:9' ? 'is-active' : ''} onClick={() => patchRunDraft({ aspectRatio: '16:9' })}>横屏 16:9</button><button type="button" className={runDraft.aspectRatio === '9:16' ? 'is-active' : ''} onClick={() => patchRunDraft({ aspectRatio: '9:16' })}>竖屏 9:16</button></div></div>
+                <label className="field-stack"><span>生成清晰度</span><select value={runDraft.imageResolution} onChange={(event) => patchRunDraft({ imageResolution: event.target.value as '1k' | '2k' })}><option value="2k">2K 清晰（默认）</option><option value="1k">1K 快速</option></select></label>
+                <div className={`inline-notice ${secretStatus[runDraft.runninghubSite === 'cn' ? 'RUNNINGHUB_CN_API_KEY' : 'RUNNINGHUB_AI_API_KEY']?.configured ? '' : 'is-warning'}`}>{secretStatus[runDraft.runninghubSite === 'cn' ? 'RUNNINGHUB_CN_API_KEY' : 'RUNNINGHUB_AI_API_KEY']?.configured ? '当前站点密钥已配置。' : '当前站点还没有配置 RunningHub 密钥。'}</div>
               </div>
             )}
 
             {tab === 'storage' && (
               <div className="settings-section">
                 <div>
-                  <h3>输出与存储</h3>
-                  <p>所有剧本、提示词、参考图和视频会按任务归档。</p>
+                  <h3>执行与存储</h3>
+                  <p>控制本地并发和产物目录；保存后由新 sidecar 参数实际生效。</p>
                 </div>
                 <label className="field-stack">
                   <span>默认输出目录</span>
@@ -327,9 +438,14 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                     </button>
                   </div>
                 </label>
+                <div className="endpoint-grid">
+                  <label className="field-stack"><span>并行任务数</span><input type="number" min={1} max={8} value={runtime.max_workers ?? 2} onChange={(event) => setRuntime((current) => ({ ...current, max_workers: Number(event.target.value) }))} /></label>
+                  <label className="field-stack"><span>同时生成参考图</span><input type="number" min={1} max={4} value={runtime.image_generation_concurrency ?? 2} onChange={(event) => setRuntime((current) => ({ ...current, image_generation_concurrency: Number(event.target.value) }))} /></label>
+                  <label className="field-stack"><span>同时提交 ComfyUI</span><input type="number" min={1} max={4} value={runtime.comfyui_submission_concurrency ?? 1} onChange={(event) => setRuntime((current) => ({ ...current, comfyui_submission_concurrency: Number(event.target.value) }))} /></label>
+                </div>
                 <button className="primary-button" type="button" disabled={Boolean(busy) || !isDesktop()} onClick={() => void saveRuntime()}>
                   {busy === 'runtime' ? <LoaderCircle className="spin" size={17} /> : <Check size={17} />}
-                  保存输出目录
+                  保存并应用执行设置
                 </button>
               </div>
             )}
@@ -346,6 +462,10 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                     {health.isLoading ? '检查中…' : health.isSuccess ? '在线' : '离线'}
                   </strong>
                 </div>
+                <div className="diagnostic-line"><span>API 地址</span><strong>{handshake?.backendUrl || '尚未握手'}</strong></div>
+                <div className="diagnostic-line"><span>桌面版本</span><strong>{handshake?.version || '未知'}</strong></div>
+                {handshake?.backendLastError && <div className="inline-notice is-error">{handshake.backendLastError}</div>}
+                <div className="settings-action-row">
                 <button
                   className="secondary-button"
                   type="button"
@@ -354,7 +474,11 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                     setBusy('restart')
                     setMessage('正在重启本地后端…')
                     try {
-                      await window.reliefDesktop?.restartBackend()
+                      const nextHandshake = await window.reliefDesktop?.restartBackend()
+                      if (nextHandshake) {
+                        setHandshake(nextHandshake)
+                        applyDesktopHandshake(nextHandshake)
+                      }
                       await health.refetch()
                       setMessage('本地后端已重启。')
                     } catch (error) {
@@ -367,6 +491,8 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                   {busy === 'restart' ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}
                   重启并重新检测
                 </button>
+                <button className="secondary-button" type="button" disabled={!handshake?.backendLogPath} onClick={() => handshake?.backendLogPath && void window.reliefDesktop?.openPath(handshake.backendLogPath)}><FolderOpen size={16} /> 打开日志</button>
+                </div>
               </div>
             )}
 

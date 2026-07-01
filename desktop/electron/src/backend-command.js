@@ -10,8 +10,13 @@ function createBackendCommand({
   uiOrigin = 'null',
   extraCorsOrigins = [],
   environment,
+  runtimeConfig = {},
   processEnvironment,
 }) {
+  const integerSetting = (name, fallback, maximum) => {
+    const value = Number(runtimeConfig[name])
+    return Number.isInteger(value) && value >= 1 && value <= maximum ? value : fallback
+  }
   const stateDir = path.join(userDataPath, 'state')
   const commonArgs = [
     '--host',
@@ -23,12 +28,19 @@ function createBackendCommand({
     '--ui-origin',
     uiOrigin,
     '--max-workers',
-    '2',
+    String(integerSetting('max_workers', 2, 8)),
     '--lease-seconds',
     '300',
     '--recovery-poll-seconds',
     '5',
+    '--image-generation-concurrency',
+    String(integerSetting('image_generation_concurrency', 2, 4)),
+    '--comfyui-submission-concurrency',
+    String(integerSetting('comfyui_submission_concurrency', 1, 4)),
   ]
+  if (typeof runtimeConfig.comfyui_endpoint === 'string' && runtimeConfig.comfyui_endpoint.trim()) {
+    commonArgs.push('--comfyui-endpoint', runtimeConfig.comfyui_endpoint.trim())
+  }
   for (const origin of extraCorsOrigins) {
     commonArgs.push('--cors-origin', origin)
   }

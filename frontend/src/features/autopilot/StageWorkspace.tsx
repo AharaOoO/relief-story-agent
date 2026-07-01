@@ -4,7 +4,7 @@ import { ChevronDown, Info, Save } from 'lucide-react'
 import { AUTOPILOT_STAGES } from './stages'
 import { fetchProviderCatalog } from '../workbench/workbench.api'
 import { useRunDraft } from '../run-composer/runDraft.store'
-import { MODEL_STAGE_IDS, type ModelStageId, type RunningHubSite } from '../run-composer/runRequest.builder'
+import { MODEL_STAGE_IDS, type ModelStageId, type RunningHubSite, type RunRequestPayload } from '../run-composer/runRequest.builder'
 
 const STANDARD_PRESETS: Record<ModelStageId, Array<{ label: string; model: string; base_url: string; api_key_env: string }>> = {
   chief_screenwriter: [
@@ -40,18 +40,27 @@ const PROMPT_HINTS: Record<ModelStageId, string> = {
   gpt_prompt_reviser: '定义依据审查报告进行修补时，什么能改、什么必须保留。',
 }
 
-type StageWorkspaceProps = { stageId: string; readOnly?: boolean }
+type StageWorkspaceProps = {
+  stageId: string
+  readOnly?: boolean
+  runRequest?: RunRequestPayload
+  promptSnapshot?: Partial<Record<ModelStageId, string>>
+}
 
-export function StageWorkspace({ stageId, readOnly = false }: StageWorkspaceProps) {
+export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSnapshot }: StageWorkspaceProps) {
   const stage = AUTOPILOT_STAGES.find((item) => item.id === stageId) ?? AUTOPILOT_STAGES[0]
   const { draft, patchDraft } = useRunDraft()
   const catalog = useQuery({ queryKey: ['provider-catalog'], queryFn: fetchProviderCatalog, staleTime: 5 * 60_000 })
   const isModelStage = MODEL_STAGE_IDS.includes(stage.id as ModelStageId)
   const modelStageId = stage.id as ModelStageId
-  const currentModel = draft.stageModels[modelStageId]
+  const frozenModel = readOnly ? runRequest?.model_configs?.[modelStageId] : undefined
+  const currentModel = frozenModel ?? draft.stageModels[modelStageId]
   const providerMode = currentModel?.provider_mode ?? 'runninghub'
   const site = (currentModel?.runninghub_site ?? draft.runninghubSite) as RunningHubSite
-  const models = catalog.data?.runninghub?.[site]?.stages?.[modelStageId] ?? []
+  const catalogModels = catalog.data?.runninghub?.[site]?.stages?.[modelStageId] ?? []
+  const models = currentModel?.model && !catalogModels.includes(currentModel.model)
+    ? [currentModel.model, ...catalogModels]
+    : catalogModels
   const standardModels = STANDARD_PRESETS[modelStageId] ?? []
   const [runtime, setRuntime] = useState<Record<string, unknown>>({})
 
@@ -145,7 +154,7 @@ export function StageWorkspace({ stageId, readOnly = false }: StageWorkspaceProp
               <div className="provider-endpoint-note"><Info size={15} /><span>{currentModel?.base_url ?? standardModels[0]?.base_url}<br />密钥：{currentModel?.api_key_env ?? standardModels[0]?.api_key_env}</span></div>
             </div>
           )}
-          <label className="field-stack prompt-editor"><span>本工序提示词模板</span><textarea disabled={readOnly} value={draft.stagePrompts[modelStageId] ?? ''} onChange={(event) => patchDraft({ stagePrompts: { ...draft.stagePrompts, [modelStageId]: event.target.value } })} placeholder={`${PROMPT_HINTS[modelStageId]} 留空时使用内置专业模板。`} /></label>
+          <label className="field-stack prompt-editor"><span>本工序提示词模板</span><textarea disabled={readOnly} value={readOnly ? (promptSnapshot?.[modelStageId] ?? runRequest?.prompt_profile?.stage_overrides?.[modelStageId] ?? '') : (draft.stagePrompts[modelStageId] ?? '')} onChange={(event) => patchDraft({ stagePrompts: { ...draft.stagePrompts, [modelStageId]: event.target.value } })} placeholder={`${PROMPT_HINTS[modelStageId]} 留空时使用内置专业模板。`} /></label>
           <div className="editor-note"><Info size={15} /><span>模板会随任务一起冻结，运行中的任务不会被后续修改影响。</span></div>
           {!readOnly && <div className="auto-save-note"><Save size={15} /> 已自动保存在本机草稿</div>}
         </div>

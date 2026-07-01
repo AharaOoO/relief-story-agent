@@ -2,7 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
-import { useUiStore } from './shared/store/uiStore'
+import { applyDesktopHandshake } from './shared/api/desktopHandshake'
 
 async function init() {
   // @ts-ignore
@@ -10,9 +10,7 @@ async function init() {
     try {
       // @ts-ignore
       const handshake = await window.reliefDesktop.getHandshake()
-      if (handshake.backendUrl) {
-        useUiStore.getState().setApiBaseUrl(handshake.backendUrl)
-      }
+      applyDesktopHandshake(handshake)
     } catch (e) {
       console.error('Handshake failed:', e)
     }

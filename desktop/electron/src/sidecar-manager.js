@@ -1,6 +1,23 @@
 const fs = require('node:fs/promises')
 const net = require('node:net')
 const path = require('node:path')
+const { execFile } = require('node:child_process')
+
+function terminateWindowsProcessTree(child) {
+  return new Promise((resolve) => {
+    if (!child.pid) {
+      child.kill()
+      resolve()
+      return
+    }
+    execFile(
+      'taskkill',
+      ['/pid', String(child.pid), '/t', '/f'],
+      { windowsHide: true },
+      () => resolve()
+    )
+  })
+}
 
 function findAvailablePort(host, preferredPort) {
   const bindHost = host === 'localhost' ? '127.0.0.1' : host
@@ -38,6 +55,8 @@ class SidecarManager {
     portResolver = (port) => findAvailablePort(host, port),
     startupTimeoutMs = 45_000,
     pollIntervalMs = 250,
+    processPlatform = process.platform,
+    terminateProcessTree = terminateWindowsProcessTree,
   }) {
     this.host = host
     this.preferredPort = preferredPort
@@ -48,11 +67,14 @@ class SidecarManager {
     this.portResolver = portResolver
     this.startupTimeoutMs = startupTimeoutMs
     this.pollIntervalMs = pollIntervalMs
+    this.processPlatform = processPlatform
+    this.terminateProcessTree = terminateProcessTree
     this.child = null
     this.port = null
     this.status = 'stopped'
     this.lastError = ''
     this.logPath = path.join(userDataPath, 'logs', 'backend.log')
+    this.operationQueue = Promise.resolve()
   }
 
   getStatus() {
@@ -66,7 +88,11 @@ class SidecarManager {
     }
   }
 
-  async start() {
+  start() {
+    return this._enqueueOperation(() => this._start())
+  }
+
+  async _start() {
     if (this.child && this.status === 'running') {
       return this.getStatus()
     }
@@ -98,13 +124,17 @@ class SidecarManager {
       await new Promise((resolve) => setTimeout(resolve, this.pollIntervalMs))
     }
     const message = `Backend failed to become healthy at ${healthUrl}`
-    await this.stop()
+    await this._stop()
     this.status = 'failed'
     this.lastError = message
     throw new Error(message)
   }
 
-  async stop() {
+  stop() {
+    return this._enqueueOperation(() => this._stop())
+  }
+
+  async _stop() {
     const child = this.child
     if (!child) {
       this.status = 'stopped'
@@ -119,7 +149,7 @@ class SidecarManager {
         resolve()
       }
       child.once('exit', finish)
-      child.kill()
+      void this._terminateChild(child)
       setTimeout(finish, 2_000)
     })
     this.child = null
@@ -127,9 +157,30 @@ class SidecarManager {
     return this.getStatus()
   }
 
-  async restart() {
-    await this.stop()
-    return this.start()
+  restart() {
+    return this._enqueueOperation(async () => {
+      await this._stop()
+      return this._start()
+    })
+  }
+
+  _enqueueOperation(operation) {
+    const run = this.operationQueue.catch(() => {}).then(operation)
+    this.operationQueue = run.catch(() => {})
+    return run
+  }
+
+  async _terminateChild(child) {
+    if (this.processPlatform === 'win32') {
+      try {
+        await this.terminateProcessTree(child)
+        return
+      } catch {
+        child.kill()
+        return
+      }
+    }
+    child.kill()
   }
 
   _captureLogs(child) {

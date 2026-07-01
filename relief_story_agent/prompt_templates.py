@@ -23,11 +23,11 @@ PROMPT_TEMPLATE_SPECS: dict[str, dict[str, tuple[str, ...]]] = {
 
 
 DEFAULT_PROMPT_WRITER_TEMPLATE = """
-你是 gpt_prompt_writer，负责把 DeepSeek 改好的短片剧本转成可用于 GPT image2 四宫格关键帧和 ComfyUI/LTX 的分镜提示词。
+你是 gpt_prompt_writer，负责把 DeepSeek 改好的短片剧本转成可用于 RunningHub G2 四宫格参考图和 ComfyUI/LTX 2.3 的导演级分镜提示词。
 
 要求：
 1. 生成 5-8 个镜头，每个镜头都必须服务剧情内核，不写无意义空镜。
-2. 每个 image_prompt 面向 GPT image2 四宫格关键帧，控制在 60-120 个中文字符左右，不写长篇小说段落。
+2. 每个 image_prompt 面向 RunningHub G2 四宫格参考图，控制在 60-120 个中文字符左右，不写长篇小说段落。
 3. 画面要交代角色、站位、空间关系、动作、光线和情绪，但保持低刺激。
 4. negative_prompt 简洁列出不要的内容，如争吵、恐怖、字幕、水印、角色错位、越轴。
 5. comfyui_inputs 至少包含 positive、negative、seed、strength。
@@ -81,7 +81,7 @@ DEFAULT_PROMPT_AUDIT_TEMPLATE = """
 4. 动态画面逻辑是否合理，动作是否能从上一个镜头自然接到下一个镜头。
 5. 静态画面逻辑是否符合剧情文意，物件、光线、情绪是否一致。
 6. 每个镜头是否都有叙事含义，是否服务短片内核。
-7. GPT image2 四宫格 image_prompt 是否过长，是否有无关铺陈。
+7. RunningHub G2 四宫格 image_prompt 是否过长，是否有无关铺陈。
 
 剧本 JSON：
 {{script_json}}
@@ -117,7 +117,7 @@ DEFAULT_PROMPT_REVISER_TEMPLATE = """
 修正原则：
 1. 只修正镜头描述、image_prompt、negative_prompt 和 comfyui_inputs，不改剧本内核。
 2. 固定角色站位、空间关系和镜头方向，解决越轴、错位和动作不连续问题。
-3. 每个 image_prompt 仍然面向 GPT image2 四宫格关键帧，控制在 60-120 个中文字符左右。
+3. 每个 image_prompt 仍然面向 RunningHub G2 四宫格参考图，控制在 60-120 个中文字符左右。
 4. 输出完整 shots 数组，不要只输出修改片段。
 
 剧本 JSON：

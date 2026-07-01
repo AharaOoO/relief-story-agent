@@ -255,8 +255,12 @@ app.whenReady().then(() => {
     userDataPath: app.getPath('userData'),
     spawnFn: spawn,
     requestUrl,
-    commandFactory: async ({ host: sidecarHost, port }) =>
-      createBackendCommand({
+    commandFactory: async ({ host: sidecarHost, port }) => {
+      const [environment, runtimeConfig] = await Promise.all([
+        settingsStore.getEnvironment(),
+        settingsStore.getRuntimeConfig(),
+      ])
+      return createBackendCommand({
         isDev,
         repoRoot,
         resourcesPath: process.resourcesPath,
@@ -267,9 +271,11 @@ app.whenReady().then(() => {
         extraCorsOrigins: isDev
           ? [`http://localhost:${frontendPort}`]
           : [],
-        environment: await settingsStore.getEnvironment(),
+        environment,
+        runtimeConfig,
         processEnvironment: process.env,
-      }),
+      })
+    },
   })
   registerDesktopIpc()
   createWindow()

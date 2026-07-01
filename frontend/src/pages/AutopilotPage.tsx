@@ -152,13 +152,23 @@ export default function AutopilotPage() {
   ) as Record<string, AutopilotStageStatus>, [run.data?.current_stage, run.data?.status, timeline.data])
 
   const completed = Object.values(statuses).filter((status) => status === 'completed' || status === 'skipped').length
-  const activeStage = AUTOPILOT_STAGES.find((stage) => stage.id === (run.data?.current_stage || selectedStage))
+  const currentStageId = typeof run.data?.current_stage === 'string' && AUTOPILOT_STAGES.some((stage) => stage.id === run.data?.current_stage)
+    ? run.data.current_stage
+    : ''
+  const activeStage = AUTOPILOT_STAGES.find((stage) => stage.id === (currentStageId || selectedStage))
+  const isViewingCurrentStage = !currentStageId || selectedStage === currentStageId
   const promptSnapshot = run.data?.prompt_snapshot as Partial<Record<(typeof AUTOPILOT_STAGES)[number]['id'], string>> | undefined
   const stageArtifacts = artifacts.data?.filter((item) => artifactMatchesStage(item, selectedStage)) ?? []
 
   const selectStage = (stageId: string) => {
     userSelectedStage.current = true
     setSelectedStage(stageId)
+  }
+
+  const followCurrentStage = () => {
+    if (!currentStageId) return
+    userSelectedStage.current = false
+    setSelectedStage(currentStageId)
   }
 
   const openLocalArtifact = async (targetPath: string, kind: 'file' | 'folder') => {
@@ -208,7 +218,19 @@ export default function AutopilotPage() {
             </div>
             {actionMessage && <div className={`inline-notice ${action.isError ? 'is-error' : ''}`} role="status">{action.isPending && <LoaderCircle className="spin" size={16} />}{actionMessage}</div>}
             <div className="global-progress"><div style={{ width: `${completed * 10}%` }} /><span>{completed}/10</span></div>
-            <div className="current-stage-callout"><Play size={17} /><span>当前</span><strong>{activeStage?.label} · {activeStage?.title}</strong><ChevronRight size={16} /></div>
+            <div className="current-stage-callout">
+              <Play size={17} />
+              <span>当前</span>
+              <strong>{activeStage?.label} · {activeStage?.title}</strong>
+              {!isViewingCurrentStage ? (
+                <button type="button" className="stage-follow-button" onClick={followCurrentStage} aria-label="回到当前工序">
+                  <RefreshCw size={14} />
+                  <span>回到当前工序</span>
+                </button>
+              ) : (
+                <ChevronRight size={16} />
+              )}
+            </div>
           </section>
 
           {(run.isError || timeline.isError) && <div className="inline-notice is-error"><AlertCircle size={17} /> 无法读取任务状态，请确认本地后端仍在线。</div>}

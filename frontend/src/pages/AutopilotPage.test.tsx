@@ -156,4 +156,36 @@ describe('AutopilotPage', () => {
     expect(await screen.findByText('audit.json')).toBeInTheDocument()
     expect(screen.queryByText('script')).not.toBeInTheDocument()
   })
+
+  it('lets the user return to the live current stage after inspecting another stage', async () => {
+    vi.mocked(fetchRun).mockResolvedValue(makeRun({
+      status: 'running',
+      current_stage: 'gpt_prompt_audit',
+    }))
+    vi.mocked(fetchRunArtifacts).mockResolvedValue([
+      {
+        id: 'chief-script',
+        kind: 'json',
+        name: 'script',
+        path: 'D:/relief/runs/run-one/01_script.json',
+      },
+      {
+        id: 'audit-report',
+        kind: 'prompt_audit',
+        name: 'audit.json',
+        path: 'D:/relief/runs/run-one/05_audit.json',
+      },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('audit.json')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /备料/ }))
+    expect(await screen.findByText('script')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '回到当前工序' }))
+
+    expect(await screen.findByText('audit.json')).toBeInTheDocument()
+    expect(screen.queryByText('script')).not.toBeInTheDocument()
+  })
 })

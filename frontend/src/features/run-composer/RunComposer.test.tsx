@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RunComposer } from './RunComposer'
 import { createBatch, createRun, validateRun } from '../workbench/workbench.api'
+import { WorkbenchContext } from '../../app/workbench/workbench.context'
 
 vi.mock('../workbench/workbench.api', () => ({
   createBatch: vi.fn(),
@@ -12,14 +13,16 @@ vi.mock('../workbench/workbench.api', () => ({
   validateRun: vi.fn(),
 }))
 
-function renderComposer() {
+function renderComposer(options: { openSettings?: () => void } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
-        <RunComposer />
+        <WorkbenchContext.Provider value={{ openSettings: options.openSettings ?? vi.fn() }}>
+          <RunComposer />
+        </WorkbenchContext.Provider>
       </MemoryRouter>
     </QueryClientProvider>,
   )
@@ -158,5 +161,30 @@ describe('RunComposer input mode detection', () => {
 
     expect(await screen.findByText(/还需要处理/)).toBeInTheDocument()
     expect(screen.getByText('任务 2：output_root is not writable.')).toBeInTheDocument()
+  })
+
+  it('shows suggested preflight actions and opens advanced settings from the blocker panel', async () => {
+    const openSettings = vi.fn()
+    vi.mocked(validateRun).mockResolvedValue({
+      passed: false,
+      blockers: [{ check: 'model_environment', message: 'Missing RunningHub API key.' }],
+      warnings: [],
+      suggested_actions: [
+        {
+          code: 'configure_model_environment',
+          label: '配置模型密钥',
+          description: '在高级设置里保存 RunningHub API key。',
+        },
+      ],
+      checks: [],
+    } as Awaited<ReturnType<typeof validateRun>>)
+    renderComposer({ openSettings })
+
+    fireEvent.click(screen.getByRole('button', { name: /预检/ }))
+
+    expect(await screen.findByText('配置模型密钥')).toBeInTheDocument()
+    expect(screen.getByText('在高级设置里保存 RunningHub API key。')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '打开高级设置' }))
+    expect(openSettings).toHaveBeenCalledTimes(1)
   })
 })

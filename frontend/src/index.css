@@ -242,6 +242,12 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
 .preflight-result { margin-top: 14px; padding: 14px 16px; border-radius: 14px; font-size: 13px; line-height: 1.6; }
 .preflight-result.is-error { color: #893a42; border: 1px solid rgba(204,91,99,.22); background: rgba(204,91,99,.07); }
 .preflight-result ul { margin: 8px 0 0; padding-left: 20px; }
+.preflight-actions { margin-top: 14px; padding-top: 12px; border-top: 1px solid rgba(137,58,66,.14); display: grid; gap: 10px; }
+.preflight-action-list { display: grid; gap: 8px; }
+.preflight-action-item { padding: 10px 12px; border: 1px solid rgba(255,255,255,.7); border-radius: 12px; background: rgba(255,255,255,.55); box-shadow: inset 0 1px 0 rgba(255,255,255,.66); }
+.preflight-action-item span { display: block; font-weight: 800; color: #6d3037; }
+.preflight-action-item p { margin: 3px 0 0; color: rgba(110,62,70,.82); }
+.preflight-actions .secondary-button { justify-self: start; }
 
 .process-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin: 0; padding: 0; list-style: none; }
 .process-grid li { min-height: 132px; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; border: 1px solid rgba(255,255,255,.92); border-radius: 24px; background: rgba(255,255,255,.58); box-shadow: 0 16px 44px rgba(70,91,126,.06), inset 0 1px 0 rgba(255,255,255,.9), inset 0 0 0 1px rgba(103,128,168,.05); backdrop-filter: blur(18px) saturate(125%); }

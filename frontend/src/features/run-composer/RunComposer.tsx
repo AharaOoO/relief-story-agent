@@ -9,6 +9,7 @@ import {
   Minus,
   Play,
   Plus,
+  Settings2,
   SlidersHorizontal,
   Sparkles,
   XCircle,
@@ -21,6 +22,7 @@ import {
 } from './runRequest.builder'
 import { useRunDraft } from './runDraft.store'
 import { createBatch, createRun, formatPreflightIssue, validateRun, type PreflightIssue, type PreflightResult } from '../workbench/workbench.api'
+import { useWorkbench } from '../../app/workbench/workbench.context'
 
 type RunComposerProps = {
   compact?: boolean
@@ -165,6 +167,7 @@ function isSuggestedAction(value: unknown): value is SuggestedAction {
 
 export function RunComposer({ compact = false, heading, onDraftChange }: RunComposerProps) {
   const navigate = useNavigate()
+  const { openSettings } = useWorkbench()
   const { draft, patchDraft } = useRunDraft()
   const [advancedOpen, setAdvancedOpen] = useState(false)
   const [preflight, setPreflight] = useState<PreflightResult | null>(null)
@@ -357,6 +360,22 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
             const message = formatPreflightIssue(item)
             return <li key={`${message}-${index}`}>{message}</li>
           })}</ul>
+          {(preflight.suggested_actions ?? []).length > 0 && (
+            <div className="preflight-actions">
+              <strong>下一步建议：</strong>
+              <div className="preflight-action-list">
+                {(preflight.suggested_actions ?? []).map((action) => (
+                  <div className="preflight-action-item" key={action.code}>
+                    <span>{action.label}</span>
+                    {action.description && <p>{action.description}</p>}
+                  </div>
+                ))}
+              </div>
+              <button className="secondary-button compact" type="button" onClick={openSettings}>
+                <Settings2 size={15} /> 打开高级设置
+              </button>
+            </div>
+          )}
         </div>
       )}
     </section>

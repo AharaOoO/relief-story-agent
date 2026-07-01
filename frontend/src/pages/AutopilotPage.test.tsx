@@ -11,8 +11,8 @@ vi.mock('../features/workbench/workbench.api', () => ({
   cancelRun: vi.fn(),
   fetchProviderCatalog: vi.fn().mockResolvedValue({
     runninghub: {
-      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: {} },
-      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_API_KEY', stages: {} },
+      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_SHARED_API_KEY', stages: {} },
+      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_SHARED_API_KEY', stages: {} },
     },
   }),
   fetchRun: vi.fn().mockResolvedValue({

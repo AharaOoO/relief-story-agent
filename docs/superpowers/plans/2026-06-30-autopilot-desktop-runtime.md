@@ -33,7 +33,7 @@
 
 - [ ] **Step 1: 写失败测试**，断言 preload 只暴露 `getRuntimeConfig/saveRuntimeConfig/getSecretStatus/saveSecret/deleteSecret/pickWorkflow/pickScript/pickDirectory/openPath/restartBackend/getHandshake`。
 - [ ] **Step 2: 实现文件和目录 dialog**，工作流限制 `.json`，剧本允许 `.txt/.md/.json`；返回取消状态而不是空异常。
-- [ ] **Step 3: 实现密钥 IPC allowlist**：`RUNNINGHUB_CN_API_KEY`, `RUNNINGHUB_AI_API_KEY`, `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `IMAGE_API_KEY`。
+- [ ] **Step 3: 实现密钥 IPC allowlist**：G2/任务 API 使用 `RUNNINGHUB_CN_API_KEY`, `RUNNINGHUB_AI_API_KEY`；企业 LLM 使用 `RUNNINGHUB_CN_SHARED_API_KEY`, `RUNNINGHUB_AI_SHARED_API_KEY`；普通模型使用 `GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, `IMAGE_API_KEY`。
 - [ ] **Step 4: 运行测试和 `node --check`**，预期通过。
 - [ ] **Step 5: 提交** `feat(desktop): add safe file and secret ipc`。
 
@@ -61,4 +61,3 @@
 - [ ] **Step 3: 启动开发客户端**，验证保存密钥后 renderer DOM 与 DevTools 中均看不到明文，重启后状态仍为已配置。
 - [ ] **Step 4: 验证选择/拖拽工作流后重启客户端仍保留路径，并能通过后端分析**。
 - [ ] **Step 5: 提交** `test(desktop): cover runtime configuration loop`。
-

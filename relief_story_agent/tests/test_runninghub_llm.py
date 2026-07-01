@@ -11,7 +11,7 @@ from relief_story_agent.runninghub_llm import RunningHubLLMProvider
 
 def test_runninghub_llm_uses_site_key_and_parses_fenced_json(monkeypatch):
     captured = {}
-    monkeypatch.setenv("RUNNINGHUB_CN_API_KEY", "cn-secret")
+    monkeypatch.setenv("RUNNINGHUB_CN_SHARED_API_KEY", "cn-secret")
     response = SimpleNamespace(
         choices=[
             SimpleNamespace(
@@ -55,7 +55,7 @@ def test_runninghub_llm_uses_site_key_and_parses_fenced_json(monkeypatch):
 
 
 def test_runninghub_llm_rejects_a_model_not_curated_for_the_stage(monkeypatch):
-    monkeypatch.setenv("RUNNINGHUB_AI_API_KEY", "ai-secret")
+    monkeypatch.setenv("RUNNINGHUB_AI_SHARED_API_KEY", "ai-secret")
     provider = RunningHubLLMProvider()
     config = StageModelConfig(
         provider_mode="runninghub",
@@ -68,7 +68,7 @@ def test_runninghub_llm_rejects_a_model_not_curated_for_the_stage(monkeypatch):
 
 
 def test_runninghub_llm_explains_enterprise_shared_key_requirement(monkeypatch):
-    monkeypatch.setenv("RUNNINGHUB_AI_API_KEY", "consumer-key")
+    monkeypatch.setenv("RUNNINGHUB_AI_SHARED_API_KEY", "consumer-key")
 
     class FakeRunningHubAuthError(Exception):
         status_code = 401

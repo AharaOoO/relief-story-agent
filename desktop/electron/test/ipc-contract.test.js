@@ -59,3 +59,10 @@ test('sandboxed preload does not import local CommonJS modules', () => {
   assert.match(source, /contextBridge\.exposeInMainWorld/)
   assert.match(source, /webUtils\.getPathForFile/)
 })
+
+test('desktop shell prevents multiple clients from sharing one state directory', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'src', 'main.js'), 'utf8')
+
+  assert.match(source, /app\.requestSingleInstanceLock\(\)/)
+  assert.match(source, /second-instance/)
+})

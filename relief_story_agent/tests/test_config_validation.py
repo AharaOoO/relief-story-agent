@@ -91,6 +91,34 @@ def test_config_validation_reports_template_workflow_and_secret_errors(tmp_path)
     assert "comfyui_workflow" in failed
 
 
+def test_config_validation_checks_inline_runninghub_shared_key_requirement():
+    request = RunRequest.model_validate(
+        {
+            "idea": "enterprise key boundary",
+            "model_configs": {
+                "chief_screenwriter": {
+                    "provider_mode": "runninghub",
+                    "runninghub_site": "cn",
+                    "model": "qwen/qwen3.7-plus",
+                }
+            },
+        }
+    )
+    registry = ModelConfigRegistry(
+        environ={"RUNNINGHUB_CN_API_KEY": "consumer-key"},
+    )
+
+    result = validate_run_configuration(request, registry)
+    check = next(item for item in result["checks"] if item["name"] == "model_environment")
+
+    assert result["passed"] is False
+    assert check["status"] == "failed"
+    assert check["details"]["missing_environment_variables"] == [
+        "RUNNINGHUB_CN_SHARED_API_KEY"
+    ]
+    assert "Enterprise-Shared" in check["message"]
+
+
 def test_config_validation_accepts_valid_templates_and_workflow(tmp_path):
     writer = tmp_path / "writer.md"
     writer.write_text("writer {{script_json}} {{duration_seconds}}", encoding="utf-8")

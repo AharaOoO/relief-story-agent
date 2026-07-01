@@ -58,8 +58,10 @@ type AdvancedSettingsDrawerProps = {
 }
 
 const SECRET_FIELDS = [
-  { name: 'RUNNINGHUB_CN_API_KEY', label: 'RunningHub 国内站', hint: '.cn 站 G2 / 标准模型 API；LLM 端点需企业共享 key' },
-  { name: 'RUNNINGHUB_AI_API_KEY', label: 'RunningHub 国际站', hint: '.ai 站 G2 / 标准模型 API；LLM 端点需企业共享 key' },
+  { name: 'RUNNINGHUB_CN_API_KEY', label: 'RunningHub 国内站 G2', hint: '.cn 个人/会员 key，仅用于 G2 与任务 API' },
+  { name: 'RUNNINGHUB_AI_API_KEY', label: 'RunningHub 国际站 G2', hint: '.ai 个人/会员 key，仅用于 G2 与任务 API' },
+  { name: 'RUNNINGHUB_CN_SHARED_API_KEY', label: 'RunningHub 国内站 LLM', hint: '.cn Enterprise-Shared key，仅前六步企业模型使用' },
+  { name: 'RUNNINGHUB_AI_SHARED_API_KEY', label: 'RunningHub 国际站 LLM', hint: '.ai Enterprise-Shared key，仅前六步企业模型使用' },
   { name: 'GEMINI_API_KEY', label: 'Gemini', hint: '普通模型 API 模式' },
   { name: 'DEEPSEEK_API_KEY', label: 'DeepSeek', hint: '普通模型 API 模式' },
   { name: 'OPENAI_API_KEY', label: 'OpenAI / 图像', hint: '普通模型 API 模式' },
@@ -460,7 +462,7 @@ export function AdvancedSettingsDrawer({ open, initialTab = 'secrets', onClose }
 
             {tab === 'image' && (
               <div className="settings-section">
-                <div><h3>G2 四宫格参考图</h3><p>与模型站点使用同一把 RunningHub key，生成后自动交给 LTX 工作流。</p></div>
+                <div><h3>G2 四宫格参考图</h3><p>使用站点个人/会员 key，与前六步企业共享模型 key 分开保存；生成后自动交给 LTX 工作流。</p></div>
                 <div className="image-provider-summary"><ImageIcon size={22} /><div><strong>rhart-image-g-2</strong><span>任务式便捷 API · 默认 2K</span></div></div>
                 <div className="field-stack"><span>服务站点</span><div className="segmented-control"><button type="button" className={runDraft.runninghubSite === 'cn' ? 'is-active' : ''} onClick={() => patchRunDraft({ runninghubSite: 'cn' })}>国内站 .cn</button><button type="button" className={runDraft.runninghubSite === 'ai' ? 'is-active' : ''} onClick={() => patchRunDraft({ runninghubSite: 'ai' })}>国际站 .ai</button></div></div>
                 <div className="field-stack"><span>画面比例</span><div className="segmented-control"><button type="button" className={runDraft.aspectRatio === '16:9' ? 'is-active' : ''} onClick={() => patchRunDraft({ aspectRatio: '16:9' })}>横屏 16:9</button><button type="button" className={runDraft.aspectRatio === '9:16' ? 'is-active' : ''} onClick={() => patchRunDraft({ aspectRatio: '9:16' })}>竖屏 9:16</button></div></div>

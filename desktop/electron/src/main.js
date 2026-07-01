@@ -26,6 +26,18 @@ let frontendDevUrl = `http://${host}:${frontendPort}/`
 let settingsStore = null
 let sidecarManager = null
 
+const hasSingleInstanceLock = app.requestSingleInstanceLock()
+if (!hasSingleInstanceLock) {
+  app.quit()
+}
+
+app.on('second-instance', () => {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return
+  if (win.isMinimized()) win.restore()
+  win.focus()
+})
+
 async function startFrontend() {
   if (frontendProcess) return
 
@@ -244,6 +256,7 @@ async function createWindow() {
 }
 
 app.whenReady().then(() => {
+  if (!hasSingleInstanceLock) return
   settingsStore = new SettingsStore({
     userDataPath: app.getPath('userData'),
     safeStorage,

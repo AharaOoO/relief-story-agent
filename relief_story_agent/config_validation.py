@@ -40,7 +40,7 @@ def validate_run_configuration(
     check_comfyui_connection: bool = False,
 ) -> dict[str, Any]:
     checks = [
-        _validate_model_environment(model_registry),
+        _validate_model_environment(model_registry, request),
         _validate_input_spec(request),
         _validate_creation_spec(request),
         _validate_template(
@@ -175,21 +175,49 @@ def diagnose_batch_configuration(
     }
 
 
-def _validate_model_environment(model_registry: ModelConfigRegistry) -> dict[str, Any]:
+def _validate_model_environment(
+    model_registry: ModelConfigRegistry,
+    request: RunRequest,
+) -> dict[str, Any]:
     status = model_registry.status()
-    missing = status.get("missing_environment_variables") or []
+    required = {
+        config.api_key_env
+        for config in request.model_configs.values()
+        if config.api_key_env and not config.api_key
+    }
+    missing = sorted(
+        set(status.get("missing_environment_variables") or [])
+        | {
+            name
+            for name in required
+            if not model_registry.environ.get(name)
+        }
+    )
     if missing:
+        missing_shared = [name for name in missing if name.endswith("_SHARED_API_KEY")]
+        message = (
+            "RunningHub LLM stages require an Enterprise-Shared API key; "
+            f"configure {', '.join(missing_shared)} or switch those stages to ordinary model APIs."
+            if missing_shared
+            else "Missing model API key environment variable(s)."
+        )
         return _check(
             "model_environment",
             "failed",
-            "Missing model API key environment variable(s).",
-            {"missing_environment_variables": missing},
+            message,
+            {
+                "missing_environment_variables": missing,
+                "required_environment_variables": sorted(required),
+            },
         )
     return _check(
         "model_environment",
         "passed",
         "Model profile environment variables are configured.",
-        {"profile_count": len(status.get("profiles") or {})},
+        {
+            "profile_count": len(status.get("profiles") or {}),
+            "required_environment_variables": sorted(required),
+        },
     )
 
 

@@ -4,6 +4,8 @@ const path = require('node:path')
 const ALLOWED_SECRET_NAMES = Object.freeze([
   'RUNNINGHUB_CN_API_KEY',
   'RUNNINGHUB_AI_API_KEY',
+  'RUNNINGHUB_CN_SHARED_API_KEY',
+  'RUNNINGHUB_AI_SHARED_API_KEY',
   'GEMINI_API_KEY',
   'DEEPSEEK_API_KEY',
   'OPENAI_API_KEY',
@@ -157,4 +159,3 @@ module.exports = {
   ALLOWED_SECRET_NAMES,
   SettingsStore,
 }
-

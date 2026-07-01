@@ -57,6 +57,7 @@ test('stores runtime config separately from encrypted secrets', async () => {
 test('returns masked secret status and keeps plaintext inside main process', async () => {
   const { store } = await makeStore()
   await store.saveSecret('RUNNINGHUB_CN_API_KEY', 'cn-secret-1234')
+  await store.saveSecret('RUNNINGHUB_CN_SHARED_API_KEY', 'cn-shared-5678')
 
   const status = await store.getSecretStatus()
   const environment = await store.getEnvironment()
@@ -64,6 +65,9 @@ test('returns masked secret status and keeps plaintext inside main process', asy
   assert.equal(status.RUNNINGHUB_CN_API_KEY.configured, true)
   assert.equal(status.RUNNINGHUB_CN_API_KEY.masked, '••••1234')
   assert.equal(environment.RUNNINGHUB_CN_API_KEY, 'cn-secret-1234')
+  assert.equal(status.RUNNINGHUB_CN_SHARED_API_KEY.configured, true)
+  assert.equal(status.RUNNINGHUB_CN_SHARED_API_KEY.masked, '••••5678')
+  assert.equal(environment.RUNNINGHUB_CN_SHARED_API_KEY, 'cn-shared-5678')
   assert.doesNotMatch(JSON.stringify(status), /cn-secret-1234/)
   assert.deepEqual(Object.keys(status).sort(), [...ALLOWED_SECRET_NAMES].sort())
 })
@@ -95,4 +99,3 @@ test('deletes a secret without touching runtime config', async () => {
     outputRoot: 'D:/relief-runs',
   })
 })
-

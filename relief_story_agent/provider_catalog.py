@@ -10,9 +10,14 @@ RUNNINGHUB_BASE_URLS: dict[RunningHubSite, str] = {
     "ai": "https://llm.runninghub.ai/v1",
 }
 
-RUNNINGHUB_API_KEY_ENVS: dict[RunningHubSite, str] = {
+RUNNINGHUB_TASK_API_KEY_ENVS: dict[RunningHubSite, str] = {
     "cn": "RUNNINGHUB_CN_API_KEY",
     "ai": "RUNNINGHUB_AI_API_KEY",
+}
+
+RUNNINGHUB_LLM_API_KEY_ENVS: dict[RunningHubSite, str] = {
+    "cn": "RUNNINGHUB_CN_SHARED_API_KEY",
+    "ai": "RUNNINGHUB_AI_SHARED_API_KEY",
 }
 
 RUNNINGHUB_WEB_BASE_URLS: dict[RunningHubSite, str] = {
@@ -93,7 +98,7 @@ def build_provider_catalog() -> dict:
         "runninghub": {
             site: {
                 "base_url": RUNNINGHUB_BASE_URLS[site],
-                "api_key_env": RUNNINGHUB_API_KEY_ENVS[site],
+                "api_key_env": RUNNINGHUB_LLM_API_KEY_ENVS[site],
                 "stages": {
                     stage: list(models)
                     for stage, models in stage_catalog.items()

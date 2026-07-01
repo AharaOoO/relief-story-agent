@@ -345,9 +345,16 @@ instead of a Python traceback.
 
 Desktop RunningHub convenience API mode:
 
-- RunningHub domestic site `.cn`: use `RUNNINGHUB_CN_API_KEY`.
-- RunningHub international site `.ai`: use `RUNNINGHUB_AI_API_KEY`.
-- `rhart-image-g-2` G2 image tasks use the selected site's RunningHub key.
+- RunningHub domestic G2/task API: use the consumer key in
+  `RUNNINGHUB_CN_API_KEY`.
+- RunningHub international G2/task API: use the consumer key in
+  `RUNNINGHUB_AI_API_KEY`.
+- RunningHub domestic LLM API: use the Enterprise-Shared key in
+  `RUNNINGHUB_CN_SHARED_API_KEY`.
+- RunningHub international LLM API: use the Enterprise-Shared key in
+  `RUNNINGHUB_AI_SHARED_API_KEY`.
+- `rhart-image-g-2` G2 image tasks continue to use the selected site's
+  consumer/task key; they do not require the LLM shared key.
 - RunningHub standard/LLM model endpoints (`https://llm.runninghub.cn/v1` and
   `https://llm.runninghub.ai/v1`) require a SHARED / enterprise API key. A
   consumer RunningHub key can be valid for task APIs and still fail on LLM
@@ -355,7 +362,8 @@ Desktop RunningHub convenience API mode:
 - The desktop client therefore defaults the first six LLM stages to ordinary
   provider API mode (`GEMINI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`).
   Switch a stage to RunningHub enterprise model API only when you have the
-  matching SHARED / enterprise key for that site.
+  matching SHARED / enterprise key for that site. Preflight checks the actual
+  per-stage model selection and blocks submission when that shared key is absent.
 - The desktop client saves these keys in Windows encrypted storage and restarts
   the local sidecar so the backend receives the updated environment.
 - G2 image generation defaults to 2K and 16:9; the desktop UI also exposes 9:16

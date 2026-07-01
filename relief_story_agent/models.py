@@ -7,8 +7,9 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from .comfyui_endpoint import normalize_comfyui_endpoint
 from .provider_catalog import (
-    RUNNINGHUB_API_KEY_ENVS,
     RUNNINGHUB_BASE_URLS,
+    RUNNINGHUB_LLM_API_KEY_ENVS,
+    RUNNINGHUB_TASK_API_KEY_ENVS,
     RUNNINGHUB_WEB_BASE_URLS,
     validate_runninghub_model,
 )
@@ -42,7 +43,7 @@ class StageModelConfig(BaseModel):
             raise ValueError("model is required for RunningHub provider mode")
         validate_runninghub_model(site=self.runninghub_site, model=self.model)
         self.base_url = RUNNINGHUB_BASE_URLS[self.runninghub_site]
-        self.api_key_env = RUNNINGHUB_API_KEY_ENVS[self.runninghub_site]
+        self.api_key_env = RUNNINGHUB_LLM_API_KEY_ENVS[self.runninghub_site]
         return self
 
 
@@ -160,7 +161,7 @@ class GridImageConfig(BaseModel):
         if self.model != "rhart-image-g-2":
             raise ValueError("RunningHub image provider requires model 'rhart-image-g-2'")
         self.base_url = RUNNINGHUB_WEB_BASE_URLS[self.runninghub_site]
-        self.api_key_env = RUNNINGHUB_API_KEY_ENVS[self.runninghub_site]
+        self.api_key_env = RUNNINGHUB_TASK_API_KEY_ENVS[self.runninghub_site]
         return self
 
     def effective_mode(self) -> Literal["auto", "manual_override"]:

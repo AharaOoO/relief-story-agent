@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from relief_story_agent.api import create_app
-from relief_story_agent.models import StageModelConfig
+from relief_story_agent.models import GridImageConfig, StageModelConfig
 from relief_story_agent.orchestrator import StoryRunOrchestrator
 from relief_story_agent.provider_catalog import (
     RUNNINGHUB_BASE_URLS,
@@ -62,7 +62,7 @@ def test_stage_model_config_validates_runninghub_site_and_catalog():
     )
 
     assert config.base_url == "https://llm.runninghub.ai/v1"
-    assert config.api_key_env == "RUNNINGHUB_AI_API_KEY"
+    assert config.api_key_env == "RUNNINGHUB_AI_SHARED_API_KEY"
 
     with pytest.raises(ValidationError, match="not available"):
         StageModelConfig(
@@ -70,6 +70,16 @@ def test_stage_model_config_validates_runninghub_site_and_catalog():
             runninghub_site="cn",
             model="google/gemini-3.5-flash",
         )
+
+
+def test_runninghub_image_keeps_consumer_task_api_key():
+    config = GridImageConfig(
+        provider="runninghub_image_task",
+        runninghub_site="ai",
+        model="rhart-image-g-2",
+    )
+
+    assert config.api_key_env == "RUNNINGHUB_AI_API_KEY"
 
 
 def test_provider_catalog_api_is_the_frontend_source_of_truth():

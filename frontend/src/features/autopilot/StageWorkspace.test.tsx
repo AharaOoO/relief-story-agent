@@ -10,8 +10,8 @@ import { fetchProviderCatalog } from '../workbench/workbench.api'
 vi.mock('../workbench/workbench.api', () => ({
   fetchProviderCatalog: vi.fn().mockResolvedValue({
     runninghub: {
-      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: { chief_screenwriter: ['qwen/qwen3.7-plus'] } },
-      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_API_KEY', stages: { chief_screenwriter: ['google/gemini-3.5-flash'] } },
+      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_SHARED_API_KEY', stages: { chief_screenwriter: ['qwen/qwen3.7-plus'] } },
+      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_SHARED_API_KEY', stages: { chief_screenwriter: ['google/gemini-3.5-flash'] } },
     },
   }),
 }))
@@ -32,8 +32,8 @@ beforeEach(() => {
   useRunDraft.getState().resetDraft()
   vi.mocked(fetchProviderCatalog).mockResolvedValue({
     runninghub: {
-      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: { chief_screenwriter: ['qwen/qwen3.7-plus'] } },
-      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_API_KEY', stages: { chief_screenwriter: ['google/gemini-3.5-flash'] } },
+      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_SHARED_API_KEY', stages: { chief_screenwriter: ['qwen/qwen3.7-plus'] } },
+      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_SHARED_API_KEY', stages: { chief_screenwriter: ['google/gemini-3.5-flash'] } },
     },
   })
 })
@@ -60,8 +60,8 @@ describe('StageWorkspace run snapshot', () => {
   it('falls back to curated RunningHub defaults when provider catalog lacks the selected stage', async () => {
     vi.mocked(fetchProviderCatalog).mockResolvedValueOnce({
       runninghub: {
-        cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: {} },
-        ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_API_KEY', stages: {} },
+        cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_SHARED_API_KEY', stages: {} },
+        ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_SHARED_API_KEY', stages: {} },
       },
     })
 
@@ -78,10 +78,10 @@ describe('StageWorkspace run snapshot', () => {
   it('keeps RunningHub stage selectors limited to curated models even when the backend returns extra models', async () => {
     vi.mocked(fetchProviderCatalog).mockResolvedValueOnce({
       runninghub: {
-        cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: {} },
+        cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_SHARED_API_KEY', stages: {} },
         ai: {
           base_url: 'https://llm.runninghub.ai/v1',
-          api_key_env: 'RUNNINGHUB_AI_API_KEY',
+          api_key_env: 'RUNNINGHUB_AI_SHARED_API_KEY',
           stages: {
             quality_gate: [
               'deepseek/deepseek-v4-pro',

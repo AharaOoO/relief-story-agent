@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const LEGACY_STORAGE_KEY = 'relief-story-agent:run-draft:v2'
-const CURRENT_STORAGE_KEY = 'relief-story-agent:run-draft:v3'
+const PREVIOUS_STORAGE_KEY = 'relief-story-agent:run-draft:v3'
+const CURRENT_STORAGE_KEY = 'relief-story-agent:run-draft:v4'
 
 const legacyRunningHubStageModels = {
   chief_screenwriter: { provider_mode: 'runninghub', runninghub_site: 'ai', model: 'google/gemini-3.5-flash' },
@@ -43,5 +44,32 @@ describe('run draft storage migration', () => {
     const persisted = JSON.parse(window.localStorage.getItem(CURRENT_STORAGE_KEY) ?? '{}')
     expect(persisted.stageModels.chief_screenwriter.provider_mode).toBe('openai_compatible')
     expect(persisted.stageModels.deepseek_polish.api_key_env).toBe('DEEPSEEK_API_KEY')
+  })
+
+  it('migrates a current v3 draft when only one stage uses the old ambiguous RunningHub key', async () => {
+    window.localStorage.setItem(PREVIOUS_STORAGE_KEY, JSON.stringify({
+      content: 'preserve this draft',
+      stageModels: {
+        ...legacyRunningHubStageModels,
+        deepseek_polish: {
+          provider_mode: 'openai_compatible',
+          base_url: 'https://api.deepseek.com/v1',
+          api_key_env: 'DEEPSEEK_API_KEY',
+          model: 'deepseek-chat',
+        },
+      },
+    }))
+
+    const { useRunDraft } = await import('./runDraft.store')
+
+    const { draft } = useRunDraft.getState()
+    expect(draft.content).toBe('preserve this draft')
+    expect(draft.stageModels.chief_screenwriter?.provider_mode).toBe('openai_compatible')
+    expect(draft.stageModels.chief_screenwriter?.api_key_env).toBe('GEMINI_API_KEY')
+    expect(draft.stageModels.deepseek_polish).toMatchObject({
+      provider_mode: 'openai_compatible',
+      api_key_env: 'DEEPSEEK_API_KEY',
+      model: 'deepseek-chat',
+    })
   })
 })

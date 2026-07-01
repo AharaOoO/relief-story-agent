@@ -4,6 +4,7 @@ import {
   approveRun,
   cancelBatch,
   connectComfyUI,
+  diagnoseRunConfiguration,
   fetchRunEvents,
   fetchRunArtifacts,
   fetchTimeline,
@@ -110,6 +111,29 @@ describe('workbench control contracts', () => {
     expect(requests[0].body).toMatchObject({ comfyui: { endpoint: 'http://127.0.0.1:8188', workflow_api_path: 'D:/workflow.json' } })
     expect(requests[1].url).toContain('/api/comfyui/connect')
     expect(requests[1].body).toMatchObject({ endpoint: 'http://127.0.0.1:8188', workflow_api_path: 'D:/workflow.json' })
+  })
+
+  it('runs deep configuration diagnosis with ComfyUI connection checks', async () => {
+    const originalFetch = globalThis.fetch
+    const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = []
+    globalThis.fetch = async (input, init) => {
+      requests.push({
+        url: String(input),
+        method: init?.method ?? 'GET',
+        body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
+      })
+      return new Response(JSON.stringify({ ready: true, summary: { total: 1, passed: 1, failed: 0 } }), { status: 200 })
+    }
+    try {
+      await diagnoseRunConfiguration({ idea: 'diagnose me' } as never)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+
+    expect(requests).toHaveLength(1)
+    expect(requests[0].url).toContain('/api/config/diagnose?check_comfyui_connection=true')
+    expect(requests[0].method).toBe('POST')
+    expect(requests[0].body).toMatchObject({ idea: 'diagnose me' })
   })
 
   it('persists reusable prompt profiles through the backend API', async () => {

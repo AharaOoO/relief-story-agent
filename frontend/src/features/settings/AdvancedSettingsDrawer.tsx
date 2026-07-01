@@ -16,8 +16,13 @@ import {
 } from 'lucide-react'
 import { useBackendHealth } from '../../shared/hooks/useBackendHealth'
 import { applyDesktopHandshake } from '../../shared/api/desktopHandshake'
-import { analyzeComfyWorkflow, connectComfyUI } from '../workbench/workbench.api'
-import { createRunningHubStageModels } from '../run-composer/runRequest.builder'
+import {
+  analyzeComfyWorkflow,
+  connectComfyUI,
+  diagnoseRunConfiguration,
+  type RunConfigurationDiagnosis,
+} from '../workbench/workbench.api'
+import { buildRunRequest, createRunningHubStageModels } from '../run-composer/runRequest.builder'
 import { useRunDraft } from '../run-composer/runDraft.store'
 import { PromptProfileSettings } from './PromptProfileSettings'
 
@@ -82,6 +87,7 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
   const [busy, setBusy] = useState('')
   const [message, setMessage] = useState('')
   const [workflowReport, setWorkflowReport] = useState<Record<string, unknown> | null>(null)
+  const [diagnosisReport, setDiagnosisReport] = useState<RunConfigurationDiagnosis | null>(null)
   const [handshake, setHandshake] = useState<DesktopRuntimeHandshake | null>(null)
   const drawerRef = useRef<HTMLElement>(null)
   const { draft: runDraft, patchDraft: patchRunDraft } = useRunDraft()
@@ -237,6 +243,22 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
     }
   }
 
+  const runDeepDiagnosis = async () => {
+    setBusy('diagnosis')
+    setMessage('正在运行深度配置诊断...')
+    setDiagnosisReport(null)
+    try {
+      const result = await diagnoseRunConfiguration(buildRunRequest(runDraft))
+      const failed = Number(result.summary?.failed ?? 0)
+      setDiagnosisReport(result)
+      setMessage(failed > 0 ? '深度诊断发现阻塞项，请查看下方结果。' : '深度诊断通过，当前配置可以继续执行。')
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : '深度诊断失败')
+    } finally {
+      setBusy('')
+    }
+  }
+
   const tabs: Array<{ id: SettingsTab; label: string; icon: typeof KeyRound }> = [
     { id: 'secrets', label: '模型与密钥', icon: KeyRound },
     { id: 'prompts', label: '提示词模板', icon: ScrollText },
@@ -245,6 +267,14 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
     { id: 'storage', label: '执行与存储', icon: FolderOpen },
     { id: 'diagnostics', label: '诊断', icon: RefreshCw },
   ]
+
+  const diagnosisSummary = diagnosisReport?.summary ?? {}
+  const diagnosisPassed = Number(diagnosisSummary.passed ?? 0)
+  const diagnosisWarnings = Number(diagnosisSummary.warning ?? diagnosisSummary.warnings ?? 0)
+  const diagnosisFailed = Number(diagnosisSummary.failed ?? 0)
+  const visibleDiagnosisChecks = diagnosisReport?.checks
+    ?.filter((check) => check.status !== 'passed')
+    .slice(0, 3) ?? []
 
   return (
     <div className="settings-backdrop" role="presentation" onMouseDown={onClose}>
@@ -465,7 +495,34 @@ export function AdvancedSettingsDrawer({ open, onClose }: AdvancedSettingsDrawer
                 <div className="diagnostic-line"><span>API 地址</span><strong>{handshake?.backendUrl || '尚未握手'}</strong></div>
                 <div className="diagnostic-line"><span>桌面版本</span><strong>{handshake?.version || '未知'}</strong></div>
                 {handshake?.backendLastError && <div className="inline-notice is-error">{handshake.backendLastError}</div>}
+                {diagnosisReport && (
+                  <div className={`diagnosis-card ${diagnosisFailed > 0 ? 'is-error' : 'is-ok'}`}>
+                    <div>
+                      <strong>{diagnosisFailed > 0 ? '深度诊断发现阻塞' : '深度诊断通过'}</strong>
+                      <span>通过 {diagnosisPassed} · 警告 {diagnosisWarnings} · 失败 {diagnosisFailed}</span>
+                    </div>
+                    {visibleDiagnosisChecks.length > 0 && (
+                      <ul className="diagnosis-check-list">
+                        {visibleDiagnosisChecks.map((check) => (
+                          <li key={check.name}>
+                            <b>{check.name}</b>
+                            <span>{check.message}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
                 <div className="settings-action-row">
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={Boolean(busy)}
+                  onClick={() => void runDeepDiagnosis()}
+                >
+                  {busy === 'diagnosis' ? <LoaderCircle className="spin" size={17} /> : <ScrollText size={17} />}
+                  运行深度诊断
+                </button>
                 <button
                   className="secondary-button"
                   type="button"

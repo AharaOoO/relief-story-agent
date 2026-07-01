@@ -9,6 +9,7 @@ export const endpointPaths = {
   configModels: '/api/config/models',
   providerCatalog: '/api/config/provider-catalog',
   configValidate: '/api/config/validate',
+  configDiagnose: '/api/config/diagnose',
   modelCheck: '/api/config/model-check',
   comfyuiConnect: '/api/comfyui/connect',
   comfyuiDiscoverWorkflows: '/api/comfyui/discover-workflows',

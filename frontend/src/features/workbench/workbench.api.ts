@@ -27,6 +27,26 @@ export type PreflightResult = {
   checks?: Array<{ name: string; status: string; message: string }>
 }
 
+export type RunConfigurationDiagnosis = {
+  ready: boolean
+  passed?: boolean
+  summary?: {
+    total?: number
+    passed?: number
+    failed?: number
+    warning?: number
+    warnings?: number
+  }
+  checks?: Array<{
+    name: string
+    status: string
+    message: string
+    details?: Record<string, unknown>
+  }>
+  suggested_actions?: Array<{ code: string; label: string; description?: string }>
+  provenance?: Record<string, unknown>
+}
+
 export type PreflightIssue = string | {
   check?: string
   code?: string
@@ -135,6 +155,15 @@ export function fetchProviderCatalog(): Promise<ProviderCatalog> {
 export function validateRun(payload: RunRequestPayload): Promise<PreflightResult> {
   return postJson(
     `${endpointPaths.configValidate}?check_comfyui_connection=true`,
+    payload,
+  )
+}
+
+export function diagnoseRunConfiguration(
+  payload: RunRequestPayload,
+): Promise<RunConfigurationDiagnosis> {
+  return postJson(
+    `${endpointPaths.configDiagnose}?check_comfyui_connection=true`,
     payload,
   )
 }

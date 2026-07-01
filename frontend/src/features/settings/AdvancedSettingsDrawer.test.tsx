@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdvancedSettingsDrawer } from './AdvancedSettingsDrawer'
-import { analyzeComfyWorkflow, connectComfyUI } from '../workbench/workbench.api'
+import { analyzeComfyWorkflow, connectComfyUI, diagnoseRunConfiguration } from '../workbench/workbench.api'
 
 vi.mock('../../shared/hooks/useBackendHealth', () => ({
   useBackendHealth: () => ({ isSuccess: true, isLoading: false, refetch: vi.fn() }),
@@ -14,6 +14,7 @@ vi.mock('../workbench/workbench.api', async (importOriginal) => {
     ...original,
     analyzeComfyWorkflow: vi.fn().mockResolvedValue({ workflow_format: 'litegraph', node_count: 60, adapter_mode: 'litegraph_ltx_auto_injection' }),
     connectComfyUI: vi.fn().mockResolvedValue({ connected: true, ready: true, queue: { running: 0, pending: 0 } }),
+    diagnoseRunConfiguration: vi.fn().mockResolvedValue({ ready: true, summary: { passed: 8, warning: 1, failed: 0 }, suggested_actions: [] }),
     listPromptProfiles: vi.fn().mockResolvedValue({ items: [] }),
   }
 })
@@ -53,5 +54,17 @@ describe('AdvancedSettingsDrawer', () => {
     await waitFor(() => expect(analyzeComfyWorkflow).toHaveBeenCalledWith('http://127.0.0.1:8188', 'D:/workflow.json'))
     expect(connectComfyUI).toHaveBeenCalledWith('http://127.0.0.1:8188', 'D:/workflow.json')
     expect((await screen.findAllByText(/工作流可用/)).length).toBeGreaterThan(0)
+  })
+
+  it('runs deep configuration diagnosis from the diagnostics tab', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><AdvancedSettingsDrawer open onClose={vi.fn()} /></QueryClientProvider>)
+
+    fireEvent.click(screen.getByRole('tab', { name: /诊断/ }))
+    fireEvent.click(await screen.findByRole('button', { name: '运行深度诊断' }))
+
+    await waitFor(() => expect(diagnoseRunConfiguration).toHaveBeenCalledTimes(1))
+    expect(await screen.findByText('深度诊断通过')).toBeInTheDocument()
+    expect(screen.getByText('通过 8 · 警告 1 · 失败 0')).toBeInTheDocument()
   })
 })

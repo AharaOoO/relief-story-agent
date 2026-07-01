@@ -14,6 +14,14 @@ export default function DashboardPage() {
     <div className="dashboard-page">
       <section className="coast-hero">
         <OceanVideoBackground />
+        <div className="hero-glass-ornaments" aria-hidden="true">
+          <span className="hero-glass-card is-left" />
+          <span className="hero-glass-card is-right" />
+          <span className="hero-glass-card is-bottom-left" />
+          <span className="hero-glass-pill is-bottom" />
+          <span className="hero-glass-orb is-upper" />
+          <span className="hero-glass-orb is-lower" />
+        </div>
         <div className="coast-hero-content">
           <span className="hero-kicker"><Sparkles size={15} /> LTX 2.3 AUTOMATED DIRECTOR</span>
           <h1 aria-label="把一个想法，交给整条制片流水线"><span>把一个想法，</span><span>交给整条制片流水线</span></h1>

@@ -9,7 +9,6 @@ from .acceptance import build_acceptance_status
 from .artifacts import (
     export_batch_artifact_package,
     read_batch_artifact_index,
-    read_run_artifact_index,
     validate_batch_export_package,
     validate_batch_export_zip,
 )
@@ -757,15 +756,15 @@ def create_app(
     @app.get("/api/runs/{run_id}/artifacts")
     def get_run_artifacts(run_id: str):
         try:
-            return read_run_artifact_index(orchestrator.store.get(run_id))
+            return orchestrator.get_run_artifact_index(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 
     @app.post("/api/runs/{run_id}/refresh-comfyui")
     def refresh_comfyui_outputs(run_id: str):
         try:
-            run = orchestrator.refresh_comfyui_outputs(run_id)
-            return read_run_artifact_index(run)
+            orchestrator.refresh_comfyui_outputs(run_id)
+            return orchestrator.get_run_artifact_index(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
         except ValueError as exc:

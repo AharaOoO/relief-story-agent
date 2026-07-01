@@ -27,6 +27,7 @@ from relief_story_agent.models import (
     RunState,
     TemplatePaths,
 )
+from relief_story_agent.storage import JsonFileRunStore
 
 
 MINIMAL_MP4_BYTES = (
@@ -399,6 +400,39 @@ def test_api_returns_run_artifact_index(tmp_path):
     body = response.json()
     assert body["run_id"] == run.run_id
     assert any(item["name"] == "final_prompts" for item in body["artifacts"])
+
+
+def test_api_migrates_legacy_persistent_run_outputs_into_state_artifacts(tmp_path):
+    from relief_story_agent.orchestrator import StoryRunOrchestrator
+    from relief_story_agent.providers import FakeModelProvider
+
+    state_dir = tmp_path / "state"
+    store = JsonFileRunStore(state_dir)
+    run = RunState(
+        run_id="run_legacy_output",
+        request=RunRequest(idea="legacy result"),
+        status="failed",
+        current_stage="failed",
+        last_completed_stage="chief_screenwriter",
+        script={"title": "已接收的剧本", "duration_seconds": 90},
+    )
+    store.save(run)
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=store,
+    )
+    client = TestClient(create_app(orchestrator))
+
+    response = client.get(f"/api/runs/{run.run_id}/artifacts")
+
+    assert response.status_code == 200
+    body = response.json()
+    script = next(item for item in body["artifacts"] if item["name"] == "script")
+    expected = (state_dir / "artifacts" / run.run_id / "01_script.json").resolve()
+    assert Path(script["path"]) == expected
+    assert script["exists"] is True
+    assert json.loads(expected.read_text(encoding="utf-8"))["title"] == "已接收的剧本"
+    assert Path(store.get(run.run_id).request.output_root) == (state_dir / "artifacts").resolve()
 
 
 def test_read_batch_artifact_index_summarizes_publishable_runs(tmp_path):

@@ -299,6 +299,39 @@ def test_failed_run_records_structured_failure_for_unknown_error():
     assert saved.failure_records[-1] == saved.last_failure
 
 
+def test_persistent_runs_use_absolute_state_artifact_root_by_default(tmp_path):
+    state_dir = tmp_path / "state"
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=JsonFileRunStore(state_dir),
+    )
+
+    run = orchestrator.prepare_run(RunRequest(idea="persistent output root"))
+
+    assert Path(run.request.output_root) == (state_dir / "artifacts").resolve()
+
+
+def test_failed_run_keeps_completed_stage_artifacts_on_disk(tmp_path):
+    provider = FakeModelProvider.minimal_success()
+    provider.responses.pop("deepseek_polish")
+    state_dir = tmp_path / "state"
+    store = JsonFileRunStore(state_dir)
+    orchestrator = StoryRunOrchestrator(provider=provider, store=store)
+
+    run = orchestrator.create_run(
+        RunRequest(idea="keep the successful script", approval_mode="auto")
+    )
+
+    artifact_dir = Path(run.artifact_dir)
+    assert run.status == "failed"
+    assert artifact_dir == (state_dir / "artifacts" / run.run_id).resolve()
+    script = json.loads((artifact_dir / "01_script.json").read_text(encoding="utf-8"))
+    assert script["title"]
+    assert (artifact_dir / "06_model_execution.json").exists()
+    assert (artifact_dir / "08_timeline.json").exists()
+    assert not (artifact_dir / "02_storyboard.json").exists()
+
+
 def test_execution_policy_stops_before_total_stage_budget_is_exhausted():
     provider = FakeModelProvider.minimal_success()
     store = InMemoryRunStore()

@@ -54,6 +54,23 @@ describe('timeline contract', () => {
       globalThis.fetch = originalFetch
     }
   })
+
+  it('does not expose planned artifact slots that do not exist on disk', async () => {
+    const originalFetch = globalThis.fetch
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      artifacts: [
+        { name: 'script', kind: 'json', path: 'C:/state/artifacts/run-one/01_script.json', exists: true },
+        { name: 'storyboard', kind: 'json', path: 'C:/state/artifacts/run-one/02_storyboard.json', exists: false },
+      ],
+    }), { status: 200 })
+    try {
+      await expect(fetchRunArtifacts('run-one')).resolves.toEqual([
+        expect.objectContaining({ name: 'script', exists: true }),
+      ])
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
 })
 
 describe('workbench control contracts', () => {

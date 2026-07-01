@@ -107,6 +107,7 @@ export type ArtifactRecord = {
   path?: string
   local_path?: string
   name?: string
+  exists?: boolean
   created_at?: string
   metadata?: Record<string, unknown>
 }
@@ -206,7 +207,9 @@ export async function fetchRunArtifacts(runId: string): Promise<ArtifactRecord[]
     }
   >(endpointPaths.runArtifacts(runId))
   if (Array.isArray(response)) return response
-  const artifacts = response.items ?? response.artifacts ?? []
+  const artifacts = (response.items ?? response.artifacts ?? []).filter(
+    (artifact) => artifact.exists !== false,
+  )
   const outputs: ArtifactRecord[] = (response.actual_outputs ?? []).map((output, index) => ({
     id: `${output.prompt_id ?? runId}-output-${index}`,
     run_id: runId,

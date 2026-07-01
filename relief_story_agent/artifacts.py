@@ -51,8 +51,7 @@ PUBLISH_INDEX_COLUMNS = [
 
 
 def write_run_artifacts(run: RunState) -> Path:
-    output_root = Path(run.request.output_root or "runs")
-    artifact_dir = output_root / run.run_id
+    artifact_dir = _artifact_dir_for_run(run)
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     final_storyboard = run.final_storyboard or run.storyboard
@@ -104,13 +103,55 @@ def write_run_artifacts(run: RunState) -> Path:
     return artifact_dir
 
 
+def write_run_checkpoint_artifacts(run: RunState) -> Path:
+    """Persist every valid result available so far without inventing future outputs."""
+    artifact_dir = _artifact_dir_for_run(run)
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    final_storyboard = run.final_storyboard or run.storyboard
+
+    if run.script:
+        _write_json(artifact_dir / "01_script.json", run.script)
+    if run.storyboard:
+        _write_json(artifact_dir / "02_storyboard.json", run.storyboard)
+        _write_json(
+            artifact_dir / "03_ltx_payload.json",
+            build_ltx_payload_from_storyboard(
+                final_storyboard,
+                duration_seconds=int(
+                    run.script.get("duration_seconds") or run.request.duration_seconds
+                ),
+            ),
+        )
+        _write_json(
+            artifact_dir / "07_comfyui_preview.json",
+            _build_comfyui_preview(run, final_storyboard),
+        )
+    if run.prompt_audit:
+        _write_json(artifact_dir / "04_prompt_audit.json", run.prompt_audit)
+    if run.final_storyboard:
+        _write_json(artifact_dir / "05_final_prompts.json", final_storyboard)
+    if run.model_attempts:
+        _write_json(
+            artifact_dir / "06_model_execution.json",
+            {
+                "summary": run.model_usage_summary.model_dump(),
+                "attempts": [attempt.model_dump() for attempt in run.model_attempts],
+            },
+        )
+
+    run.artifact_dir = str(artifact_dir)
+    write_run_timeline_artifact(run, artifact_dir=artifact_dir)
+    write_artifact_manifest(run)
+    return artifact_dir
+
+
 def write_run_timeline_artifact(run: RunState, *, artifact_dir: Path | None = None) -> Path:
     if artifact_dir is not None:
         target_dir = artifact_dir
     elif run.artifact_dir:
-        target_dir = Path(run.artifact_dir)
+        target_dir = _absolute_path(Path(run.artifact_dir))
     else:
-        target_dir = Path(run.request.output_root or "runs") / run.run_id
+        target_dir = _artifact_dir_for_run(run)
     target_dir.mkdir(parents=True, exist_ok=True)
     run.artifact_dir = str(target_dir)
     path = target_dir / "08_timeline.json"
@@ -119,7 +160,11 @@ def write_run_timeline_artifact(run: RunState, *, artifact_dir: Path | None = No
 
 
 def write_artifact_manifest(run: RunState) -> Path:
-    artifact_dir = Path(run.artifact_dir) if run.artifact_dir else Path(run.request.output_root or "runs") / run.run_id
+    artifact_dir = (
+        _absolute_path(Path(run.artifact_dir))
+        if run.artifact_dir
+        else _artifact_dir_for_run(run)
+    )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     run.artifact_dir = str(artifact_dir)
     _write_json(artifact_dir / "00_manifest.json", _build_manifest(run, artifact_dir))
@@ -127,14 +172,25 @@ def write_artifact_manifest(run: RunState) -> Path:
 
 
 def read_run_artifact_index(run: RunState) -> dict[str, Any]:
-    artifact_dir = Path(run.artifact_dir) if run.artifact_dir else Path(run.request.output_root or "runs") / run.run_id
+    artifact_dir = (
+        _absolute_path(Path(run.artifact_dir))
+        if run.artifact_dir
+        else _artifact_dir_for_run(run)
+    )
     manifest_path = artifact_dir / "00_manifest.json"
+    if not manifest_path.exists() and _has_checkpoint_data(run):
+        artifact_dir = write_run_checkpoint_artifacts(run)
+        manifest_path = artifact_dir / "00_manifest.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     else:
         manifest = _build_manifest(run, artifact_dir)
     manifest["artifacts"] = [
-        {**item, "exists": Path(item["path"]).exists()}
+        {
+            **item,
+            "path": str(_manifest_artifact_path(item, artifact_dir)),
+            "exists": _manifest_artifact_path(item, artifact_dir).exists(),
+        }
         for item in manifest.get("artifacts", [])
     ]
     manifest["comfyui_prompt_ids"] = list(run.comfyui_prompt_ids)
@@ -148,6 +204,33 @@ def read_run_artifact_index(run: RunState) -> dict[str, Any]:
         record.model_dump() for record in run.failure_records
     ]
     return manifest
+
+
+def _absolute_path(path: Path) -> Path:
+    return path.expanduser().resolve()
+
+
+def _artifact_dir_for_run(run: RunState) -> Path:
+    output_root = _absolute_path(Path(run.request.output_root or "runs"))
+    return output_root / run.run_id
+
+
+def _manifest_artifact_path(item: dict[str, Any], artifact_dir: Path) -> Path:
+    path = Path(str(item.get("path") or ""))
+    if path.is_absolute():
+        return path
+    filename = str(item.get("filename") or path.name)
+    return artifact_dir / filename
+
+
+def _has_checkpoint_data(run: RunState) -> bool:
+    return bool(
+        run.script
+        or run.storyboard
+        or run.final_storyboard
+        or run.prompt_audit
+        or run.model_attempts
+    )
 
 
 def read_batch_artifact_index(

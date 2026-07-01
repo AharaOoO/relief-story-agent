@@ -9,7 +9,13 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from .artifacts import write_artifact_manifest, write_run_artifacts, write_run_timeline_artifact
+from .artifacts import (
+    read_run_artifact_index,
+    write_artifact_manifest,
+    write_run_artifacts,
+    write_run_checkpoint_artifacts,
+    write_run_timeline_artifact,
+)
 from .comfyui import (
     ComfyUIOutputTimeout,
     ComfyUIWaitCancelled,
@@ -186,6 +192,7 @@ class StoryRunOrchestrator:
             self.profile_store = profile_store
 
     def create_run(self, request: RunRequest) -> RunState:
+        request = self._apply_runtime_defaults(request)
         existing = self._find_idempotent_run(request)
         if existing:
             return existing
@@ -215,6 +222,7 @@ class StoryRunOrchestrator:
         *,
         parent_batch_id: str = "",
     ) -> RunState:
+        request = self._apply_runtime_defaults(request)
         if not parent_batch_id:
             existing = self._find_idempotent_run(request)
             if existing:
@@ -252,6 +260,25 @@ class StoryRunOrchestrator:
         run.add_event("run_queued", message="Run queued for background execution.")
         self.store.save(run)
         return run
+
+    def _apply_runtime_defaults(self, request: RunRequest) -> RunRequest:
+        if request.output_root:
+            return request
+        state_dir = getattr(self.store, "state_dir", None)
+        if state_dir is None:
+            return request
+        output_root = (Path(state_dir) / "artifacts").resolve()
+        return request.model_copy(update={"output_root": str(output_root)})
+
+    def get_run_artifact_index(self, run_id: str) -> dict[str, Any]:
+        run = self.store.get(run_id)
+        normalized_request = self._apply_runtime_defaults(run.request)
+        if normalized_request != run.request:
+            run.request = normalized_request
+            run.request_fingerprint = self._run_request_fingerprint(normalized_request)
+        index = read_run_artifact_index(run)
+        self.store.save(run)
+        return index
 
     def _find_idempotent_run(self, request: RunRequest) -> RunState | None:
         if not request.idempotency_key:
@@ -474,6 +501,7 @@ class StoryRunOrchestrator:
                 self._renew_lease(run)
                 self._run_chief_screenwriter(run)
                 run.last_completed_stage = "chief_screenwriter"
+                self._checkpoint_stage_artifacts(run)
                 run.status = "awaiting_approval"
                 run.current_stage = "core_selection"
                 run.add_log("core_selection", "Waiting for core approval.")
@@ -618,6 +646,7 @@ class StoryRunOrchestrator:
                 self._run_stage(run, stage)
                 run.last_completed_stage = stage
                 run.add_event("stage_completed", stage=stage)
+                self._checkpoint_stage_artifacts(run)
                 self.store.save(run)
             self._check_cancelled(run)
             self._finish_completed(run)
@@ -698,8 +727,13 @@ class StoryRunOrchestrator:
     def _refresh_terminal_artifacts(self, run: RunState) -> None:
         if not run.artifact_dir and not run.request.output_root:
             return
-        write_run_timeline_artifact(run)
-        write_artifact_manifest(run)
+        write_run_checkpoint_artifacts(run)
+
+    def _checkpoint_stage_artifacts(self, run: RunState) -> None:
+        if run.current_stage == "artifacts":
+            return
+        if run.artifact_dir or run.request.output_root:
+            write_run_checkpoint_artifacts(run)
 
     @staticmethod
     def _clear_lease(run: RunState) -> None:

@@ -367,6 +367,7 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
 .asset-grid article > div:nth-child(2) { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 8px; }
 .asset-grid strong { overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
 .asset-grid small { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--coast-muted); font-size: 11px; line-height: 1.55; }
+.asset-action-row { display: flex; flex-direction: column; gap: 8px; }
 
 .settings-backdrop { position: fixed; inset: 0; z-index: 2000; display: flex; justify-content: flex-end; background: rgba(49,60,78,.18); backdrop-filter: blur(6px); animation: fade-in .2s ease; }
 .settings-drawer { width: min(920px, calc(100% - 40px)); height: 100%; display: flex; flex-direction: column; border-left: 1px solid rgba(255,255,255,.92); background: rgba(247,250,253,.96); box-shadow: -24px 0 70px rgba(44,61,88,.18); animation: drawer-in .26s ease; }

@@ -1,8 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@testing-library/react'
+import type { ComponentProps } from 'react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StageWorkspace } from './StageWorkspace'
+import { useRunDraft } from '../run-composer/runDraft.store'
 import type { RunRequestPayload } from '../run-composer/runRequest.builder'
+import { fetchProviderCatalog } from '../workbench/workbench.api'
 
 vi.mock('../workbench/workbench.api', () => ({
   fetchProviderCatalog: vi.fn().mockResolvedValue({
@@ -12,6 +15,22 @@ vi.mock('../workbench/workbench.api', () => ({
     },
   }),
 }))
+
+function renderWorkspace(stageId: string, props: Partial<ComponentProps<typeof StageWorkspace>> = {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(<QueryClientProvider client={client}><StageWorkspace stageId={stageId} {...props} /></QueryClientProvider>)
+}
+
+beforeEach(() => {
+  window.localStorage.clear()
+  useRunDraft.getState().resetDraft()
+  vi.mocked(fetchProviderCatalog).mockResolvedValue({
+    runninghub: {
+      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: { chief_screenwriter: ['qwen/qwen3.7-plus'] } },
+      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_API_KEY', stages: { chief_screenwriter: ['google/gemini-3.5-flash'] } },
+    },
+  })
+})
 
 describe('StageWorkspace run snapshot', () => {
   it('shows the frozen model and prompt from the run instead of the current local draft', async () => {
@@ -25,11 +44,26 @@ describe('StageWorkspace run snapshot', () => {
         stage_overrides: { chief_screenwriter: '这是真实任务冻结的总编剧提示词' },
       },
     } as unknown as RunRequestPayload
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
 
-    render(<QueryClientProvider client={client}><StageWorkspace stageId="chief_screenwriter" readOnly runRequest={request} promptSnapshot={{ chief_screenwriter: '这是真实任务冻结的总编剧提示词' }} /></QueryClientProvider>)
+    renderWorkspace('chief_screenwriter', { readOnly: true, runRequest: request, promptSnapshot: { chief_screenwriter: '这是真实任务冻结的总编剧提示词' } })
 
     expect(await screen.findByDisplayValue('qwen/qwen3.7-plus')).toBeDisabled()
     expect(screen.getByDisplayValue('这是真实任务冻结的总编剧提示词')).toBeDisabled()
+  })
+
+  it('falls back to curated RunningHub defaults when provider catalog lacks the selected stage', async () => {
+    vi.mocked(fetchProviderCatalog).mockResolvedValueOnce({
+      runninghub: {
+        cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: {} },
+        ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_API_KEY', stages: {} },
+      },
+    })
+
+    renderWorkspace('gpt_prompt_writer')
+
+    expect(await screen.findByDisplayValue('openai/gpt-5.5')).toBeInTheDocument()
+    fireEvent.change(screen.getByDisplayValue('RunningHub 国际站 .ai'), { target: { value: 'cn' } })
+
+    expect(screen.getByDisplayValue('qwen/qwen3.7-max')).toBeInTheDocument()
   })
 })

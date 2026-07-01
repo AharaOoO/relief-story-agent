@@ -122,6 +122,10 @@ const DEFAULT_RUNNINGHUB_MODELS: Record<RunningHubSite, Record<ModelStageId, str
   },
 }
 
+export function defaultRunningHubModel(site: RunningHubSite, stageId: ModelStageId): string {
+  return DEFAULT_RUNNINGHUB_MODELS[site][stageId]
+}
+
 export function createRunningHubStageModels(
   site: RunningHubSite,
 ): Record<ModelStageId, StageModelDraft> {

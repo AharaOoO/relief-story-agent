@@ -4,7 +4,7 @@ import { ChevronDown, Info, Save } from 'lucide-react'
 import { AUTOPILOT_STAGES } from './stages'
 import { fetchProviderCatalog } from '../workbench/workbench.api'
 import { useRunDraft } from '../run-composer/runDraft.store'
-import { MODEL_STAGE_IDS, type ModelStageId, type RunningHubSite, type RunRequestPayload } from '../run-composer/runRequest.builder'
+import { defaultRunningHubModel, MODEL_STAGE_IDS, type ModelStageId, type RunningHubSite, type RunRequestPayload } from '../run-composer/runRequest.builder'
 
 const STANDARD_PRESETS: Record<ModelStageId, Array<{ label: string; model: string; base_url: string; api_key_env: string }>> = {
   chief_screenwriter: [
@@ -58,9 +58,11 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
   const providerMode = currentModel?.provider_mode ?? 'runninghub'
   const site = (currentModel?.runninghub_site ?? draft.runninghubSite) as RunningHubSite
   const catalogModels = catalog.data?.runninghub?.[site]?.stages?.[modelStageId] ?? []
-  const models = currentModel?.model && !catalogModels.includes(currentModel.model)
-    ? [currentModel.model, ...catalogModels]
-    : catalogModels
+  const models = Array.from(new Set([
+    currentModel?.model,
+    ...catalogModels,
+    defaultRunningHubModel(site, modelStageId),
+  ].filter(Boolean) as string[]))
   const standardModels = STANDARD_PRESETS[modelStageId] ?? []
   const [runtime, setRuntime] = useState<Record<string, unknown>>({})
 
@@ -111,7 +113,7 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
           [modelStageId]: {
             provider_mode: 'runninghub',
             runninghub_site: draft.runninghubSite,
-            model: catalog.data?.runninghub?.[draft.runninghubSite]?.stages?.[modelStageId]?.[0] ?? '',
+            model: catalog.data?.runninghub?.[draft.runninghubSite]?.stages?.[modelStageId]?.[0] ?? defaultRunningHubModel(draft.runninghubSite, modelStageId),
           },
         },
       })
@@ -145,7 +147,7 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
           </div>
           {providerMode === 'runninghub' ? (
           <div className="stage-config-row">
-            <label className="field-stack"><span>服务站点</span><div className="select-shell"><select disabled={readOnly} value={site} onChange={(event) => { const targetSite = event.target.value as RunningHubSite; const targetModel = catalog.data?.runninghub?.[targetSite]?.stages?.[modelStageId]?.[0] ?? ''; patchDraft({ stageModels: { ...draft.stageModels, [modelStageId]: { provider_mode: 'runninghub', runninghub_site: targetSite, model: targetModel } } }) }}><option value="cn">RunningHub 国内站 .cn</option><option value="ai">RunningHub 国际站 .ai</option></select><ChevronDown size={16} /></div></label>
+            <label className="field-stack"><span>服务站点</span><div className="select-shell"><select disabled={readOnly} value={site} onChange={(event) => { const targetSite = event.target.value as RunningHubSite; const targetModel = catalog.data?.runninghub?.[targetSite]?.stages?.[modelStageId]?.[0] ?? defaultRunningHubModel(targetSite, modelStageId); patchDraft({ stageModels: { ...draft.stageModels, [modelStageId]: { provider_mode: 'runninghub', runninghub_site: targetSite, model: targetModel } } }) }}><option value="cn">RunningHub 国内站 .cn</option><option value="ai">RunningHub 国际站 .ai</option></select><ChevronDown size={16} /></div></label>
             <label className="field-stack"><span>本工序模型</span><div className="select-shell"><select disabled={readOnly || catalog.isLoading} value={currentModel?.model ?? models[0] ?? ''} onChange={(event) => patchModel({ model: event.target.value })}>{models.map((model) => <option value={model} key={model}>{model}</option>)}</select><ChevronDown size={16} /></div></label>
           </div>
           ) : (

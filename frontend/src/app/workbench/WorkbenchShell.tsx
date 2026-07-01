@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
   Boxes,
   ChefHat,
@@ -19,6 +19,16 @@ const navItems = [
   { path: '/assets', label: '资产库', icon: FolderArchive, end: false },
 ] as const
 
+function RouteScrollReset() {
+  const location = useLocation()
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' })
+  }, [location.pathname])
+
+  return null
+}
+
 export function WorkbenchShell() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('secrets')
@@ -31,6 +41,7 @@ export function WorkbenchShell() {
   return (
     <WorkbenchContext.Provider value={{ openSettings }}>
       <div className="workbench-shell">
+        <RouteScrollReset />
         <DesktopTitlebar />
         <header className="floating-nav-shell">
           <nav className="floating-nav" aria-label="工作台导航">

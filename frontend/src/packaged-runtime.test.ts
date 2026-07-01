@@ -18,4 +18,13 @@ describe('packaged desktop runtime', () => {
     expect(ocean).not.toContain('prefers-reduced-motion')
     expect(ocean).not.toContain('video.pause()')
   })
+
+  it('keeps the ocean hero video crisp without soft-focus transforms', () => {
+    const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
+    const videoRule = css.match(/\.ocean-video-layer video\s*\{[^}]+\}/s)?.[0] ?? ''
+
+    expect(videoRule).toContain('filter: none')
+    expect(videoRule).toContain('transform: none')
+    expect(videoRule).not.toContain('blur(')
+  })
 })

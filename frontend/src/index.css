@@ -146,11 +146,11 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
   width: 100%;
   height: 100%;
   object-fit: cover;
-  filter: saturate(.92) contrast(.92) brightness(1.08);
-  transform: scale(1.08);
-  opacity: .96;
-  -webkit-mask-image: radial-gradient(ellipse at center, #000 32%, rgba(0,0,0,.88) 56%, rgba(0,0,0,.32) 76%, transparent 96%);
-  mask-image: radial-gradient(ellipse at center, #000 34%, rgba(0,0,0,.82) 58%, rgba(0,0,0,.22) 78%, transparent 96%);
+  filter: none;
+  transform: none;
+  opacity: 1;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 58%, rgba(0,0,0,.94) 74%, rgba(0,0,0,.42) 88%, transparent 100%);
+  mask-image: radial-gradient(ellipse at center, #000 58%, rgba(0,0,0,.94) 74%, rgba(0,0,0,.42) 88%, transparent 100%);
 }
 .ocean-video-layer::after {
   content: "";
@@ -158,20 +158,20 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(ellipse at 50% 44%, transparent 24%, rgba(246,249,254,.18) 56%, rgba(246,249,254,.72) 82%, var(--coast-bg) 100%),
-    linear-gradient(90deg, var(--coast-bg), rgba(246,249,254,.18) 18%, rgba(246,249,254,.14) 82%, var(--coast-bg)),
-    linear-gradient(180deg, rgba(246,249,254,.2), transparent 38%, rgba(246,249,254,.78), var(--coast-bg) 100%);
+    radial-gradient(ellipse at 50% 44%, transparent 48%, rgba(246,249,254,.08) 70%, rgba(246,249,254,.64) 91%, var(--coast-bg) 100%),
+    linear-gradient(90deg, var(--coast-bg), rgba(246,249,254,.08) 14%, rgba(246,249,254,.06) 86%, var(--coast-bg)),
+    linear-gradient(180deg, rgba(246,249,254,.06), transparent 48%, rgba(246,249,254,.56), var(--coast-bg) 100%);
 }
 .ocean-video-overlay {
   position: absolute;
   inset: 0;
   z-index: 1;
   background:
-    radial-gradient(circle at 50% 8%, rgba(255,255,255,.72), rgba(255,255,255,.22) 38%, transparent 68%),
-    linear-gradient(180deg, rgba(246,249,254,.02) 0%, rgba(246,249,254,.1) 45%, rgba(246,249,254,.46) 74%, rgba(246,249,254,.92) 92%, var(--coast-bg) 100%),
-    linear-gradient(90deg, rgba(246,249,254,.72), rgba(246,249,254,.02) 24%, rgba(246,249,254,.04) 78%, rgba(246,249,254,.78));
+    radial-gradient(circle at 50% 8%, rgba(255,255,255,.42), rgba(255,255,255,.1) 38%, transparent 68%),
+    linear-gradient(180deg, transparent 0%, rgba(246,249,254,.04) 48%, rgba(246,249,254,.34) 78%, rgba(246,249,254,.88) 94%, var(--coast-bg) 100%),
+    linear-gradient(90deg, rgba(246,249,254,.5), rgba(246,249,254,0) 22%, rgba(246,249,254,0) 78%, rgba(246,249,254,.54));
 }
-.ocean-noise { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: .035; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E"); }
+.ocean-noise { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: .014; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E"); }
 .hero-glass-ornaments { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
 .hero-glass-card,
 .hero-glass-pill,

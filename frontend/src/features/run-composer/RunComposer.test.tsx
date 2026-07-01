@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RunComposer } from './RunComposer'
 import { createBatch, createRun, validateRun } from '../workbench/workbench.api'
@@ -22,6 +22,29 @@ function renderComposer(options: { openSettings?: () => void } = {}) {
       <MemoryRouter>
         <WorkbenchContext.Provider value={{ openSettings: options.openSettings ?? vi.fn() }}>
           <RunComposer />
+        </WorkbenchContext.Provider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{location.pathname}{location.search}</div>
+}
+
+function renderComposerWithRoutes(options: { openSettings?: () => void } = {}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/']}>
+        <WorkbenchContext.Provider value={{ openSettings: options.openSettings ?? vi.fn() }}>
+          <Routes>
+            <Route path="/" element={<RunComposer />} />
+            <Route path="/tasks" element={<LocationProbe />} />
+          </Routes>
         </WorkbenchContext.Provider>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -157,10 +180,20 @@ describe('RunComposer input mode detection', () => {
     renderComposer()
 
     fireEvent.click(screen.getByLabelText('增加任务'))
-    fireEvent.click(screen.getByRole('button', { name: /批量开始 2 个任务/ }))
+    fireEvent.click(screen.getByRole('button', { name: /批量开始 \d+ 个任务/ }))
 
     expect(await screen.findByText(/还需要处理/)).toBeInTheDocument()
     expect(screen.getByText('任务 2：output_root is not writable.')).toBeInTheDocument()
+  })
+
+  it('navigates to the task queue with the created batch id', async () => {
+    renderComposerWithRoutes()
+
+    fireEvent.click(screen.getByLabelText('增加任务'))
+    fireEvent.click(screen.getByRole('button', { name: /批量开始 \d+ 个任务/ }))
+
+    await waitFor(() => expect(createBatch).toHaveBeenCalled())
+    expect(await screen.findByTestId('location')).toHaveTextContent('/tasks?batch=batch-auto-detected&created=1')
   })
 
   it('shows suggested preflight actions and opens advanced settings from the blocker panel', async () => {

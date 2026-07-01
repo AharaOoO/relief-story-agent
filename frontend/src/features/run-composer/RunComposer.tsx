@@ -237,8 +237,9 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
         return
       }
       if (result.kind === 'batch') {
+        const batchId = result.value.batch_id
         setFeedback('批量任务已进入队列。')
-        navigate('/tasks')
+        navigate(batchId ? `/tasks?batch=${encodeURIComponent(batchId)}&created=1` : '/tasks')
         return
       }
       setFeedback('任务已启动，正在进入第一道工序。')

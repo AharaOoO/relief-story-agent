@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowRight, Boxes, LoaderCircle, Pause, Play, RotateCcw, XCircle } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   cancelBatch,
   listBatches,
@@ -21,6 +21,7 @@ const BATCH_ACTION_LABELS: Record<BatchAction, string> = {
 
 export default function TasksPage() {
   const queryClient = useQueryClient()
+  const [searchParams] = useSearchParams()
   const runs = useQuery({ queryKey: ['runs'], queryFn: listRuns, refetchInterval: 5_000 })
   const batches = useQuery({ queryKey: ['batches'], queryFn: listBatches, refetchInterval: 5_000 })
   const batchAction = useMutation({
@@ -39,10 +40,12 @@ export default function TasksPage() {
   const act = (batchId: string, action: BatchAction) => batchAction.mutate({ batchId, action })
   const activeAction = batchAction.variables
   const activeActionLabel = activeAction ? BATCH_ACTION_LABELS[activeAction.action] : ''
+  const createdBatchId = searchParams.get('created') === '1' ? searchParams.get('batch') : ''
 
   return (
     <div className="page-surface list-page">
       <header className="page-heading content-width"><div><span className="eyebrow">PRODUCTION QUEUE</span><h1>任务队列</h1><p>批量任务和单条任务集中在这里，状态会自动刷新。</p></div></header>
+      {createdBatchId && <div className="inline-notice content-width" role="status">刚创建批次 {createdBatchId}，队列会自动刷新。</div>}
       <div className="content-width queue-layout">
         <section className="queue-section">
           <div className="section-heading-row"><div><h2>批量任务</h2><p>{batches.data?.total ?? 0} 个批次</p></div></div>

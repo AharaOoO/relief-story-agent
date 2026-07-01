@@ -33,10 +33,10 @@ vi.mock('../features/workbench/workbench.api', () => ({
   retryBatch: vi.fn().mockResolvedValue({ batch_id: 'batch-paused', status: 'queued' }),
 }))
 
-function renderPage() {
+function renderPage(initialEntry = '/') {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <QueryClientProvider client={client}><TasksPage /></QueryClientProvider>
     </MemoryRouter>,
   )
@@ -79,5 +79,11 @@ describe('TasksPage', () => {
 
     expect(childRun).toHaveAttribute('href', '/run/run-child-1')
     expect(childRun).toHaveTextContent('comfyui')
+  })
+
+  it('confirms a newly created batch from the composer navigation state', async () => {
+    renderPage('/tasks?batch=batch-paused&created=1')
+
+    expect(await screen.findByRole('status')).toHaveTextContent('刚创建批次 batch-paused')
   })
 })

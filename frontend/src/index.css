@@ -147,8 +147,9 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
   height: 100%;
   object-fit: cover;
   filter: saturate(.7) contrast(.84) brightness(1.18);
-  transform: scale(1.04);
+  transform: scale(1.08);
   opacity: .86;
+  -webkit-mask-image: radial-gradient(ellipse at center, #000 32%, rgba(0,0,0,.88) 56%, rgba(0,0,0,.32) 76%, transparent 96%);
   mask-image: radial-gradient(ellipse at center, #000 34%, rgba(0,0,0,.82) 58%, rgba(0,0,0,.22) 78%, transparent 96%);
 }
 .ocean-video-layer::after {

@@ -23,7 +23,7 @@ export function OceanVideoBackground() {
       <div className="ocean-video-layer">
         <video
           ref={videoRef}
-          src={`${assetBase}beach_bg.mp4`}
+          src={`${assetBase}coast-loop.mp4`}
           poster={`${assetBase}beach-poster.webp`}
           autoPlay
           muted

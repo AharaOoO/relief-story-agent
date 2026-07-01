@@ -7,10 +7,6 @@ export function OceanVideoBackground() {
   useEffect(() => {
     const video = videoRef.current;
     if (video) {
-      if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        video.pause();
-        return;
-      }
       const result = video.play();
       result?.catch?.(() => {
         // Autoplay may be blocked; the poster/background remains visible.

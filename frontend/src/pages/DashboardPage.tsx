@@ -10,6 +10,9 @@ import { getStatusLabel } from '../shared/utils/formatStatus'
 export default function DashboardPage() {
   const runs = useQuery({ queryKey: ['runs', 'dashboard'], queryFn: listRuns, refetchInterval: 10_000 })
   const recent = runs.data?.items.slice(0, 3) ?? []
+  const scrollToComposer = () => {
+    document.getElementById('new-production')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
 
   return (
     <div className="dashboard-page">
@@ -28,7 +31,7 @@ export default function DashboardPage() {
           <h1 aria-label="把一个想法，交给整条制片流水线"><span>把一个想法，</span><span>交给整条制片流水线</span></h1>
           <p>从故事、分镜、审查、四宫格参考图，到 ComfyUI / LTX 2.3 入队，一次设置，自动完成。</p>
           <div className="hero-actions">
-            <a className="primary-button large" href="#new-production"><Clapperboard size={18} /> 开始一部新短剧</a>
+            <button className="primary-button large" type="button" onClick={scrollToComposer}><Clapperboard size={18} /> 开始一部新短剧</button>
             <Link className="glass-button" to="/autopilot"><Layers3 size={18} /> 查看十道工序</Link>
           </div>
           <div className="hero-studio-card" aria-label="自动制片中枢">
@@ -44,7 +47,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
-        <a className="hero-scroll" href="#new-production" aria-label="向下查看创作面板"><span>开始创作</span><ArrowDown size={17} /></a>
+        <button className="hero-scroll" type="button" onClick={scrollToComposer} aria-label="开始创作"><span>开始创作</span><ArrowDown size={17} /></button>
       </section>
 
       <section className="production-band" id="new-production">

@@ -15,5 +15,7 @@ describe('packaged desktop runtime', () => {
     expect(ocean).toContain('coast-loop.mp4')
     expect(ocean).not.toContain('src="/coast-loop.mp4"')
     expect(ocean).not.toContain('beach_bg.mp4')
+    expect(ocean).not.toContain('prefers-reduced-motion')
+    expect(ocean).not.toContain('video.pause()')
   })
 })

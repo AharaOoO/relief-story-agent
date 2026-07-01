@@ -36,6 +36,30 @@ const INPUT_MODES: Array<{ id: RunDraft['inputMode']; label: string; placeholder
   { id: 'mixed', label: '剧本 + 要求', placeholder: '粘贴剧本，并在末尾补充改编要求与必须保留的内容。' },
 ]
 
+function inferInputMode(content: string): RunDraft['inputMode'] {
+  const text = content.trim()
+  if (!text) return 'auto'
+
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+  const hasRequirementSignal = /要求|目标|受众|风格|限制|必须|不要|需要|参考|核心|主题|画面风格|创作/.test(text)
+  const hasSceneHeading = /第\s*[一二三四五六七八九十\d]+\s*[场幕]/.test(text)
+  const hasLocationTime = /(?:内|外)\s*(?:日|夜)|INT\.|EXT\./i.test(text)
+  const hasDialogueLine = /^\s*[\u4e00-\u9fa5A-Za-z0-9_]{1,12}[：:]/m.test(text)
+  const hasShotLanguage = /镜头|对白|旁白|画面|CUT TO/i.test(text)
+  const looksLikeScript = (
+    hasSceneHeading ||
+    hasLocationTime ||
+    ((hasDialogueLine || hasShotLanguage) && lines.length >= 3) ||
+    (lines.length >= 4 && text.length > 200)
+  )
+
+  if (looksLikeScript && hasRequirementSignal) return 'mixed'
+  if (looksLikeScript) return 'script'
+  if (hasRequirementSignal) return 'requirements'
+  if (text.length <= 160 && lines.length <= 2) return 'idea'
+  return 'requirements'
+}
+
 export function RunComposer({ compact = false, heading, onDraftChange }: RunComposerProps) {
   const navigate = useNavigate()
   const { draft, patchDraft } = useRunDraft()
@@ -43,6 +67,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
   const [preflight, setPreflight] = useState<PreflightResult | null>(null)
   const [feedback, setFeedback] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const manualModeRef = useRef(false)
   const inputMode = INPUT_MODES.find((item) => item.id === draft.inputMode) ?? INPUT_MODES[0]
 
   useEffect(() => onDraftChange?.(draft), [draft, onDraftChange])
@@ -103,6 +128,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
   const importScript = async () => {
     const picked = await window.reliefDesktop?.pickScript()
     if (!picked || picked.canceled || !picked.content) return
+    manualModeRef.current = true
     patchDraft({ content: picked.content, sourceName: picked.name ?? '', inputMode: 'script' })
     setFeedback(`已导入 ${picked.name ?? '剧本文件'}。`)
     textareaRef.current?.focus()
@@ -112,13 +138,25 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
     patchDraft({ runninghubSite: site, stageModels: createRunningHubStageModels(site) })
   }
 
+  const updateInputMode = (mode: RunDraft['inputMode']) => {
+    manualModeRef.current = mode !== 'auto'
+    patchDraft({ inputMode: mode })
+  }
+
+  const updateContent = (content: string) => {
+    patchDraft({
+      content,
+      ...(!manualModeRef.current ? { inputMode: inferInputMode(content) } : {}),
+    })
+  }
+
   return (
     <section className={compact ? 'run-composer is-compact' : 'run-composer'} aria-label="创作任务">
       {heading && <div className="composer-heading"><span className="eyebrow">NEW PRODUCTION</span><h2>{heading}</h2></div>}
       <div className="composer-mode-row">
         <label className="select-pill">
           <span className="sr-only">输入类型</span>
-          <select value={draft.inputMode} onChange={(event) => patchDraft({ inputMode: event.target.value as RunDraft['inputMode'] })}>
+          <select value={draft.inputMode} onChange={(event) => updateInputMode(event.target.value as RunDraft['inputMode'])}>
             {INPUT_MODES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
           <ChevronDown size={15} />
@@ -132,7 +170,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
       <textarea
         ref={textareaRef}
         value={draft.content}
-        onChange={(event) => patchDraft({ content: event.target.value })}
+        onChange={(event) => updateContent(event.target.value)}
         placeholder={inputMode.placeholder}
         aria-label="故事灵感、剧本或创作要求"
       />

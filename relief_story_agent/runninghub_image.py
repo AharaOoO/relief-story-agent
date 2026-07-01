@@ -10,6 +10,46 @@ from .grid_image import GeneratedImage
 from .models import GridImageConfig
 
 
+class RunningHubImageRequestError(RuntimeError):
+    def __init__(self, operation: str, response: httpx.Response):
+        provider_code = ""
+        provider_message = ""
+        try:
+            body = response.json()
+        except (ValueError, TypeError):
+            body = {}
+        if isinstance(body, dict):
+            error = body.get("error")
+            if not isinstance(error, dict):
+                error = {}
+            provider_code = str(
+                body.get("code")
+                or body.get("errorCode")
+                or error.get("code")
+                or ""
+            )
+            provider_message = str(
+                body.get("message")
+                or body.get("msg")
+                or body.get("errorMessage")
+                or error.get("message")
+                or ""
+            )
+        detail = ": ".join(
+            value for value in (provider_code, provider_message) if value
+        )
+        suffix = f": {detail}" if detail else ""
+        super().__init__(
+            f"RunningHub G2 {operation} failed (HTTP {response.status_code}){suffix}"
+        )
+        self.status_code = response.status_code
+        self.details = {
+            "operation": operation,
+            "provider_code": provider_code,
+            "provider_message": provider_message,
+        }
+
+
 class RunningHubImageTaskProvider:
     def __init__(
         self,
@@ -46,7 +86,7 @@ class RunningHubImageTaskProvider:
             json=payload,
             timeout=config.timeout_seconds,
         )
-        create.raise_for_status()
+        self._raise_for_status(create, "create task")
         create_body = self._response_body(create)
         task_id = self._task_id(create_body)
         if not task_id:
@@ -61,7 +101,7 @@ class RunningHubImageTaskProvider:
                 json={"taskId": task_id},
                 timeout=config.timeout_seconds,
             )
-            query.raise_for_status()
+            self._raise_for_status(query, "query task")
             query_body = self._response_body(query)
             status = self._status(query_body)
             if status in {"SUCCESS", "SUCCEEDED", "COMPLETED", "FINISHED"}:
@@ -76,7 +116,7 @@ class RunningHubImageTaskProvider:
             raise TimeoutError(f"RunningHub G2 task {task_id} timed out")
 
         downloaded = client.get(result_url, timeout=config.timeout_seconds)
-        downloaded.raise_for_status()
+        self._raise_for_status(downloaded, "download image")
         content_type = downloaded.headers.get("content-type", "").split(";", 1)[0]
         if content_type not in {"image/png", "image/jpeg", "image/webp"}:
             content_type = self._detect_mime(downloaded.content)
@@ -91,10 +131,23 @@ class RunningHubImageTaskProvider:
         )
 
     @staticmethod
+    def _raise_for_status(response: httpx.Response, operation: str) -> None:
+        if response.is_error:
+            raise RunningHubImageRequestError(operation, response)
+
+    @staticmethod
     def _response_body(response: httpx.Response) -> dict[str, Any]:
         body = response.json()
         if not isinstance(body, dict):
             raise ValueError("RunningHub response must be a JSON object")
+        error_code = str(body.get("errorCode") or "").strip()
+        error_message = str(body.get("errorMessage") or "").strip()
+        task_status = str(body.get("status") or "").upper()
+        if error_code or task_status in {"FAILED", "ERROR", "CANCELLED", "CANCELED"}:
+            detail = ": ".join(
+                value for value in (error_code, error_message or task_status) if value
+            )
+            raise ValueError(f"RunningHub request failed: {detail}")
         code = body.get("code")
         if code not in {None, 0, "0", 200, "200"}:
             raise ValueError(

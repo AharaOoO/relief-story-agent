@@ -6,7 +6,7 @@ import json
 import uvicorn
 
 from .api import create_app
-from .image_providers import OpenAICompatibleGridImageProvider
+from .image_providers import GridImageProviderRouter
 from .local_runtime import DEFAULT_COMFYUI_ENDPOINT, DEFAULT_UI_ORIGIN, LocalRuntimeConfig
 from .model_config import ModelConfigRegistry
 from .orchestrator import InMemoryRunStore, StoryRunOrchestrator
@@ -62,7 +62,7 @@ def build_app(
         provider=provider or OpenAICompatibleProvider(),
         store=store,
         model_registry=registry,
-        grid_image_provider=OpenAICompatibleGridImageProvider(),
+        grid_image_provider=GridImageProviderRouter(),
         resource_limits=limits,
     )
     scheduler = PersistentRunScheduler(

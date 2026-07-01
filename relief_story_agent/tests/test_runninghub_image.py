@@ -4,6 +4,7 @@ import io
 import json
 
 import httpx
+import pytest
 from PIL import Image, ImageDraw
 
 from relief_story_agent.models import GridImageConfig
@@ -130,3 +131,73 @@ def test_runninghub_g2_uses_domestic_site_and_portrait_payload(monkeypatch):
     assert captured[0][1]["aspectRatio"] == "9:16"
     assert generated.task_id == "g2-cn"
 
+
+def test_runninghub_g2_preserves_safe_error_details_from_create_response(monkeypatch):
+    monkeypatch.setenv("RUNNINGHUB_AI_API_KEY", "ai-secret")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            401,
+            json={
+                "code": "ACCOUNT_NOT_ELIGIBLE",
+                "message": "Membership or account balance is required",
+            },
+        )
+
+    provider = RunningHubImageTaskProvider(
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(RuntimeError) as captured:
+        provider.generate(
+            prompt="A cinematic 2x2 contact sheet",
+            config=GridImageConfig(
+                provider="runninghub_image_task",
+                runninghub_site="ai",
+                model="rhart-image-g-2",
+            ),
+        )
+
+    error = captured.value
+    assert getattr(error, "status_code", None) == 401
+    assert "create task" in str(error)
+    assert "ACCOUNT_NOT_ELIGIBLE" in str(error)
+    assert "Membership or account balance is required" in str(error)
+    assert getattr(error, "details", {}) == {
+        "operation": "create task",
+        "provider_code": "ACCOUNT_NOT_ELIGIBLE",
+        "provider_message": "Membership or account balance is required",
+    }
+
+
+def test_runninghub_g2_reports_business_error_from_http_200_create_response(monkeypatch):
+    monkeypatch.setenv("RUNNINGHUB_AI_API_KEY", "ai-secret")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "taskId": "",
+                "status": "FAILED",
+                "errorCode": "INSUFFICIENT_BALANCE",
+                "errorMessage": "Please top up before creating a task",
+                "results": None,
+            },
+        )
+
+    provider = RunningHubImageTaskProvider(
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+    )
+
+    with pytest.raises(ValueError) as captured:
+        provider.generate(
+            prompt="A cinematic 2x2 contact sheet",
+            config=GridImageConfig(
+                provider="runninghub_image_task",
+                runninghub_site="ai",
+                model="rhart-image-g-2",
+            ),
+        )
+
+    assert "INSUFFICIENT_BALANCE" in str(captured.value)
+    assert "Please top up before creating a task" in str(captured.value)

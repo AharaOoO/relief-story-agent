@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+import relief_story_agent.server as server_module
 from relief_story_agent.api import create_app
+from relief_story_agent.image_providers import GridImageProviderRouter
 from relief_story_agent.local_runtime import (
     LocalRuntimeConfig,
     build_local_bootstrap,
@@ -87,6 +89,24 @@ def test_server_build_app_allows_local_ui_cors_origin(tmp_path):
 
     assert response.status_code == 200
     assert response.headers["access-control-allow-origin"] == "http://127.0.0.1:5174"
+
+
+def test_server_build_app_routes_grid_images_by_configured_provider(tmp_path, monkeypatch):
+    captured = {}
+    orchestrator_type = server_module.StoryRunOrchestrator
+
+    def capture_orchestrator(**kwargs):
+        captured.update(kwargs)
+        return orchestrator_type(**kwargs)
+
+    monkeypatch.setattr(server_module, "StoryRunOrchestrator", capture_orchestrator)
+
+    server_module.build_app(
+        state_dir=str(tmp_path / "state"),
+        provider=FakeModelProvider.minimal_success(),
+    )
+
+    assert isinstance(captured["grid_image_provider"], GridImageProviderRouter)
 
 
 def test_build_local_doctor_reports_missing_model_environment():

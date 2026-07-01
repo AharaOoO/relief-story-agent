@@ -316,7 +316,7 @@ python -m relief_story_agent.server `
 ```
 
 `--max-workers` limits concurrent runs. `--lease-seconds` controls how long a running job is considered owned by a worker before another process restart may recover it. `--recovery-poll-seconds` controls how often the scheduler scans persistent state for queued or expired running work.
-`--image-generation-concurrency` limits GPT Image/OpenAI-compatible four-grid generation. `--comfyui-submission-concurrency` limits ComfyUI `/prompt` submissions, which is useful when the local GPU should process one LTX job at a time.
+`--image-generation-concurrency` limits RunningHub G2 or OpenAI-compatible four-grid image generation. `--comfyui-submission-concurrency` limits ComfyUI `/prompt` submissions, which is useful when the local GPU should process one LTX job at a time.
 
 For a reusable multi-model deployment, copy `relief_story_agent/examples/model_config.local.example.json`, set the referenced environment variables, and pass the copied registry at startup:
 
@@ -342,6 +342,20 @@ The package also keeps `relief-story-agent-server` as a direct server entrypoint
 When `--model-config` is missing, malformed, or invalid during server startup,
 the server entrypoint exits with a structured `invalid_request` JSON response
 instead of a Python traceback.
+
+Desktop RunningHub convenience API mode:
+
+- RunningHub domestic site `.cn`: use `RUNNINGHUB_CN_API_KEY`.
+- RunningHub international site `.ai`: use `RUNNINGHUB_AI_API_KEY`.
+- The selected site's key is shared by the RunningHub LLM models and the
+  `rhart-image-g-2` G2 image task provider.
+- The desktop client saves these keys in Windows encrypted storage and restarts
+  the local sidecar so the backend receives the updated environment.
+- G2 image generation defaults to 2K and 16:9; the desktop UI also exposes 9:16
+  and 1K/2K controls per run draft.
+
+This convenience mode is separate from the older RunningHub cloud workflow mode
+below, which uses a user supplied workflow ID and `RUNNINGHUB_API_KEY`.
 
 RunningHub cloud generation mode 2:
 
@@ -899,7 +913,7 @@ Required placeholders:
 - writer template: `{{script_json}}`
 - audit template: `{{script_json}}`, `{{storyboard_json}}`
 
-The default writer template asks GPT image2 four-grid prompts to stay concise, around 60-120 Chinese characters per `image_prompt`. The backend also caps overly long `image_prompt` values before they become final prompts.
+The default writer template asks RunningHub G2 four-grid reference prompts to stay concise, around 60-120 Chinese characters per `image_prompt`. The backend also caps overly long `image_prompt` values before they become final prompts.
 
 ## Batch Runs
 
@@ -1409,7 +1423,7 @@ Model responses are also checked against stage output contracts before the next 
 - `gpt_prompt_audit`: `passed` boolean;
 - `gpt_prompt_reviser`: `shots` list.
 
-Each `shots[]` item from `gpt_prompt_writer` or `gpt_prompt_reviser` must be an object with non-empty `time_range`, `description`, `image_prompt`, and `negative_prompt` fields, plus a `comfyui_inputs` object. This keeps incomplete GPT image2/LTX prompt payloads from reaching artifact export or ComfyUI submission.
+Each `shots[]` item from `gpt_prompt_writer` or `gpt_prompt_reviser` must be an object with non-empty `time_range`, `description`, `image_prompt`, and `negative_prompt` fields, plus a `comfyui_inputs` object. This keeps incomplete RunningHub G2/LTX prompt payloads from reaching artifact export or ComfyUI submission.
 
 Retryable failures:
 

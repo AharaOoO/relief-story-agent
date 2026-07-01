@@ -63,6 +63,21 @@ function renderPage() {
   )
 }
 
+function renderSetupPage() {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/autopilot']}>
+        <Routes>
+          <Route path="/autopilot" element={<AutopilotPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
 function makeRun(overrides: Partial<Awaited<ReturnType<typeof fetchRun>>> = {}): Awaited<ReturnType<typeof fetchRun>> {
   return {
     run_id: 'run-one',
@@ -129,6 +144,24 @@ describe('AutopilotPage', () => {
     renderPage()
 
     await waitFor(() => expect(fetchRunArtifacts).toHaveBeenCalledWith('run-one'))
+  })
+
+  it('switches the setup workspace when later automatic stages are selected', async () => {
+    const { container } = renderSetupPage()
+
+    await waitFor(() => expect(container.querySelector('.stage-big-number')).toHaveTextContent('01'))
+    const stageButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('.stage-rail button'))
+    expect(stageButtons).toHaveLength(10)
+
+    fireEvent.click(stageButtons[7])
+    expect(container.querySelector('.stage-big-number')).toHaveTextContent('08')
+    expect(container.querySelector('.stage-automatic-panel')).toBeInTheDocument()
+
+    fireEvent.click(stageButtons[8])
+    expect(container.querySelector('.stage-big-number')).toHaveTextContent('09')
+
+    fireEvent.click(stageButtons[9])
+    expect(container.querySelector('.stage-big-number')).toHaveTextContent('10')
   })
 
   it('opens a live run focused on the backend current stage', async () => {

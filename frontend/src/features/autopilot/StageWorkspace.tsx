@@ -52,16 +52,16 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
   const { draft, patchDraft } = useRunDraft()
   const catalog = useQuery({ queryKey: ['provider-catalog'], queryFn: fetchProviderCatalog, staleTime: 5 * 60_000 })
   const isModelStage = MODEL_STAGE_IDS.includes(stage.id as ModelStageId)
-  const modelStageId = stage.id as ModelStageId
-  const frozenModel = readOnly ? runRequest?.model_configs?.[modelStageId] : undefined
-  const currentModel = frozenModel ?? draft.stageModels[modelStageId]
+  const modelStageId = isModelStage ? (stage.id as ModelStageId) : null
+  const frozenModel = modelStageId && readOnly ? runRequest?.model_configs?.[modelStageId] : undefined
+  const currentModel = modelStageId ? (frozenModel ?? draft.stageModels[modelStageId]) : undefined
   const providerMode = currentModel?.provider_mode ?? 'runninghub'
   const site = (currentModel?.runninghub_site ?? draft.runninghubSite) as RunningHubSite
-  const models = Array.from(new Set([
+  const models = modelStageId ? Array.from(new Set([
     ...(readOnly && currentModel?.model ? [currentModel.model] : []),
     ...runningHubModelOptions(site, modelStageId),
-  ]))
-  const standardModels = STANDARD_PRESETS[modelStageId] ?? []
+  ])) : []
+  const standardModels = modelStageId ? (STANDARD_PRESETS[modelStageId] ?? []) : []
   const [runtime, setRuntime] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
@@ -89,6 +89,7 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
   }
 
   const patchModel = (patch: Record<string, string>) => {
+    if (!modelStageId) return
     patchDraft({
       stageModels: {
         ...draft.stageModels,
@@ -104,6 +105,7 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
   }
 
   const switchProviderMode = (mode: 'runninghub' | 'openai_compatible') => {
+    if (!modelStageId) return
     if (mode === 'runninghub') {
       patchDraft({
         stageModels: {
@@ -134,7 +136,7 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
         <div><span className="eyebrow">{stage.label}</span><h2>{stage.title}</h2><p>{stage.description}</p></div>
       </header>
 
-      {isModelStage ? (
+      {modelStageId ? (
         <div className="stage-config-body">
           <div className="provider-mode-row">
             <div><strong>模型调用模式</strong><span>RunningHub 一个 key 覆盖整条流；普通 API 分别使用各服务商 key。</span></div>

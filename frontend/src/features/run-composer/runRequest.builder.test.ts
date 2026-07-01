@@ -54,6 +54,7 @@ describe('autopilot run request builder', () => {
 
     expect(request.input_spec.mode).toBe('requirements')
     expect(request.model_configs.quality_gate.model).toBe('deepseek/deepseek-v4-pro')
+    expect(request.model_configs.quality_gate.timeout_seconds).toBe(300)
     expect(request.prompt_profile.stage_overrides.quality_gate).toContain('{{script_json}}')
     expect(request.comfyui.endpoint).toBe('http://127.0.0.1:8188')
     expect(request.comfyui.workflow_api_path).toBe('D:/ComfyUI/workflows/ltx.json')
@@ -80,5 +81,6 @@ describe('autopilot run request builder', () => {
     const request = buildRunRequest(draft)
 
     expect(request.model_configs.deepseek_polish.model).toBe('deepseek/deepseek-v4-pro')
+    expect(request.model_configs.deepseek_polish.timeout_seconds).toBe(300)
   })
 })

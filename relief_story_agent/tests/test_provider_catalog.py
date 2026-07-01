@@ -63,6 +63,7 @@ def test_stage_model_config_validates_runninghub_site_and_catalog():
 
     assert config.base_url == "https://llm.runninghub.ai/v1"
     assert config.api_key_env == "RUNNINGHUB_AI_SHARED_API_KEY"
+    assert config.timeout_seconds == 300
 
     with pytest.raises(ValidationError, match="not available"):
         StageModelConfig(
@@ -70,6 +71,17 @@ def test_stage_model_config_validates_runninghub_site_and_catalog():
             runninghub_site="cn",
             model="google/gemini-3.5-flash",
         )
+
+
+def test_runninghub_model_preserves_an_explicit_timeout_override():
+    config = StageModelConfig(
+        provider_mode="runninghub",
+        runninghub_site="cn",
+        model="qwen/qwen3.7-plus",
+        timeout_seconds=420,
+    )
+
+    assert config.timeout_seconds == 420
 
 
 def test_runninghub_image_keeps_consumer_task_api_key():

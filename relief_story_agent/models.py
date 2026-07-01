@@ -44,6 +44,8 @@ class StageModelConfig(BaseModel):
         validate_runninghub_model(site=self.runninghub_site, model=self.model)
         self.base_url = RUNNINGHUB_BASE_URLS[self.runninghub_site]
         self.api_key_env = RUNNINGHUB_LLM_API_KEY_ENVS[self.runninghub_site]
+        if "timeout_seconds" not in self.model_fields_set:
+            self.timeout_seconds = 300.0
         return self
 
 

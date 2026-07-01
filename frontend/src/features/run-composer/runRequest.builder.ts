@@ -13,6 +13,8 @@ export type ModelStageId = (typeof MODEL_STAGE_IDS)[number]
 export type RunningHubSite = 'cn' | 'ai'
 export type StoryInputMode = 'auto' | 'idea' | 'requirements' | 'script' | 'mixed'
 
+export const RUNNINGHUB_LLM_TIMEOUT_SECONDS = 300
+
 export type StageModelDraft = {
   provider_mode: 'runninghub' | 'openai_compatible'
   runninghub_site?: RunningHubSite
@@ -170,6 +172,7 @@ export function createRunningHubStageModels(
       provider_mode: 'runninghub' as const,
       runninghub_site: site,
       model: defaultRunningHubModel(site, stageId),
+      timeout_seconds: RUNNINGHUB_LLM_TIMEOUT_SECONDS,
     }]),
   ) as Record<ModelStageId, StageModelDraft>
 }
@@ -213,6 +216,8 @@ function normalizeModelConfigs(draft: RunDraft): Record<ModelStageId, StageModel
       ? createRunningHubStageModels(site)[stageId]
       : globalDefaults[stageId]
     const source = candidate?.model?.trim() ? candidate : fallback ?? globalDefaults[stageId]
+    const timeoutSeconds = source.timeout_seconds
+      ?? (source.provider_mode === 'runninghub' ? RUNNINGHUB_LLM_TIMEOUT_SECONDS : undefined)
     const normalized: StageModelDraft = {
       provider_mode: source.provider_mode,
       model: source.model,
@@ -220,7 +225,7 @@ function normalizeModelConfigs(draft: RunDraft): Record<ModelStageId, StageModel
       ...(source.base_url ? { base_url: source.base_url } : {}),
       ...(source.api_key_env ? { api_key_env: source.api_key_env } : {}),
       ...(source.temperature !== undefined ? { temperature: source.temperature } : {}),
-      ...(source.timeout_seconds !== undefined ? { timeout_seconds: source.timeout_seconds } : {}),
+      ...(timeoutSeconds !== undefined ? { timeout_seconds: timeoutSeconds } : {}),
     }
     return [stageId, normalized]
   })) as Record<ModelStageId, StageModelDraft>

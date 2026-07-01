@@ -126,7 +126,7 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
               <label className="field-stack"><span>服务站点</span><div className="select-shell"><select disabled={readOnly} value={site} onChange={(event) => { const targetSite = event.target.value as RunningHubSite; const targetModel = defaultRunningHubModel(targetSite, modelStageId); patchDraft({ stageModels: { ...draft.stageModels, [modelStageId]: { provider_mode: 'runninghub', runninghub_site: targetSite, model: targetModel } } }) }}><option value="cn">RunningHub 国内站 .cn</option><option value="ai">RunningHub 国际站 .ai</option></select><ChevronDown size={16} /></div></label>
               <label className="field-stack"><span>本工序模型</span><div className="select-shell"><select disabled={readOnly || catalog.isLoading} value={currentModel?.model ?? models[0] ?? ''} onChange={(event) => patchModel({ model: event.target.value })}>{models.map((model) => <option value={model} key={model}>{model}</option>)}</select><ChevronDown size={16} /></div></label>
             </div>
-            {!readOnly && <div className="editor-note"><Info size={15} /><span>这里读取独立的 RUNNINGHUB_{site.toUpperCase()}_SHARED_API_KEY。个人/会员 key 只能用于 G2，请切回“普通模型 API”。</span></div>}
+            {!readOnly && <div className="editor-note"><Info size={15} /><span>这里读取独立的 RUNNINGHUB_{site.toUpperCase()}_SHARED_API_KEY，单次生成最长等待 5 分钟。个人/会员 key 只能用于 G2，请切回“普通模型 API”。</span></div>}
           </>
           ) : (
             <div className="stage-config-row is-single">

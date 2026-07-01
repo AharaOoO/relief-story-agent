@@ -364,6 +364,9 @@ Desktop RunningHub convenience API mode:
   Switch a stage to RunningHub enterprise model API only when you have the
   matching SHARED / enterprise key for that site. Preflight checks the actual
   per-stage model selection and blocks submission when that shared key is absent.
+- RunningHub LLM stages default to a 300-second response timeout because queued
+  or long-form JSON generations can exceed the generic 60-second provider timeout.
+  An explicitly supplied per-stage timeout still takes precedence.
 - The desktop client saves these keys in Windows encrypted storage and restarts
   the local sidecar so the backend receives the updated environment.
 - G2 image generation defaults to 2K and 16:9; the desktop UI also exposes 9:16

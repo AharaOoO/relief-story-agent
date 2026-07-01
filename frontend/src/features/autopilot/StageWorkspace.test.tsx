@@ -70,6 +70,7 @@ describe('StageWorkspace run snapshot', () => {
     expect(await screen.findByDisplayValue('GPT-5')).toBeInTheDocument()
     clickRunningHubMode()
     expect(await screen.findByDisplayValue('openai/gpt-5.5')).toBeInTheDocument()
+    expect(screen.getByText(/最长等待 5 分钟/)).toBeInTheDocument()
     fireEvent.change(screen.getByDisplayValue('RunningHub 国际站 .ai'), { target: { value: 'cn' } })
 
     expect(screen.getByDisplayValue('qwen/qwen3.7-max')).toBeInTheDocument()

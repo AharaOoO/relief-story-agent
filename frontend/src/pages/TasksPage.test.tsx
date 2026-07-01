@@ -8,7 +8,13 @@ import { cancelBatch, pauseBatch, resumeBatch, retryBatch } from '../features/wo
 let pauseBatchResult: Promise<unknown>
 
 vi.mock('../features/workbench/workbench.api', () => ({
-  listRuns: vi.fn().mockResolvedValue({ total: 0, limit: 100, items: [] }),
+  listRuns: vi.fn().mockResolvedValue({
+    total: 1,
+    limit: 100,
+    items: [
+      { run_id: 'run-live', idea: '夜班热饮', status: 'running', current_stage: 'gpt_prompt_audit' },
+    ],
+  }),
   listBatches: vi.fn().mockResolvedValue({
     total: 2,
     limit: 100,
@@ -78,7 +84,19 @@ describe('TasksPage', () => {
     const childRun = await screen.findByRole('link', { name: /海边便利店/ })
 
     expect(childRun).toHaveAttribute('href', '/run/run-child-1')
-    expect(childRun).toHaveTextContent('comfyui')
+    expect(childRun).toHaveTextContent('出餐中 · ComfyUI / LTX 入队')
+  })
+
+  it('shows user-facing Chinese labels for backend statuses and stage ids', async () => {
+    renderPage()
+
+    const runLinks = await screen.findAllByRole('link', { name: /夜班热饮/ })
+    const runLink = runLinks.find((link) => link.getAttribute('href') === '/run/run-live')
+
+    if (!runLink) throw new Error('Expected run-live link to be rendered')
+    expect(runLink).toHaveTextContent('运行中')
+    expect(runLink).toHaveTextContent('调味 · 提示词审查')
+    expect(screen.queryByText('gpt_prompt_audit')).not.toBeInTheDocument()
   })
 
   it('confirms a newly created batch from the composer navigation state', async () => {

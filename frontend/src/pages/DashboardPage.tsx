@@ -1,10 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDown, ArrowRight, Clapperboard, Layers3, Sparkles } from 'lucide-react'
 import { Link } from 'react-router-dom'
-import { AUTOPILOT_STAGES } from '../features/autopilot/stages'
+import { AUTOPILOT_STAGES, getStageDisplayName } from '../features/autopilot/stages'
 import { RunComposer } from '../features/run-composer/RunComposer'
 import { listRuns } from '../features/workbench/workbench.api'
 import { OceanVideoBackground } from '../shared/components/OceanVideoBackground'
+import { getStatusLabel } from '../shared/utils/formatStatus'
 
 export default function DashboardPage() {
   const runs = useQuery({ queryKey: ['runs', 'dashboard'], queryFn: listRuns, refetchInterval: 10_000 })
@@ -85,8 +86,8 @@ export default function DashboardPage() {
               {recent.map((run) => (
                 <Link key={run.run_id} to={`/run/${run.run_id}`}>
                   <span className={`run-state-dot is-${run.status}`} />
-                  <div><strong>{run.idea || '自动创作任务'}</strong><span>{run.current_stage || '等待开始'}</span></div>
-                  <span className="status-chip">{run.status}</span>
+                  <div><strong>{run.idea || '自动创作任务'}</strong><span>{getStageDisplayName(run.current_stage)}</span></div>
+                  <span className="status-chip">{getStatusLabel(run.status)}</span>
                   <ArrowRight size={17} />
                 </Link>
               ))}

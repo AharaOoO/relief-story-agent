@@ -9,6 +9,8 @@ import {
   resumeBatch,
   retryBatch,
 } from '../features/workbench/workbench.api'
+import { getStageDisplayName } from '../features/autopilot/stages'
+import { getStatusLabel } from '../shared/utils/formatStatus'
 
 type BatchAction = 'pause' | 'resume' | 'cancel' | 'retry'
 const TERMINAL_BATCH = new Set(['completed', 'cancelled'])
@@ -63,7 +65,7 @@ export default function TasksPage() {
                   <article key={batch.batch_id}>
                     <span className={`run-state-dot is-${batch.status}`} />
                     <div className="queue-item-copy"><strong>{batch.batch_id}</strong><span>{completed}/{total} 已完成 · {failed} 失败</span></div>
-                    <span className="status-chip">{paused ? '已暂停' : batch.status}</span>
+                    <span className="status-chip">{paused ? '已暂停' : getStatusLabel(batch.status)}</span>
                     <div className="batch-action-row" aria-label={`${batch.batch_id} 批次操作`}>
                       {!TERMINAL_BATCH.has(batch.status) && (paused ? (
                         <button type="button" className="icon-button is-quiet" disabled={pending} onClick={() => act(batch.batch_id, 'resume')} aria-label={`继续 ${batch.batch_id}`} title="继续"><Play size={16} /></button>
@@ -81,7 +83,7 @@ export default function TasksPage() {
                             <span className={`run-state-dot is-${item.status}`} />
                             <span className="batch-child-copy">
                               <strong>{item.idea || `子任务 ${index + 1}`}</strong>
-                              <small>{item.current_stage || item.status}</small>
+                              <small>{item.current_stage ? getStageDisplayName(item.current_stage) : getStatusLabel(item.status)}</small>
                             </span>
                             <ArrowRight size={14} />
                           </Link>
@@ -99,7 +101,7 @@ export default function TasksPage() {
         </section>
         <section className="queue-section">
           <div className="section-heading-row"><div><h2>全部作品</h2><p>{runs.data?.total ?? 0} 个任务</p></div></div>
-          {runs.isLoading ? <div className="loading-row"><LoaderCircle className="spin" /> 正在读取…</div> : runs.data?.items.length ? <div className="queue-list">{runs.data.items.map((run) => <Link to={`/run/${run.run_id}`} key={run.run_id}><span className={`run-state-dot is-${run.status}`} /><div><strong>{run.idea || '自动创作任务'}</strong><span>{run.current_stage || '等待开始'}</span></div><span className="status-chip">{run.status}</span><ArrowRight size={17} /></Link>)}</div> : <div className="empty-panel"><Boxes size={24} /><strong>队列还是空的</strong><span>创建第一条任务后会出现在这里。</span></div>}
+          {runs.isLoading ? <div className="loading-row"><LoaderCircle className="spin" /> 正在读取…</div> : runs.data?.items.length ? <div className="queue-list">{runs.data.items.map((run) => <Link to={`/run/${run.run_id}`} key={run.run_id}><span className={`run-state-dot is-${run.status}`} /><div><strong>{run.idea || '自动创作任务'}</strong><span>{getStageDisplayName(run.current_stage)}</span></div><span className="status-chip">{getStatusLabel(run.status)}</span><ArrowRight size={17} /></Link>)}</div> : <div className="empty-panel"><Boxes size={24} /><strong>队列还是空的</strong><span>创建第一条任务后会出现在这里。</span></div>}
         </section>
       </div>
     </div>

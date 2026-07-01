@@ -154,6 +154,8 @@ describe('AutopilotPage', () => {
     renderPage()
 
     expect(await screen.findByText('audit.json')).toBeInTheDocument()
+    expect(screen.getAllByText('运行中').length).toBeGreaterThan(0)
+    expect(screen.getByText('调味 · 提示词审查')).toBeInTheDocument()
     expect(screen.queryByText('script')).not.toBeInTheDocument()
   })
 

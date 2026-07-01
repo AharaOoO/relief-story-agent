@@ -34,14 +34,30 @@ const STATUS_TONES: Record<CommonStatus, StatusTone> = {
   unknown: 'neutral',
 }
 
+const PIPELINE_STATUS_LABELS: Record<string, string> = {
+  pending: '待命',
+  waiting: '等待确认',
+  skipped: '已跳过',
+  succeeded: '已完成',
+  partial_failed: '部分失败',
+}
+
+const PIPELINE_STATUS_TONES: Record<string, StatusTone> = {
+  pending: 'neutral',
+  waiting: 'warning',
+  skipped: 'neutral',
+  succeeded: 'success',
+  partial_failed: 'danger',
+}
+
 function isKnownStatus(status: string): status is CommonStatus {
   return Object.hasOwn(STATUS_LABELS, status)
 }
 
 export function getStatusLabel(status: string): string {
-  return isKnownStatus(status) ? STATUS_LABELS[status] : STATUS_LABELS.unknown
+  return isKnownStatus(status) ? STATUS_LABELS[status] : PIPELINE_STATUS_LABELS[status] ?? STATUS_LABELS.unknown
 }
 
 export function getStatusTone(status: string): StatusTone {
-  return isKnownStatus(status) ? STATUS_TONES[status] : STATUS_TONES.unknown
+  return isKnownStatus(status) ? STATUS_TONES[status] : PIPELINE_STATUS_TONES[status] ?? STATUS_TONES.unknown
 }

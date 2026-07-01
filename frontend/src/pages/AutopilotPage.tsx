@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, CheckCircle2, ChevronRight, ExternalLink, FolderOpen, LoaderCircle, Pause, Play, RefreshCw, RotateCcw, Settings2 } from 'lucide-react'
 import { useParams } from 'react-router-dom'
-import { AUTOPILOT_STAGES, stageStatusFromTimeline, type AutopilotStageStatus } from '../features/autopilot/stages'
+import { AUTOPILOT_STAGES, getStageDisplayName, stageStatusFromTimeline, type AutopilotStageStatus } from '../features/autopilot/stages'
 import { StageRail } from '../features/autopilot/StageRail'
 import { StageWorkspace } from '../features/autopilot/StageWorkspace'
 import { RunComposer } from '../features/run-composer/RunComposer'
@@ -19,6 +19,7 @@ import {
   type ArtifactRecord,
 } from '../features/workbench/workbench.api'
 import { useWorkbench } from '../app/workbench/workbench.context'
+import { getStatusLabel } from '../shared/utils/formatStatus'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 type RunAction = 'cancel' | 'retry' | 'approve' | 'refresh'
@@ -208,7 +209,7 @@ export default function AutopilotPage() {
         <div className="autopilot-live content-width">
           <section className="live-overview">
             <div className="live-title-row">
-              <div><span className="status-chip is-live">{run.data?.status ?? '读取中'}</span><h2>{run.data?.idea || run.data?.request?.idea || '自动创作任务'}</h2><p>任务 ID：{runId}</p></div>
+              <div><span className={`status-chip is-live is-${run.data?.status ?? 'checking'}`}>{run.data?.status ? getStatusLabel(run.data.status) : '读取中'}</span><h2>{run.data?.idea || run.data?.request?.idea || '自动创作任务'}</h2><p>任务 ID：{runId}</p></div>
               <div className="live-actions">
                 {run.data?.status === 'awaiting_approval' && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('approve')}><CheckCircle2 size={16} /> 批准并继续</button>}
                 <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('refresh')}><RefreshCw size={16} /> 刷新成片</button>
@@ -240,7 +241,7 @@ export default function AutopilotPage() {
             <div className="live-stage-column">
               <StageWorkspace stageId={selectedStage} readOnly runRequest={run.data?.request} promptSnapshot={promptSnapshot} />
               <section className="stage-output-panel">
-                <div className="section-heading-row"><div><span className="eyebrow">LIVE OUTPUT</span><h3>本工序产物</h3></div><span className={`status-chip is-${statuses[selectedStage]}`}>{statuses[selectedStage]}</span></div>
+                <div className="section-heading-row"><div><span className="eyebrow">LIVE OUTPUT</span><h3>本工序产物</h3></div><span className={`status-chip is-${statuses[selectedStage]}`}>{getStatusLabel(statuses[selectedStage])}</span></div>
                 {run.data?.error && statuses[selectedStage] === 'failed' && <div className="inline-notice is-error"><AlertCircle size={16} />{run.data.error}</div>}
                 {stageArtifacts.length ? (
                   <ul>{stageArtifacts.map((item, index) => {
@@ -301,7 +302,7 @@ export default function AutopilotPage() {
                 ) : (
                   <div className="stage-output-empty">{statuses[selectedStage] === 'running' ? 'Agent 正在写入本工序结果…' : statuses[selectedStage] === 'completed' ? '工序已完成，标准化结果已归档。' : '执行到这里后，产物会自动出现。'}</div>
                 )}
-                {eventItems.length > 0 && <div className="run-event-feed" aria-live="polite"><strong>实时事件</strong>{eventItems.slice(-5).reverse().map((event) => <div key={event.sequence}><span>{event.stage || event.event_type}</span><p>{event.message || event.event_type}</p></div>)}</div>}
+                {eventItems.length > 0 && <div className="run-event-feed" aria-live="polite"><strong>实时事件</strong>{eventItems.slice(-5).reverse().map((event) => <div key={event.sequence}><span>{event.stage ? getStageDisplayName(event.stage, event.stage) : event.event_type}</span><p>{event.message || event.event_type}</p></div>)}</div>}
               </section>
             </div>
           </div>

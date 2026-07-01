@@ -18,6 +18,8 @@ describe('visual system tokens', () => {
     expect(css).toContain('.hero-studio-card')
     expect(css).toContain('.hero-glass-ornaments')
     expect(css).toContain('.coast-hero::after')
+    expect(css).toContain('mask-image: radial-gradient(ellipse at center')
+    expect(css).toContain('var(--coast-bg) 100%)')
     expect(css).toContain('rgba(246,249,254,.98) 92%')
     expect(css).toContain('radial-gradient(circle at 50% 8%, rgba(255,255,255,.98), rgba(255,255,255,.42) 38%, transparent 68%)')
 

@@ -46,6 +46,12 @@ export const AUTOPILOT_STAGES: readonly AutopilotStage[] = [
   stage('comfyui', 10, '出餐中', 'ComfyUI / LTX 入队', '注入专属工作流并依次进入本地生成队列。'),
 ]
 
+export function getStageDisplayName(stageId?: string, fallback = '等待开始') {
+  if (!stageId) return fallback
+  const stageDefinition = AUTOPILOT_STAGES.find((item) => item.id === stageId)
+  return stageDefinition ? `${stageDefinition.label} · ${stageDefinition.title}` : '未知工序'
+}
+
 const STATUS_PRIORITY: Record<string, number> = {
   pending: 0,
   queued: 1,

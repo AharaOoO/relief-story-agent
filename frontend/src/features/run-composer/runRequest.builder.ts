@@ -47,6 +47,7 @@ export type RunDraft = {
   workflowPath: string
   outputRoot: string
   runninghubSite: RunningHubSite
+  gridImageSite: RunningHubSite
 }
 
 export type RunRequestPayload = {
@@ -254,6 +255,7 @@ export function createRunDraft(): RunDraft {
     workflowPath: '',
     outputRoot: '',
     runninghubSite: 'ai',
+    gridImageSite: 'cn',
   }
 }
 
@@ -298,7 +300,7 @@ export function buildRunRequest(draft: RunDraft, index = 0): RunRequestPayload {
       download_outputs: true,
       grid_image: {
         provider: 'runninghub_image_task',
-        runninghub_site: draft.runninghubSite,
+        runninghub_site: draft.gridImageSite,
         model: 'rhart-image-g-2',
         aspect_ratio: draft.aspectRatio,
         resolution: draft.imageResolution,

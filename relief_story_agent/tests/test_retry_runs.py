@@ -1,11 +1,54 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
+import pytest
 
 from relief_story_agent.api import create_app
-from relief_story_agent.models import RunRequest, RunRetryRequest
+from relief_story_agent.models import (
+    ComfyUIRunConfig,
+    GridImageAsset,
+    GridImageAttempt,
+    GridImageConfig,
+    GridImageRetryOverride,
+    RunRequest,
+    RunRetryRequest,
+)
 from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
+
+
+def test_retry_request_accepts_only_public_grid_image_override_fields():
+    request = RunRetryRequest.model_validate(
+        {
+            "from_stage": "four_grid_asset",
+            "grid_image_override": {
+                "runninghub_site": "cn",
+                "aspect_ratio": "9:16",
+                "resolution": "2k",
+            },
+        }
+    )
+
+    assert request.grid_image_override is not None
+    assert request.grid_image_override.runninghub_site == "cn"
+    assert request.grid_image_override.aspect_ratio == "9:16"
+    assert "api_key" not in request.grid_image_override.model_dump()
+
+
+def test_retry_request_rejects_secret_or_provider_override_fields():
+    with pytest.raises(ValidationError):
+        RunRetryRequest.model_validate(
+            {
+                "from_stage": "four_grid_asset",
+                "grid_image_override": {
+                    "runninghub_site": "cn",
+                    "aspect_ratio": "16:9",
+                    "resolution": "2k",
+                    "api_key": "must-not-enter-run-state",
+                },
+            }
+        )
 
 
 def test_retry_failed_run_resumes_from_failed_stage_without_rerunning_prior_stages():
@@ -95,3 +138,133 @@ def test_api_retries_failed_run():
     assert retry.status_code == 200
     assert retry.json()["status"] == "completed"
     assert retry.json()["retry_count"] == 1
+
+
+def _failed_grid_run(orchestrator: StoryRunOrchestrator):
+    run = orchestrator.prepare_run(
+        RunRequest(
+            idea="恢复四宫格",
+            approval_mode="auto",
+            comfyui=ComfyUIRunConfig(
+                enabled=True,
+                grid_image=GridImageConfig(
+                    provider="runninghub_image_task",
+                    runninghub_site="ai",
+                    model="rhart-image-g-2",
+                    aspect_ratio="16:9",
+                    resolution="2k",
+                ),
+            ),
+        )
+    )
+    run.status = "failed"
+    run.current_stage = "failed"
+    run.failed_stage = "four_grid_asset"
+    run.script = {"title": "保留前序剧本"}
+    run.grid_image_asset = GridImageAsset(
+        source="generated",
+        local_path="D:/runs/old-grid.png",
+        sha256="a" * 64,
+        mime_type="image/png",
+        width=2048,
+        height=1152,
+        byte_size=1024,
+    )
+    run.grid_image_attempts = [GridImageAttempt(attempt_number=1, status="failed")]
+    run.grid_image_checkpoint = "image_validated"
+    run.grid_image_replacements = [{"node": "196", "input": "image"}]
+    orchestrator.store.save(run)
+    return run
+
+
+def test_queue_retry_applies_grid_override_and_clears_only_grid_checkpoint_state():
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore(),
+    )
+    failed = _failed_grid_run(orchestrator)
+
+    queued = orchestrator.queue_retry(
+        failed.run_id,
+        RunRetryRequest(
+            from_stage="four_grid_asset",
+            grid_image_override=GridImageRetryOverride(
+                runninghub_site="cn",
+                aspect_ratio="9:16",
+                resolution="1k",
+            ),
+        ),
+    )
+
+    assert queued.request.comfyui is not None
+    assert queued.request.comfyui.grid_image.runninghub_site == "cn"
+    assert queued.request.comfyui.grid_image.aspect_ratio == "9:16"
+    assert queued.request.comfyui.grid_image.resolution == "1k"
+    assert queued.request.creation_spec.video_aspect_ratio == "9:16"
+    assert queued.request.creation_spec.image_resolution == "1k"
+    assert queued.grid_image_asset is None
+    assert queued.grid_image_attempts == []
+    assert queued.grid_image_checkpoint == ""
+    assert queued.grid_image_replacements == []
+    assert queued.script == {"title": "保留前序剧本"}
+    assert queued.retry_configuration_history[-1]["before"]["runninghub_site"] == "ai"
+    assert queued.retry_configuration_history[-1]["after"]["runninghub_site"] == "cn"
+    assert any(event.event_type == "retry_configuration_updated" for event in queued.events)
+
+
+@pytest.mark.parametrize(
+    ("status", "failed_stage", "from_stage"),
+    [
+        ("completed", "four_grid_asset", "four_grid_asset"),
+        ("failed", "gpt_prompt_audit", "four_grid_asset"),
+        ("failed", "four_grid_asset", "comfyui"),
+    ],
+)
+def test_grid_override_rejects_incompatible_run_state(status, failed_stage, from_stage):
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore(),
+    )
+    run = _failed_grid_run(orchestrator)
+    run.status = status
+    run.failed_stage = failed_stage
+    orchestrator.store.save(run)
+
+    with pytest.raises(ValueError, match="grid image retry override"):
+        orchestrator.queue_retry(
+            run.run_id,
+            RunRetryRequest(
+                from_stage=from_stage,
+                grid_image_override=GridImageRetryOverride(
+                    runninghub_site="cn",
+                    aspect_ratio="16:9",
+                    resolution="2k",
+                ),
+            ),
+        )
+
+
+def test_api_returns_conflict_when_grid_override_targets_a_stale_run_state():
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore(),
+    )
+    run = _failed_grid_run(orchestrator)
+    run.status = "completed"
+    orchestrator.store.save(run)
+    client = TestClient(create_app(orchestrator))
+
+    response = client.post(
+        f"/api/runs/{run.run_id}/retry",
+        json={
+            "from_stage": "four_grid_asset",
+            "grid_image_override": {
+                "runninghub_site": "cn",
+                "aspect_ratio": "16:9",
+                "resolution": "2k",
+            },
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"]["code"] == "retry_configuration_conflict"

@@ -29,6 +29,7 @@ function clickRunningHubMode() {
 
 beforeEach(() => {
   window.localStorage.clear()
+  window.reliefDesktop = undefined
   useRunDraft.getState().resetDraft()
   vi.mocked(fetchProviderCatalog).mockResolvedValue({
     runninghub: {
@@ -39,6 +40,63 @@ beforeEach(() => {
 })
 
 describe('StageWorkspace run snapshot', () => {
+  it('lets stage 8 select the domestic G2 site independently', () => {
+    renderWorkspace('four_grid_asset')
+
+    expect(screen.getByRole('button', { name: '国内站 .cn' })).toHaveClass('is-active')
+    fireEvent.click(screen.getByRole('button', { name: '国际站 .ai' }))
+
+    expect(useRunDraft.getState().draft.gridImageSite).toBe('ai')
+    expect(screen.getByText('RUNNINGHUB_AI_API_KEY')).toBeInTheDocument()
+  })
+
+  it('shows the frozen G2 site and image settings for an existing run', () => {
+    const request = {
+      comfyui: {
+        grid_image: {
+          provider: 'runninghub_image_task',
+          runninghub_site: 'ai',
+          model: 'rhart-image-g-2',
+          aspect_ratio: '9:16',
+          resolution: '1k',
+          quality: 'high',
+        },
+      },
+    } as unknown as RunRequestPayload
+
+    renderWorkspace('four_grid_asset', { readOnly: true, runRequest: request })
+
+    expect(screen.getByRole('button', { name: '国际站 .ai' })).toHaveClass('is-active')
+    expect(screen.getByRole('button', { name: '国际站 .ai' })).toBeDisabled()
+    expect(screen.getByDisplayValue('竖屏 9:16')).toBeDisabled()
+    expect(screen.getByDisplayValue('1K 快速')).toBeDisabled()
+  })
+
+  it('edits an isolated G2 recovery draft without changing the new-run draft', () => {
+    const onChange = vi.fn()
+    renderWorkspace('four_grid_asset', {
+      readOnly: true,
+      gridImageRecovery: {
+        value: {
+          runninghub_site: 'ai',
+          aspect_ratio: '9:16',
+          resolution: '1k',
+        },
+        onChange,
+      },
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: '国内站 .cn' }))
+
+    expect(onChange).toHaveBeenCalledWith({
+      runninghub_site: 'cn',
+      aspect_ratio: '9:16',
+      resolution: '1k',
+    })
+    expect(useRunDraft.getState().draft.gridImageSite).toBe('cn')
+    expect(screen.getByText('恢复编辑')).toBeInTheDocument()
+  })
+
   it('shows the frozen model and prompt from the run instead of the current local draft', async () => {
     const request = {
       model_configs: {

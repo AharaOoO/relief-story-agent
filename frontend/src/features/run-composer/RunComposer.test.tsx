@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RunComposer } from './RunComposer'
 import { createBatch, createRun, validateRun } from '../workbench/workbench.api'
 import { WorkbenchContext } from '../../app/workbench/workbench.context'
+import { useRunDraft } from './runDraft.store'
 
 vi.mock('../workbench/workbench.api', () => ({
   createBatch: vi.fn(),
@@ -55,6 +56,7 @@ describe('RunComposer input mode detection', () => {
   beforeEach(() => {
     window.localStorage.clear()
     window.reliefDesktop = undefined
+    useRunDraft.getState().resetDraft()
     vi.mocked(createRun).mockReset()
     vi.mocked(createRun).mockResolvedValue({ run_id: 'run-auto-detected', status: 'queued', current_stage: 'chief_screenwriter' })
     vi.mocked(createBatch).mockReset()
@@ -112,6 +114,20 @@ describe('RunComposer input mode detection', () => {
 
     await waitFor(() => expect(createRun).toHaveBeenCalled())
     expect(vi.mocked(createRun).mock.calls[0]?.[0].input_spec.mode).toBe('requirements')
+  })
+
+  it('sends the selected G2 image site without changing the LLM default site', async () => {
+    renderComposer()
+
+    fireEvent.click(screen.getByRole('button', { name: /创作参数/ }))
+    fireEvent.click(screen.getByRole('button', { name: '国际站 .ai' }))
+    fireEvent.click(screen.getByRole('button', { name: /一键开始生成/ }))
+
+    await waitFor(() => expect(createRun).toHaveBeenCalled())
+    const request = vi.mocked(createRun).mock.calls[0]?.[0]
+    expect(request.comfyui.grid_image.runninghub_site).toBe('ai')
+    expect(useRunDraft.getState().draft.runninghubSite).toBe('ai')
+    expect(useRunDraft.getState().draft.gridImageSite).toBe('ai')
   })
 
   it('treats a legacy passed preflight response as ready', async () => {

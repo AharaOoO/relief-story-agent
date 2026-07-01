@@ -380,6 +380,15 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
 .prompt-editor textarea { min-height: 230px; padding: 18px; }
 .editor-note, .auto-save-note { display: flex; align-items: center; gap: 8px; color: var(--coast-muted); font-size: 12px; }
 .auto-save-note { align-self: flex-end; color: #47826a; }
+.grid-image-stage-config { gap: 24px; }
+.grid-image-config-row { display: grid; grid-template-columns: 1.15fr 1fr 1fr; gap: 16px; align-items: end; }
+.grid-image-model-summary { min-height: 70px; display: flex; align-items: center; gap: 13px; padding: 13px 15px; border: 1px solid var(--coast-line); border-radius: 16px; background: rgba(239,245,250,.62); }
+.grid-image-model-summary > svg { flex: 0 0 auto; color: var(--coast-accent-deep); }
+.grid-image-model-summary > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.grid-image-model-summary span, .grid-image-model-summary small { color: var(--coast-muted); font-size: 10px; }
+.grid-image-model-summary strong { font-size: 14px; }
+.grid-image-stage-config .inline-notice span { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.grid-image-stage-config .inline-notice strong { color: var(--coast-ink); font-size: 11px; }
 .stage-automatic-panel { min-height: 390px; display: flex; align-items: center; justify-content: center; gap: 20px; padding: 32px; text-align: left; }
 .stage-automatic-icon { display: grid; place-items: center; width: 62px; height: 62px; border-radius: 50%; color: var(--coast-accent-deep); background: rgba(110,159,255,.12); font-family: "Instrument Serif", serif; font-size: 28px; }
 .stage-automatic-panel strong { font-size: 17px; }
@@ -565,6 +574,7 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
   .provider-mode-row { align-items: stretch; flex-direction: column; }
   .provider-mode-row .segmented-control { width: 100%; }
   .provider-mode-row .segmented-control button { flex: 1; }
+  .grid-image-config-row { grid-template-columns: 1fr; }
   .live-title-row { flex-direction: column; }
   .asset-grid { grid-template-columns: 1fr; }
   .settings-drawer { width: 100%; }

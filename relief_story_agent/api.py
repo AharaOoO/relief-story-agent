@@ -49,7 +49,7 @@ from .local_runtime import (
     build_local_doctor,
     build_local_readiness,
 )
-from .orchestrator import StoryRunOrchestrator
+from .orchestrator import RetryConfigurationConflict, StoryRunOrchestrator
 from .pipeline import build_pipeline_schema
 from .provider_catalog import build_provider_catalog
 from .planning import build_batch_plan
@@ -791,6 +791,15 @@ def create_app(
                 else orchestrator.retry(run_id, payload)
             )
             return run.model_dump()
+        except RetryConfigurationConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "retry_configuration_conflict",
+                    "message": str(exc),
+                    "action": "Refresh the run and edit only its current failed stage.",
+                },
+            ) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 

@@ -2,7 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const LEGACY_STORAGE_KEY = 'relief-story-agent:run-draft:v2'
 const PREVIOUS_STORAGE_KEY = 'relief-story-agent:run-draft:v3'
-const CURRENT_STORAGE_KEY = 'relief-story-agent:run-draft:v4'
+const V4_STORAGE_KEY = 'relief-story-agent:run-draft:v4'
+const CURRENT_STORAGE_KEY = 'relief-story-agent:run-draft:v5'
 
 const legacyRunningHubStageModels = {
   chief_screenwriter: { provider_mode: 'runninghub', runninghub_site: 'ai', model: 'google/gemini-3.5-flash' },
@@ -71,5 +72,21 @@ describe('run draft storage migration', () => {
       api_key_env: 'DEEPSEEK_API_KEY',
       model: 'deepseek-chat',
     })
+  })
+
+  it('migrates the former global RunningHub site into the independent G2 image site', async () => {
+    window.localStorage.setItem(V4_STORAGE_KEY, JSON.stringify({
+      content: '保留国内站 G2 设置',
+      runninghubSite: 'cn',
+    }))
+
+    const { useRunDraft } = await import('./runDraft.store')
+
+    const { draft } = useRunDraft.getState()
+    expect(draft.content).toBe('保留国内站 G2 设置')
+    expect(draft.gridImageSite).toBe('cn')
+
+    const persisted = JSON.parse(window.localStorage.getItem(CURRENT_STORAGE_KEY) ?? '{}')
+    expect(persisted.gridImageSite).toBe('cn')
   })
 })

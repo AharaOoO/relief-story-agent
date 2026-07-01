@@ -271,8 +271,8 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
     textareaRef.current?.focus()
   }
 
-  const changeSite = (site: RunDraft['runninghubSite']) => {
-    patchDraft({ runninghubSite: site })
+  const changeGridImageSite = (site: RunDraft['gridImageSite']) => {
+    patchDraft({ gridImageSite: site })
   }
 
   const updateInputMode = (mode: RunDraft['inputMode']) => {
@@ -354,7 +354,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
           <label className="field-stack"><span>目标观众</span><input value={draft.audience} placeholder="例如：20-35 岁都市上班族" onChange={(event) => patchDraft({ audience: event.target.value })} /></label>
           <label className="field-stack"><span>画面风格</span><input value={draft.stylePresetId} placeholder="cinematic suspense" onChange={(event) => patchDraft({ stylePresetId: event.target.value })} /></label>
           <label className="field-stack span-all"><span>创作约束</span><textarea value={draft.creativeConstraints} placeholder="每行一条，例如：不使用旁白；角色不超过 3 人。" onChange={(event) => patchDraft({ creativeConstraints: event.target.value })} /></label>
-          <div className="field-stack"><span>RunningHub 站点</span><div className="segmented-control"><button type="button" className={draft.runninghubSite === 'cn' ? 'is-active' : ''} onClick={() => changeSite('cn')}>国内站 .cn</button><button type="button" className={draft.runninghubSite === 'ai' ? 'is-active' : ''} onClick={() => changeSite('ai')}>国际站 .ai</button></div></div>
+          <div className="field-stack"><span>G2 生图站点</span><div className="segmented-control"><button type="button" className={draft.gridImageSite === 'cn' ? 'is-active' : ''} onClick={() => changeGridImageSite('cn')}>国内站 .cn</button><button type="button" className={draft.gridImageSite === 'ai' ? 'is-active' : ''} onClick={() => changeGridImageSite('ai')}>国际站 .ai</button></div></div>
           <label className="field-stack"><span>审核方式</span><select value={draft.approvalMode} onChange={(event) => patchDraft({ approvalMode: event.target.value as RunDraft['approvalMode'] })}><option value="auto">自动执行到底</option><option value="manual">提示词后人工确认</option></select></label>
         </div>
       )}
@@ -364,7 +364,7 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
           {mutation.isPending && <LoaderCircle className="spin" size={17} />}
           {!mutation.isPending && preflightReady && <CheckCircle2 size={17} />}
           {!mutation.isPending && preflight && !preflightReady && <XCircle size={17} />}
-          <span>{feedback || `${draft.runninghubSite === 'cn' ? '国内站' : '国际站'} · ${draft.aspectRatio} · ${draft.imageResolution.toUpperCase()} · ${draft.taskCount} 个任务`}</span>
+          <span>{feedback || `G2 ${draft.gridImageSite === 'cn' ? '国内站' : '国际站'} · ${draft.aspectRatio} · ${draft.imageResolution.toUpperCase()} · ${draft.taskCount} 个任务`}</span>
         </div>
         <div className="composer-actions">
           <button type="button" className="secondary-button" disabled={mutation.isPending} onClick={() => mutation.mutate('preflight')}>

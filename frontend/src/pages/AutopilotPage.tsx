@@ -17,12 +17,13 @@ import {
   retryRun,
   type RunEventRecord,
   type ArtifactRecord,
+  type GridImageRetryOverride,
 } from '../features/workbench/workbench.api'
 import { useWorkbench } from '../app/workbench/workbench.context'
 import { getStatusLabel } from '../shared/utils/formatStatus'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
-type RunAction = 'cancel' | 'retry' | 'approve' | 'refresh'
+type RunAction = 'cancel' | 'retry-original' | 'retry-override' | 'approve' | 'refresh'
 const STAGE_ARTIFACT_KEYS: Record<string, string[]> = {
   chief_screenwriter: ['script'],
   deepseek_polish: ['script'],
@@ -75,6 +76,7 @@ export default function AutopilotPage() {
   const [selectedStage, setSelectedStage] = useState('chief_screenwriter')
   const [eventItems, setEventItems] = useState<RunEventRecord[]>([])
   const [actionMessage, setActionMessage] = useState('')
+  const [gridImageRecovery, setGridImageRecovery] = useState<GridImageRetryOverride | null>(null)
   const eventCursor = useRef(0)
   const userSelectedStage = useRef(false)
   const run = useQuery({
@@ -109,12 +111,31 @@ export default function AutopilotPage() {
   }, [runId])
 
   useEffect(() => {
-    if (!runId || userSelectedStage.current) return
-    const currentStage = run.data?.current_stage
-    if (typeof currentStage === 'string' && AUTOPILOT_STAGES.some((stage) => stage.id === currentStage)) {
-      setSelectedStage(currentStage)
+    const frozen = run.data?.request?.comfyui?.grid_image
+    if (run.data?.status !== 'failed' || run.data.failed_stage !== 'four_grid_asset' || !frozen) {
+      setGridImageRecovery(null)
+      return
     }
-  }, [run.data?.current_stage, runId])
+    setGridImageRecovery({
+      runninghub_site: frozen.runninghub_site,
+      aspect_ratio: frozen.aspect_ratio,
+      resolution: frozen.resolution,
+    })
+  }, [
+    run.data?.failed_stage,
+    run.data?.request?.comfyui?.grid_image,
+    run.data?.status,
+  ])
+
+  useEffect(() => {
+    if (!runId || userSelectedStage.current) return
+    const focusedStage = run.data?.status === 'failed'
+      ? run.data.failed_stage
+      : run.data?.current_stage
+    if (typeof focusedStage === 'string' && AUTOPILOT_STAGES.some((stage) => stage.id === focusedStage)) {
+      setSelectedStage(focusedStage)
+    }
+  }, [run.data?.current_stage, run.data?.failed_stage, run.data?.status, runId])
 
   useEffect(() => {
     if (!events.data) return
@@ -132,12 +153,20 @@ export default function AutopilotPage() {
   const action = useMutation<unknown, Error, RunAction>({
     mutationFn: (kind) => {
       if (kind === 'cancel') return cancelRun(runId ?? '')
-      if (kind === 'retry') return retryRun(runId ?? '', selectedStage)
+      const retryStage = run.data?.failed_stage || selectedStage
+      if (kind === 'retry-original') return retryRun(runId ?? '', { from_stage: retryStage })
+      if (kind === 'retry-override') {
+        if (!gridImageRecovery) throw new Error('恢复配置尚未准备好，请刷新任务后重试。')
+        return retryRun(runId ?? '', {
+          from_stage: retryStage,
+          grid_image_override: gridImageRecovery,
+        })
+      }
       if (kind === 'approve') return approveRun(runId ?? '')
       return refreshRunComfyUI(runId ?? '')
     },
     onMutate: (kind) => {
-      setActionMessage(kind === 'approve' ? '正在批准并继续流水线…' : kind === 'refresh' ? '正在向 ComfyUI 查询最新成片…' : kind === 'retry' ? '正在重新排队…' : '正在停止任务…')
+      setActionMessage(kind === 'approve' ? '正在批准并继续流水线…' : kind === 'refresh' ? '正在向 ComfyUI 查询最新成片…' : kind.startsWith('retry') ? '正在保存恢复配置并重新排队…' : '正在停止任务…')
     },
     onSuccess: async (_, kind) => {
       await queryClient.invalidateQueries({ queryKey: ['run', runId] })
@@ -153,13 +182,18 @@ export default function AutopilotPage() {
   ) as Record<string, AutopilotStageStatus>, [run.data?.current_stage, run.data?.status, timeline.data])
 
   const completed = Object.values(statuses).filter((status) => status === 'completed' || status === 'skipped').length
-  const currentStageId = typeof run.data?.current_stage === 'string' && AUTOPILOT_STAGES.some((stage) => stage.id === run.data?.current_stage)
-    ? run.data.current_stage
+  const backendFocusedStage = run.data?.status === 'failed' ? run.data.failed_stage : run.data?.current_stage
+  const currentStageId = typeof backendFocusedStage === 'string' && AUTOPILOT_STAGES.some((stage) => stage.id === backendFocusedStage)
+    ? backendFocusedStage
     : ''
   const activeStage = AUTOPILOT_STAGES.find((stage) => stage.id === (currentStageId || selectedStage))
   const isViewingCurrentStage = !currentStageId || selectedStage === currentStageId
   const promptSnapshot = run.data?.prompt_snapshot as Partial<Record<(typeof AUTOPILOT_STAGES)[number]['id'], string>> | undefined
   const stageArtifacts = artifacts.data?.filter((item) => artifactMatchesStage(item, selectedStage)) ?? []
+  const canRecoverGridImage = run.data?.status === 'failed'
+    && run.data.failed_stage === 'four_grid_asset'
+    && selectedStage === 'four_grid_asset'
+    && Boolean(gridImageRecovery)
 
   const selectStage = (stageId: string) => {
     userSelectedStage.current = true
@@ -214,7 +248,9 @@ export default function AutopilotPage() {
                 {run.data?.status === 'awaiting_approval' && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('approve')}><CheckCircle2 size={16} /> 批准并继续</button>}
                 <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('refresh')}><RefreshCw size={16} /> 刷新成片</button>
                 {!TERMINAL.has(run.data?.status ?? '') && <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('cancel')}><Pause size={16} /> 停止任务</button>}
-                {(run.data?.status === 'failed' || run.data?.status === 'cancelled') && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('retry')}><RotateCcw size={16} /> 从当前工序重试</button>}
+                {canRecoverGridImage && <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('retry-original')}><RotateCcw size={16} /> 按原配置重试</button>}
+                {canRecoverGridImage && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('retry-override')}><RotateCcw size={16} /> 应用修改并重试本工序</button>}
+                {!canRecoverGridImage && (run.data?.status === 'failed' || run.data?.status === 'cancelled') && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('retry-original')}><RotateCcw size={16} /> 从失败工序重试</button>}
               </div>
             </div>
             {actionMessage && <div className={`inline-notice ${action.isError ? 'is-error' : ''}`} role="status">{action.isPending && <LoaderCircle className="spin" size={16} />}{actionMessage}</div>}
@@ -239,7 +275,13 @@ export default function AutopilotPage() {
           <div className="autopilot-workbench-grid">
             <StageRail selectedStage={selectedStage} statuses={statuses} onSelect={selectStage} />
             <div className="live-stage-column">
-              <StageWorkspace stageId={selectedStage} readOnly runRequest={run.data?.request} promptSnapshot={promptSnapshot} />
+              <StageWorkspace
+                stageId={selectedStage}
+                readOnly={!canRecoverGridImage}
+                runRequest={run.data?.request}
+                promptSnapshot={promptSnapshot}
+                gridImageRecovery={canRecoverGridImage && gridImageRecovery ? { value: gridImageRecovery, onChange: setGridImageRecovery } : undefined}
+              />
               <section className="stage-output-panel">
                 <div className="section-heading-row"><div><span className="eyebrow">LIVE OUTPUT</span><h3>本工序产物</h3></div><span className={`status-chip is-${statuses[selectedStage]}`}>{getStatusLabel(statuses[selectedStage])}</span></div>
                 {run.data?.error && statuses[selectedStage] === 'failed' && <div className="inline-notice is-error"><AlertCircle size={16} />{run.data.error}</div>}

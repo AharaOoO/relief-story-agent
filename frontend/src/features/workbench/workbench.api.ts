@@ -74,8 +74,20 @@ export type RunDetail = RunSummary & {
   request?: RunRequestPayload
   prompt_snapshot?: Partial<Record<string, string>>
   error?: string
+  failed_stage?: string
   outputs?: Record<string, unknown>
   parent_batch_id?: string
+}
+
+export type GridImageRetryOverride = {
+  runninghub_site: 'cn' | 'ai'
+  aspect_ratio: '16:9' | '9:16'
+  resolution: '1k' | '2k'
+}
+
+export type RunRetryPayload = {
+  from_stage?: string
+  grid_image_override?: GridImageRetryOverride
 }
 
 export type ListResponse<T> = {
@@ -239,10 +251,8 @@ export function cancelRun(runId: string): Promise<RunDetail> {
   return postJson(endpointPaths.runCancel(runId), {})
 }
 
-export function retryRun(runId: string, fromStage?: string): Promise<RunDetail> {
-  return postJson(endpointPaths.runRetry(runId), {
-    ...(fromStage ? { from_stage: fromStage } : {}),
-  })
+export function retryRun(runId: string, payload: RunRetryPayload = {}): Promise<RunDetail> {
+  return postJson(endpointPaths.runRetry(runId), payload)
 }
 
 export function approveRun(runId: string): Promise<RunDetail> {

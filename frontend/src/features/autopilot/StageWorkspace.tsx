@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, Info, Save } from 'lucide-react'
+import { ChevronDown, Image as ImageIcon, Info, KeyRound, Save } from 'lucide-react'
 import { AUTOPILOT_STAGES } from './stages'
 import { fetchProviderCatalog } from '../workbench/workbench.api'
 import { useRunDraft } from '../run-composer/runDraft.store'
 import { defaultRunningHubModel, MODEL_STAGE_IDS, runningHubModelOptions, STANDARD_STAGE_MODEL_PRESETS, type ModelStageId, type RunningHubSite, type RunRequestPayload } from '../run-composer/runRequest.builder'
+import type { GridImageRetryOverride } from '../workbench/workbench.api'
 
 const PROMPT_HINTS: Record<ModelStageId, string> = {
   chief_screenwriter: '指挥总编剧如何确定题材、内核、人物动机与核心矛盾。',
@@ -20,13 +21,18 @@ type StageWorkspaceProps = {
   readOnly?: boolean
   runRequest?: RunRequestPayload
   promptSnapshot?: Partial<Record<ModelStageId, string>>
+  gridImageRecovery?: {
+    value: GridImageRetryOverride
+    onChange: (value: GridImageRetryOverride) => void
+  }
 }
 
-export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSnapshot }: StageWorkspaceProps) {
+export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSnapshot, gridImageRecovery }: StageWorkspaceProps) {
   const stage = AUTOPILOT_STAGES.find((item) => item.id === stageId) ?? AUTOPILOT_STAGES[0]
   const { draft, patchDraft } = useRunDraft()
   const catalog = useQuery({ queryKey: ['provider-catalog'], queryFn: fetchProviderCatalog, staleTime: 5 * 60_000 })
   const isModelStage = MODEL_STAGE_IDS.includes(stage.id as ModelStageId)
+  const isGridImageStage = stage.id === 'four_grid_asset'
   const modelStageId = isModelStage ? (stage.id as ModelStageId) : null
   const frozenModel = modelStageId && readOnly ? runRequest?.model_configs?.[modelStageId] : undefined
   const currentModel = modelStageId ? (frozenModel ?? draft.stageModels[modelStageId]) : undefined
@@ -38,10 +44,24 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
   ])) : []
   const standardModels = modelStageId ? (STANDARD_STAGE_MODEL_PRESETS[modelStageId] ?? []) : []
   const [runtime, setRuntime] = useState<Record<string, unknown>>({})
+  const [secretStatus, setSecretStatus] = useState<Record<string, { configured: boolean; masked: string }>>({})
+  const frozenGridImage = readOnly && !gridImageRecovery ? runRequest?.comfyui?.grid_image : undefined
+  const gridImageSite = gridImageRecovery?.value.runninghub_site ?? frozenGridImage?.runninghub_site ?? draft.gridImageSite
+  const gridImageAspectRatio = gridImageRecovery?.value.aspect_ratio ?? frozenGridImage?.aspect_ratio ?? draft.aspectRatio
+  const gridImageResolution = gridImageRecovery?.value.resolution ?? frozenGridImage?.resolution ?? draft.imageResolution
+  const gridImageControlsDisabled = readOnly && !gridImageRecovery
+  const gridImageSecretName = gridImageSite === 'cn' ? 'RUNNINGHUB_CN_API_KEY' : 'RUNNINGHUB_AI_API_KEY'
+  const gridImageSecretStatus = secretStatus[gridImageSecretName]
 
   useEffect(() => {
     if (!window.reliefDesktop) return
-    void window.reliefDesktop.getRuntimeConfig().then(setRuntime)
+    void Promise.all([
+      window.reliefDesktop.getRuntimeConfig(),
+      window.reliefDesktop.getSecretStatus?.() ?? Promise.resolve({}),
+    ]).then(([savedRuntime, savedSecretStatus]) => {
+      setRuntime(savedRuntime)
+      setSecretStatus(savedSecretStatus)
+    }).catch(() => undefined)
     const listener = (event: Event) => setRuntime((event as CustomEvent<Record<string, unknown>>).detail)
     window.addEventListener('relief:runtime-config', listener)
     return () => window.removeEventListener('relief:runtime-config', listener)
@@ -104,6 +124,18 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
     })
   }
 
+  const patchGridImage = (patch: Partial<GridImageRetryOverride>) => {
+    if (gridImageRecovery) {
+      gridImageRecovery.onChange({ ...gridImageRecovery.value, ...patch })
+      return
+    }
+    patchDraft({
+      ...(patch.runninghub_site ? { gridImageSite: patch.runninghub_site } : {}),
+      ...(patch.aspect_ratio ? { aspectRatio: patch.aspect_ratio } : {}),
+      ...(patch.resolution ? { imageResolution: patch.resolution } : {}),
+    })
+  }
+
   return (
     <section className="stage-workspace">
       <header className="stage-workspace-header">
@@ -137,6 +169,63 @@ export function StageWorkspace({ stageId, readOnly = false, runRequest, promptSn
           <label className="field-stack prompt-editor"><span>本工序提示词模板</span><textarea disabled={readOnly} value={readOnly ? (promptSnapshot?.[modelStageId] ?? runRequest?.prompt_profile?.stage_overrides?.[modelStageId] ?? '') : (draft.stagePrompts[modelStageId] ?? '')} onChange={(event) => patchDraft({ stagePrompts: { ...draft.stagePrompts, [modelStageId]: event.target.value } })} placeholder={`${PROMPT_HINTS[modelStageId]} 留空时使用内置专业模板。`} /></label>
           <div className="editor-note"><Info size={15} /><span>模板会随任务一起冻结，运行中的任务不会被后续修改影响。</span></div>
           {!readOnly && <div className="auto-save-note"><Save size={15} /> 已自动保存在本机草稿</div>}
+        </div>
+      ) : isGridImageStage ? (
+        <div className="stage-config-body grid-image-stage-config">
+          {gridImageRecovery && <div className="inline-notice recovery-edit-notice"><Info size={17} /><span><strong>恢复编辑</strong> 修改只会在本次失败工序重试时应用，不会改变历史产物或新任务默认值。</span></div>}
+          <div className="provider-mode-row">
+            <div>
+              <strong>G2 生图服务站点</strong>
+              <span>国内站与国际站使用不同的 API Key；这里的选择不会修改前六步 LLM 模型。</span>
+            </div>
+            <div className="segmented-control" aria-label="G2 生图服务站点">
+              <button type="button" disabled={gridImageControlsDisabled} className={gridImageSite === 'cn' ? 'is-active' : ''} onClick={() => patchGridImage({ runninghub_site: 'cn' })}>国内站 .cn</button>
+              <button type="button" disabled={gridImageControlsDisabled} className={gridImageSite === 'ai' ? 'is-active' : ''} onClick={() => patchGridImage({ runninghub_site: 'ai' })}>国际站 .ai</button>
+            </div>
+          </div>
+
+          <div className="grid-image-config-row">
+            <div className="grid-image-model-summary">
+              <ImageIcon size={20} />
+              <div><span>生图模型</span><strong>RunningHub G2</strong><small>rhart-image-g-2</small></div>
+            </div>
+            <label className="field-stack">
+              <span>画面比例</span>
+              <div className="select-shell">
+                <select disabled={gridImageControlsDisabled} value={gridImageAspectRatio} onChange={(event) => patchGridImage({ aspect_ratio: event.target.value as '16:9' | '9:16' })}>
+                  <option value="16:9">横屏 16:9</option>
+                  <option value="9:16">竖屏 9:16</option>
+                </select>
+                <ChevronDown size={16} />
+              </div>
+            </label>
+            <label className="field-stack">
+              <span>生成清晰度</span>
+              <div className="select-shell">
+                <select disabled={gridImageControlsDisabled} value={gridImageResolution} onChange={(event) => patchGridImage({ resolution: event.target.value as '1k' | '2k' })}>
+                  <option value="2k">2K 清晰</option>
+                  <option value="1k">1K 快速</option>
+                </select>
+                <ChevronDown size={16} />
+              </div>
+            </label>
+          </div>
+
+          <div className={`inline-notice ${gridImageSecretStatus && !gridImageSecretStatus.configured ? 'is-warning' : ''}`}>
+            <KeyRound size={17} />
+            <span>
+              {gridImageSecretStatus?.configured
+                ? `当前站点密钥已配置：${gridImageSecretStatus.masked}`
+                : gridImageSecretStatus
+                  ? '当前站点尚未配置 G2 密钥，请在高级设置中保存后再运行。'
+                  : '本工序将读取对应站点的个人/会员 G2 密钥。'}
+              <strong>{gridImageSecretName}</strong>
+            </span>
+          </div>
+
+          <div className="editor-note"><Info size={15} /><span>任务创建后会冻结这里的站点、比例与清晰度；运行中的任务不会被后续修改影响。</span></div>
+          {!readOnly && <div className="auto-save-note"><Save size={15} /> 已自动保存到本机草稿</div>}
+          {gridImageRecovery && <div className="auto-save-note"><Save size={15} /> 等待应用修改并重试</div>}
         </div>
       ) : (
         <div className="stage-automatic-panel">

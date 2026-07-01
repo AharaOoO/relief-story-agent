@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AdvancedSettingsDrawer } from './AdvancedSettingsDrawer'
 import { analyzeComfyWorkflow, connectComfyUI, diagnoseRunConfiguration } from '../workbench/workbench.api'
+import { useRunDraft } from '../run-composer/runDraft.store'
 
 vi.mock('../../shared/hooks/useBackendHealth', () => ({
   useBackendHealth: () => ({ isSuccess: true, isLoading: false, refetch: vi.fn() }),
@@ -22,6 +23,8 @@ vi.mock('../workbench/workbench.api', async (importOriginal) => {
 describe('AdvancedSettingsDrawer', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    window.localStorage.clear()
+    useRunDraft.getState().resetDraft()
     window.reliefDesktop = {
       platform: 'win32',
       shell: 'electron',
@@ -74,6 +77,16 @@ describe('AdvancedSettingsDrawer', () => {
 
     expect(screen.getByRole('tab', { name: /ComfyUI/ })).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('button', { name: '分析并测试连接' })).toBeInTheDocument()
+  })
+
+  it('changes only the dedicated G2 image site from image settings', () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<QueryClientProvider client={client}><AdvancedSettingsDrawer open initialTab="image" onClose={vi.fn()} /></QueryClientProvider>)
+
+    fireEvent.click(screen.getByRole('button', { name: '国际站 .ai' }))
+
+    expect(useRunDraft.getState().draft.gridImageSite).toBe('ai')
+    expect(useRunDraft.getState().draft.runninghubSite).toBe('ai')
   })
 
   it('accepts exactly one workflow JSON file from drag and drop', async () => {

@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AutopilotPage from './AutopilotPage'
-import { fetchRun, fetchRunArtifacts } from '../features/workbench/workbench.api'
+import { fetchRun, fetchRunArtifacts, retryRun } from '../features/workbench/workbench.api'
 import type { RunRequestPayload } from '../features/run-composer/runRequest.builder'
 
 vi.mock('../features/workbench/workbench.api', () => ({
@@ -146,7 +146,7 @@ describe('AutopilotPage', () => {
     await waitFor(() => expect(fetchRunArtifacts).toHaveBeenCalledWith('run-one'))
   })
 
-  it('switches the setup workspace when later automatic stages are selected', async () => {
+  it('switches the setup workspace between configurable G2 and later automatic stages', async () => {
     const { container } = renderSetupPage()
 
     await waitFor(() => expect(container.querySelector('.stage-big-number')).toHaveTextContent('01'))
@@ -155,10 +155,12 @@ describe('AutopilotPage', () => {
 
     fireEvent.click(stageButtons[7])
     expect(container.querySelector('.stage-big-number')).toHaveTextContent('08')
-    expect(container.querySelector('.stage-automatic-panel')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '国内站 .cn' })).toBeInTheDocument()
+    expect(container.querySelector('.stage-automatic-panel')).not.toBeInTheDocument()
 
     fireEvent.click(stageButtons[8])
     expect(container.querySelector('.stage-big-number')).toHaveTextContent('09')
+    expect(container.querySelector('.stage-automatic-panel')).toBeInTheDocument()
 
     fireEvent.click(stageButtons[9])
     expect(container.querySelector('.stage-big-number')).toHaveTextContent('10')
@@ -222,5 +224,73 @@ describe('AutopilotPage', () => {
 
     expect(await screen.findByText('audit.json')).toBeInTheDocument()
     expect(screen.queryByText('script')).not.toBeInTheDocument()
+  })
+
+  it('edits the failed G2 stage and retries with the recovery override', async () => {
+    vi.mocked(fetchRun).mockResolvedValue(makeRun({
+      status: 'failed',
+      current_stage: 'failed',
+      failed_stage: 'four_grid_asset',
+      request: {
+        idea: 'failed grid',
+        model_configs: {},
+        prompt_profile: { stage_overrides: {} },
+        comfyui: {
+          grid_image: {
+            provider: 'runninghub_image_task',
+            runninghub_site: 'ai',
+            model: 'rhart-image-g-2',
+            aspect_ratio: '16:9',
+            resolution: '2k',
+            quality: 'high',
+          },
+        },
+      } as unknown as RunRequestPayload,
+    }))
+
+    renderPage()
+
+    expect(await screen.findByRole('heading', { name: '四宫格参考图' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '国内站 .cn' }))
+    fireEvent.click(screen.getByRole('button', { name: '应用修改并重试本工序' }))
+
+    await waitFor(() => expect(retryRun).toHaveBeenCalledWith('run-one', {
+      from_stage: 'four_grid_asset',
+      grid_image_override: {
+        runninghub_site: 'cn',
+        aspect_ratio: '16:9',
+        resolution: '2k',
+      },
+    }))
+  })
+
+  it('can retry the failed G2 stage with its original frozen configuration', async () => {
+    vi.mocked(fetchRun).mockResolvedValue(makeRun({
+      status: 'failed',
+      current_stage: 'failed',
+      failed_stage: 'four_grid_asset',
+      request: {
+        idea: 'failed grid',
+        model_configs: {},
+        prompt_profile: { stage_overrides: {} },
+        comfyui: {
+          grid_image: {
+            provider: 'runninghub_image_task',
+            runninghub_site: 'ai',
+            model: 'rhart-image-g-2',
+            aspect_ratio: '9:16',
+            resolution: '1k',
+            quality: 'high',
+          },
+        },
+      } as unknown as RunRequestPayload,
+    }))
+
+    renderPage()
+    fireEvent.click(await screen.findByRole('button', { name: '按原配置重试' }))
+
+    await waitFor(() => expect(retryRun).toHaveBeenCalledWith('run-one', {
+      from_stage: 'four_grid_asset',
+    }))
   })
 })

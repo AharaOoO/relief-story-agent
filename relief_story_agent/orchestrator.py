@@ -85,6 +85,10 @@ CHECKPOINT_COMPLETE = "__checkpoint_complete__"
 PIPELINE_STAGES = list(BASE_RUNTIME_STAGE_ORDER)
 
 
+class RetryConfigurationConflict(ValueError):
+    pass
+
+
 class InMemoryRunStore:
     def __init__(self):
         self._runs: dict[str, RunState] = {}
@@ -402,6 +406,7 @@ class StoryRunOrchestrator:
     def retry(self, run_id: str, request: RunRetryRequest | None = None) -> RunState:
         run = self.store.get(run_id)
         retry_request = request or RunRetryRequest()
+        self._apply_grid_image_retry_override(run, retry_request)
         start_stage = retry_request.from_stage or run.failed_stage or "chief_screenwriter"
         run.retry_count += 1
         run.add_log("retry", f"Retrying from stage: {start_stage}")
@@ -547,6 +552,7 @@ class StoryRunOrchestrator:
     ) -> RunState:
         run = self.store.get(run_id)
         retry_request = request or RunRetryRequest()
+        self._apply_grid_image_retry_override(run, retry_request)
         run.resume_stage = retry_request.from_stage or run.failed_stage or "chief_screenwriter"
         run.retry_count += 1
         run.status = "queued"
@@ -558,6 +564,61 @@ class StoryRunOrchestrator:
         run.add_event("retry_queued", stage=run.resume_stage, message=f"Retry queued from stage: {run.resume_stage}")
         self.store.save(run)
         return run
+
+    @staticmethod
+    def _apply_grid_image_retry_override(
+        run: RunState,
+        retry_request: RunRetryRequest,
+    ) -> None:
+        override = retry_request.grid_image_override
+        if override is None:
+            return
+        if run.status != "failed":
+            raise RetryConfigurationConflict(
+                "grid image retry override requires a failed run"
+            )
+        if run.failed_stage != "four_grid_asset":
+            raise RetryConfigurationConflict(
+                "grid image retry override requires four_grid_asset to be the failed stage"
+            )
+        if retry_request.from_stage != "four_grid_asset":
+            raise RetryConfigurationConflict(
+                "grid image retry override requires retry from four_grid_asset"
+            )
+        if run.request.comfyui is None:
+            raise RetryConfigurationConflict(
+                "grid image retry override requires ComfyUI configuration"
+            )
+
+        current = run.request.comfyui.grid_image
+        before = {
+            "runninghub_site": current.runninghub_site,
+            "aspect_ratio": current.aspect_ratio,
+            "resolution": current.resolution,
+        }
+        after = override.model_dump()
+        run.request.comfyui.grid_image = GridImageConfig.model_validate(
+            {**current.model_dump(), **after}
+        )
+        run.request.creation_spec.video_aspect_ratio = override.aspect_ratio
+        run.request.creation_spec.image_resolution = override.resolution
+        run.grid_image_asset = None
+        run.grid_image_attempts = []
+        run.grid_image_checkpoint = ""
+        run.grid_image_replacements = []
+        revision = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "stage": "four_grid_asset",
+            "before": before,
+            "after": after,
+        }
+        run.retry_configuration_history.append(revision)
+        run.add_event(
+            "retry_configuration_updated",
+            stage="four_grid_asset",
+            message="Grid image configuration updated before retry.",
+            data={"before": before, "after": after},
+        )
 
     def request_cancel(self, run_id: str) -> RunState:
         run = self.store.get(run_id)

@@ -61,6 +61,21 @@ describe('autopilot run request builder', () => {
     expect(request.comfyui.grid_image.aspect_ratio).toBe('9:16')
   })
 
+  it('keeps the G2 image site independent from RunningHub LLM stage sites', () => {
+    const draft = createRunDraft()
+    draft.gridImageSite = 'cn'
+    draft.stageModels.chief_screenwriter = {
+      provider_mode: 'runninghub',
+      runninghub_site: 'ai',
+      model: 'google/gemini-3.5-flash',
+    }
+
+    const request = buildRunRequest(draft)
+
+    expect(request.model_configs.chief_screenwriter.runninghub_site).toBe('ai')
+    expect(request.comfyui.grid_image.runninghub_site).toBe('cn')
+  })
+
   it('builds 1-20 batch items from the same defaults', () => {
     const draft = createRunDraft()
     draft.taskCount = 3

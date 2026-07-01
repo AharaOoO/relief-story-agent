@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .comfyui_endpoint import normalize_comfyui_endpoint
 from .provider_catalog import (
@@ -528,6 +528,14 @@ def _dump_default_value(value: Any) -> Any:
     return value.model_dump() if isinstance(value, BaseModel) else value
 
 
+class GridImageRetryOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runninghub_site: Literal["cn", "ai"]
+    aspect_ratio: Literal["16:9", "9:16"]
+    resolution: Literal["1k", "2k"]
+
+
 class RunRetryRequest(BaseModel):
     from_stage: Literal[
         "chief_screenwriter",
@@ -541,6 +549,7 @@ class RunRetryRequest(BaseModel):
         "artifacts",
         "comfyui",
     ] | None = None
+    grid_image_override: GridImageRetryOverride | None = None
 
 
 class BatchRetryRequest(RunRetryRequest):
@@ -614,6 +623,7 @@ class RunState(BaseModel):
         "workflow_patched",
     ] = ""
     grid_image_replacements: list[dict[str, Any]] = Field(default_factory=list)
+    retry_configuration_history: list[dict[str, Any]] = Field(default_factory=list)
     artifact_dir: str = ""
     error: str = ""
     failed_stage: str = ""

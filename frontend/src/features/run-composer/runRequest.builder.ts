@@ -103,27 +103,31 @@ export type BatchRequestPayload = {
   items: RunRequestPayload[]
 }
 
-const DEFAULT_RUNNINGHUB_MODELS: Record<RunningHubSite, Record<ModelStageId, string>> = {
+export const RUNNINGHUB_STAGE_MODEL_OPTIONS: Record<RunningHubSite, Record<ModelStageId, readonly string[]>> = {
   cn: {
-    chief_screenwriter: 'qwen/qwen3.7-plus',
-    deepseek_polish: 'deepseek/deepseek-v4-pro',
-    quality_gate: 'deepseek/deepseek-v4-pro',
-    gpt_prompt_writer: 'qwen/qwen3.7-max',
-    gpt_prompt_audit: 'deepseek/deepseek-v4-pro',
-    gpt_prompt_reviser: 'qwen/qwen3.7-plus',
+    chief_screenwriter: ['qwen/qwen3.7-plus', 'qwen/qwen3.7-max'],
+    deepseek_polish: ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash'],
+    quality_gate: ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash'],
+    gpt_prompt_writer: ['qwen/qwen3.7-max', 'qwen/qwen3.7-plus'],
+    gpt_prompt_audit: ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash'],
+    gpt_prompt_reviser: ['qwen/qwen3.7-plus', 'qwen/qwen3.7-max'],
   },
   ai: {
-    chief_screenwriter: 'google/gemini-3.5-flash',
-    deepseek_polish: 'deepseek/deepseek-v4-pro',
-    quality_gate: 'deepseek/deepseek-v4-pro',
-    gpt_prompt_writer: 'openai/gpt-5.5',
-    gpt_prompt_audit: 'openai/gpt-5.4-mini',
-    gpt_prompt_reviser: 'openai/gpt-5.4-mini',
+    chief_screenwriter: ['google/gemini-3.5-flash'],
+    deepseek_polish: ['deepseek/deepseek-v4-pro'],
+    quality_gate: ['deepseek/deepseek-v4-pro', 'openai/gpt-5.5'],
+    gpt_prompt_writer: ['openai/gpt-5.5'],
+    gpt_prompt_audit: ['openai/gpt-5.4-mini', 'openai/gpt-5.5'],
+    gpt_prompt_reviser: ['openai/gpt-5.4-mini', 'openai/gpt-5.5'],
   },
 }
 
 export function defaultRunningHubModel(site: RunningHubSite, stageId: ModelStageId): string {
-  return DEFAULT_RUNNINGHUB_MODELS[site][stageId]
+  return RUNNINGHUB_STAGE_MODEL_OPTIONS[site][stageId][0]
+}
+
+export function runningHubModelOptions(site: RunningHubSite, stageId: ModelStageId): readonly string[] {
+  return RUNNINGHUB_STAGE_MODEL_OPTIONS[site][stageId]
 }
 
 export function createRunningHubStageModels(
@@ -133,7 +137,7 @@ export function createRunningHubStageModels(
     MODEL_STAGE_IDS.map((stageId) => [stageId, {
       provider_mode: 'runninghub' as const,
       runninghub_site: site,
-      model: DEFAULT_RUNNINGHUB_MODELS[site][stageId],
+      model: defaultRunningHubModel(site, stageId),
     }]),
   ) as Record<ModelStageId, StageModelDraft>
 }

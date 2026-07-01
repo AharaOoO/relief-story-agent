@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { ComponentProps } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { StageWorkspace } from './StageWorkspace'
@@ -65,5 +65,34 @@ describe('StageWorkspace run snapshot', () => {
     fireEvent.change(screen.getByDisplayValue('RunningHub 国际站 .ai'), { target: { value: 'cn' } })
 
     expect(screen.getByDisplayValue('qwen/qwen3.7-max')).toBeInTheDocument()
+  })
+
+  it('keeps RunningHub stage selectors limited to curated models even when the backend returns extra models', async () => {
+    vi.mocked(fetchProviderCatalog).mockResolvedValueOnce({
+      runninghub: {
+        cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_API_KEY', stages: {} },
+        ai: {
+          base_url: 'https://llm.runninghub.ai/v1',
+          api_key_env: 'RUNNINGHUB_AI_API_KEY',
+          stages: {
+            quality_gate: [
+              'deepseek/deepseek-v4-pro',
+              'openai/gpt-5.5',
+              'anthropic/claude-opus-4.8',
+              'bytedance/doubao-seed-2.0-pro',
+            ],
+          },
+        },
+      },
+    })
+
+    renderWorkspace('quality_gate')
+
+    await waitFor(() => {
+      expect(screen.getByRole('option', { name: 'openai/gpt-5.5' })).toBeInTheDocument()
+    })
+
+    expect(screen.queryByRole('option', { name: 'anthropic/claude-opus-4.8' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('option', { name: 'bytedance/doubao-seed-2.0-pro' })).not.toBeInTheDocument()
   })
 })

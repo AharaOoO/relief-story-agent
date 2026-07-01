@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RunComposer } from './RunComposer'
-import { createRun, validateRun } from '../workbench/workbench.api'
+import { createBatch, createRun, validateRun } from '../workbench/workbench.api'
 
 vi.mock('../workbench/workbench.api', () => ({
   createBatch: vi.fn(),
@@ -29,6 +29,11 @@ describe('RunComposer input mode detection', () => {
   beforeEach(() => {
     window.localStorage.clear()
     window.reliefDesktop = undefined
+    vi.mocked(createRun).mockReset()
+    vi.mocked(createRun).mockResolvedValue({ run_id: 'run-auto-detected', status: 'queued', current_stage: 'chief_screenwriter' })
+    vi.mocked(createBatch).mockReset()
+    vi.mocked(createBatch).mockResolvedValue({ batch_id: 'batch-auto-detected', status: 'queued' })
+    vi.mocked(validateRun).mockReset()
   })
 
   it('recognizes pasted scripts without requiring the user to choose script mode', () => {
@@ -96,5 +101,62 @@ describe('RunComposer input mode detection', () => {
 
     expect(await screen.findByText(/预检通过/)).toBeInTheDocument()
     expect(screen.queryByText(/还需要处理/)).not.toBeInTheDocument()
+  })
+
+  it('shows backend preflight blockers when create rejects with validation detail', async () => {
+    vi.mocked(createRun).mockRejectedValueOnce({
+      kind: 'api_error',
+      title: '后端操作失败',
+      message: 'preflight validation failed',
+      raw: {
+        detail: {
+          message: 'preflight validation failed',
+          validation: {
+            passed: false,
+            blockers: ['Missing model API key environment variable(s).'],
+            warnings: [],
+            checks: [],
+          },
+        },
+      },
+    })
+    renderComposer()
+
+    fireEvent.click(screen.getByRole('button', { name: /一键开始生成/ }))
+
+    expect(await screen.findByText(/还需要处理/)).toBeInTheDocument()
+    expect(screen.getByText('Missing model API key environment variable(s).')).toBeInTheDocument()
+  })
+
+  it('summarizes failed batch preflight items when batch create rejects with validation detail', async () => {
+    vi.mocked(createBatch).mockRejectedValueOnce({
+      kind: 'api_error',
+      title: '后端操作失败',
+      message: 'preflight validation failed',
+      raw: {
+        detail: {
+          message: 'preflight validation failed',
+          validation: {
+            passed: false,
+            summary: { total: 2, passed: 1, failed: 1 },
+            items: [
+              { index: 0, passed: true, checks: [] },
+              {
+                index: 1,
+                passed: false,
+                checks: [{ name: 'output_root', status: 'failed', message: 'output_root is not writable.' }],
+              },
+            ],
+          },
+        },
+      },
+    })
+    renderComposer()
+
+    fireEvent.click(screen.getByLabelText('增加任务'))
+    fireEvent.click(screen.getByRole('button', { name: /批量开始 2 个任务/ }))
+
+    expect(await screen.findByText(/还需要处理/)).toBeInTheDocument()
+    expect(screen.getByText('任务 2：output_root is not writable.')).toBeInTheDocument()
   })
 })

@@ -20,7 +20,7 @@ import {
   type RunDraft,
 } from './runRequest.builder'
 import { useRunDraft } from './runDraft.store'
-import { createBatch, createRun, formatPreflightIssue, validateRun, type PreflightResult } from '../workbench/workbench.api'
+import { createBatch, createRun, formatPreflightIssue, validateRun, type PreflightIssue, type PreflightResult } from '../workbench/workbench.api'
 
 type RunComposerProps = {
   compact?: boolean
@@ -63,6 +63,104 @@ function inferInputMode(content: string): RunDraft['inputMode'] {
 function isPreflightReady(result: PreflightResult | null) {
   if (!result) return false
   return result.ready ?? result.passed ?? false
+}
+
+type PreflightCheck = NonNullable<PreflightResult['checks']>[number]
+type SuggestedAction = NonNullable<PreflightResult['suggested_actions']>[number]
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null ? value as Record<string, unknown> : null
+}
+
+function findPreflightValidation(caught: unknown): PreflightResult | null {
+  const errorRecord = asRecord(caught)
+  if (!errorRecord) return null
+  const rawRecord = asRecord(errorRecord.raw)
+  const validation = (
+    (rawRecord ? validationFromRecord(rawRecord) : null) ??
+    validationFromRecord(errorRecord)
+  )
+  return validation ? normalizePreflightValidation(validation) : null
+}
+
+function validationFromRecord(record: Record<string, unknown>): Record<string, unknown> | null {
+  const direct = asRecord(record.validation)
+  if (direct) return direct
+  const detail = asRecord(record.detail)
+  return detail ? asRecord(detail.validation) : null
+}
+
+function normalizePreflightValidation(validation: Record<string, unknown>): PreflightResult {
+  const blockers = [
+    ...extractIssueList(validation.blockers),
+    ...extractBatchBlockers(validation.items),
+  ]
+  if (validation.passed !== true && blockers.length === 0) {
+    blockers.push('配置预检未通过，请打开高级设置查看诊断。')
+  }
+  return {
+    ready: typeof validation.ready === 'boolean' ? validation.ready : validation.passed === true,
+    passed: validation.passed === true,
+    blockers,
+    warnings: extractIssueList(validation.warnings),
+    suggested_actions: extractSuggestedActions(validation.suggested_actions),
+    checks: extractChecks(validation.checks),
+  }
+}
+
+function extractIssueList(value: unknown): PreflightIssue[] {
+  return Array.isArray(value) ? value.filter(isPreflightIssue) : []
+}
+
+function isPreflightIssue(value: unknown): value is PreflightIssue {
+  if (typeof value === 'string') return true
+  const record = asRecord(value)
+  return Boolean(record && (
+    typeof record.message === 'string' ||
+    typeof record.description === 'string' ||
+    typeof record.check === 'string' ||
+    typeof record.code === 'string'
+  ))
+}
+
+function extractBatchBlockers(value: unknown): PreflightIssue[] {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item, fallbackIndex) => {
+    const record = asRecord(item)
+    if (!record || record.passed === true) return []
+    const index = typeof record.index === 'number' ? record.index + 1 : fallbackIndex + 1
+    const failedChecks = extractChecks(record.checks).filter((check) => check.status === 'failed')
+    if (failedChecks.length === 0) return [`任务 ${index}：配置预检未通过。`]
+    return failedChecks.map((check) => `任务 ${index}：${check.message || check.name}`)
+  })
+}
+
+function extractChecks(value: unknown): PreflightCheck[] {
+  return Array.isArray(value) ? value.filter(isPreflightCheck) : []
+}
+
+function isPreflightCheck(value: unknown): value is PreflightCheck {
+  const record = asRecord(value)
+  return Boolean(
+    record &&
+    typeof record.name === 'string' &&
+    typeof record.status === 'string' &&
+    typeof record.message === 'string',
+  )
+}
+
+function extractSuggestedActions(value: unknown): SuggestedAction[] {
+  return Array.isArray(value) ? value.filter(isSuggestedAction) : []
+}
+
+function isSuggestedAction(value: unknown): value is SuggestedAction {
+  const record = asRecord(value)
+  return Boolean(
+    record &&
+    typeof record.code === 'string' &&
+    typeof record.label === 'string' &&
+    (record.description === undefined || typeof record.description === 'string'),
+  )
 }
 
 export function RunComposer({ compact = false, heading, onDraftChange }: RunComposerProps) {
@@ -120,6 +218,12 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
       navigate(`/run/${result.value.run_id}`)
     },
     onError: (caught) => {
+      const validation = findPreflightValidation(caught)
+      if (validation) {
+        setPreflight(validation)
+        setFeedback(isPreflightReady(validation) ? '预检通过，可以开始生成。' : '预检发现阻塞项，请按提示修正。')
+        return
+      }
       const error: unknown = caught
       if (error instanceof Error) {
         setFeedback(error.message)

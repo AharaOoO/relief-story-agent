@@ -12,6 +12,12 @@ import {
 
 type BatchAction = 'pause' | 'resume' | 'cancel' | 'retry'
 const TERMINAL_BATCH = new Set(['completed', 'cancelled'])
+const BATCH_ACTION_LABELS: Record<BatchAction, string> = {
+  pause: '暂停',
+  resume: '继续',
+  retry: '重试',
+  cancel: '取消',
+}
 
 export default function TasksPage() {
   const queryClient = useQueryClient()
@@ -31,6 +37,8 @@ export default function TasksPage() {
   })
 
   const act = (batchId: string, action: BatchAction) => batchAction.mutate({ batchId, action })
+  const activeAction = batchAction.variables
+  const activeActionLabel = activeAction ? BATCH_ACTION_LABELS[activeAction.action] : ''
 
   return (
     <div className="page-surface list-page">
@@ -67,9 +75,9 @@ export default function TasksPage() {
               })}
             </div>
           ) : <div className="empty-panel"><Boxes size={24} /><strong>还没有批量任务</strong><span>在控制台把任务数调到 2 个以上即可批量创建。</span></div>}
-          {batchAction.isPending && <div className="inline-notice" role="status"><LoaderCircle className="spin" size={16} />正在执行批次操作…</div>}
-          {batchAction.isSuccess && <div className="inline-notice" role="status">批次操作已生效，队列正在刷新。</div>}
-          {batchAction.isError && <div className="inline-notice is-error" role="alert">批次操作失败：{batchAction.error instanceof Error ? batchAction.error.message : '请稍后重试'}</div>}
+          {batchAction.isPending && activeAction && <div className="inline-notice" role="status"><LoaderCircle className="spin" size={16} />正在{activeActionLabel} {activeAction.batchId}…</div>}
+          {batchAction.isSuccess && activeAction && <div className="inline-notice" role="status">{activeAction.batchId} 已{activeActionLabel}，队列正在刷新。</div>}
+          {batchAction.isError && activeAction && <div className="inline-notice is-error" role="alert">{activeAction.batchId} {activeActionLabel}失败：{batchAction.error instanceof Error ? batchAction.error.message : '请稍后重试'}</div>}
         </section>
         <section className="queue-section">
           <div className="section-heading-row"><div><h2>全部作品</h2><p>{runs.data?.total ?? 0} 个任务</p></div></div>

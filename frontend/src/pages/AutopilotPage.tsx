@@ -75,6 +75,7 @@ export default function AutopilotPage() {
   const [eventItems, setEventItems] = useState<RunEventRecord[]>([])
   const [actionMessage, setActionMessage] = useState('')
   const eventCursor = useRef(0)
+  const userSelectedStage = useRef(false)
   const run = useQuery({
     queryKey: ['run', runId],
     queryFn: () => fetchRun(runId ?? ''),
@@ -103,7 +104,16 @@ export default function AutopilotPage() {
   useEffect(() => {
     eventCursor.current = 0
     setEventItems([])
+    userSelectedStage.current = false
   }, [runId])
+
+  useEffect(() => {
+    if (!runId || userSelectedStage.current) return
+    const currentStage = run.data?.current_stage
+    if (typeof currentStage === 'string' && AUTOPILOT_STAGES.some((stage) => stage.id === currentStage)) {
+      setSelectedStage(currentStage)
+    }
+  }, [run.data?.current_stage, runId])
 
   useEffect(() => {
     if (!events.data) return
@@ -146,6 +156,11 @@ export default function AutopilotPage() {
   const promptSnapshot = run.data?.prompt_snapshot as Partial<Record<(typeof AUTOPILOT_STAGES)[number]['id'], string>> | undefined
   const stageArtifacts = artifacts.data?.filter((item) => artifactMatchesStage(item, selectedStage)) ?? []
 
+  const selectStage = (stageId: string) => {
+    userSelectedStage.current = true
+    setSelectedStage(stageId)
+  }
+
   const openLocalArtifact = async (targetPath: string, kind: 'file' | 'folder') => {
     if (!window.reliefDesktop) {
       setActionMessage('请在桌面客户端中打开本地产物。')
@@ -172,7 +187,7 @@ export default function AutopilotPage() {
             <span>十道工序</span><strong>前 6 道可分别选择模型和提示词</strong><span>后 4 道自动执行</span>
           </div>
           <div className="autopilot-workbench-grid">
-            <StageRail selectedStage={selectedStage} statuses={statuses} onSelect={setSelectedStage} />
+            <StageRail selectedStage={selectedStage} statuses={statuses} onSelect={selectStage} />
             <StageWorkspace stageId={selectedStage} />
           </div>
           <RunComposer compact heading="确认故事输入并开始" />
@@ -199,7 +214,7 @@ export default function AutopilotPage() {
           {(run.isError || timeline.isError) && <div className="inline-notice is-error"><AlertCircle size={17} /> 无法读取任务状态，请确认本地后端仍在线。</div>}
 
           <div className="autopilot-workbench-grid">
-            <StageRail selectedStage={selectedStage} statuses={statuses} onSelect={setSelectedStage} />
+            <StageRail selectedStage={selectedStage} statuses={statuses} onSelect={selectStage} />
             <div className="live-stage-column">
               <StageWorkspace stageId={selectedStage} readOnly runRequest={run.data?.request} promptSnapshot={promptSnapshot} />
               <section className="stage-output-panel">

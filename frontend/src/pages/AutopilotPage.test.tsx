@@ -3,7 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AutopilotPage from './AutopilotPage'
-import { fetchRunArtifacts } from '../features/workbench/workbench.api'
+import { fetchRun, fetchRunArtifacts } from '../features/workbench/workbench.api'
+import type { RunRequestPayload } from '../features/run-composer/runRequest.builder'
 
 vi.mock('../features/workbench/workbench.api', () => ({
   approveRun: vi.fn(),
@@ -62,11 +63,41 @@ function renderPage() {
   )
 }
 
+function makeRun(overrides: Partial<Awaited<ReturnType<typeof fetchRun>>> = {}): Awaited<ReturnType<typeof fetchRun>> {
+  return {
+    run_id: 'run-one',
+    status: 'completed',
+    current_stage: 'chief_screenwriter',
+    idea: 'beach convenience store',
+    request: {
+      idea: 'beach convenience store',
+      model_configs: {},
+      prompt_profile: { stage_overrides: {} },
+    } as unknown as RunRequestPayload,
+    ...overrides,
+  }
+}
+
 describe('AutopilotPage', () => {
   const openPath = vi.fn().mockResolvedValue({ opened: true })
 
   beforeEach(() => {
     vi.clearAllMocks()
+    vi.mocked(fetchRun).mockResolvedValue(makeRun())
+    vi.mocked(fetchRunArtifacts).mockResolvedValue([
+      {
+        id: 'chief-script',
+        kind: 'json',
+        name: 'script',
+        path: 'D:/relief/runs/run-one/01_script.json',
+      },
+      {
+        id: 'chief-preview',
+        kind: 'image',
+        name: 'chief_screenwriter_preview.png',
+        path: 'https://example.com/preview.png',
+      },
+    ])
     window.reliefDesktop = {
       platform: 'win32',
       shell: 'electron',
@@ -98,5 +129,31 @@ describe('AutopilotPage', () => {
     renderPage()
 
     await waitFor(() => expect(fetchRunArtifacts).toHaveBeenCalledWith('run-one'))
+  })
+
+  it('opens a live run focused on the backend current stage', async () => {
+    vi.mocked(fetchRun).mockResolvedValue(makeRun({
+      status: 'running',
+      current_stage: 'gpt_prompt_audit',
+    }))
+    vi.mocked(fetchRunArtifacts).mockResolvedValue([
+      {
+        id: 'chief-script',
+        kind: 'json',
+        name: 'script',
+        path: 'D:/relief/runs/run-one/01_script.json',
+      },
+      {
+        id: 'audit-report',
+        kind: 'prompt_audit',
+        name: 'audit.json',
+        path: 'D:/relief/runs/run-one/05_audit.json',
+      },
+    ])
+
+    renderPage()
+
+    expect(await screen.findByText('audit.json')).toBeInTheDocument()
+    expect(screen.queryByText('script')).not.toBeInTheDocument()
   })
 })

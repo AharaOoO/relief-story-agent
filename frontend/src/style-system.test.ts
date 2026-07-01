@@ -7,12 +7,17 @@ import { describe, expect, it } from 'vitest'
 const css = readFileSync(resolve(process.cwd(), 'src/index.css'), 'utf8')
 
 describe('visual system tokens', () => {
-  it('uses the approved ice coast glass design tokens', () => {
-    expect(css).toContain('--coast-bg: #f7f9fc;')
-    expect(css).toContain('--coast-ink: #252832;')
-    expect(css).toContain('--coast-accent: #6e9fff;')
-    expect(css).toContain('--coast-glass: rgba(255, 255, 255, 0.64);')
-    expect(css).toContain('--radius-card: 24px;')
+  it('uses the approved light salon glass design tokens', () => {
+    expect(css).toContain('--coast-bg: #f9fbff;')
+    expect(css).toContain('--coast-ink: #202231;')
+    expect(css).toContain('--coast-accent: #8fb6ff;')
+    expect(css).toContain('--coast-glass: rgba(255, 255, 255, 0.58);')
+    expect(css).toContain('--radius-card: 30px;')
+    expect(css).toContain('font-family: Inter, "Microsoft YaHei UI", "PingFang SC", sans-serif;')
+    expect(css).toContain('font-family: "Instrument Serif", "Songti SC", "SimSun", Georgia, serif;')
+    expect(css).toContain('.hero-studio-card')
+    expect(css).toContain('.coast-hero::after')
+    expect(css).toContain('rgba(249,251,255,.96) 96%')
 
     expect(css).not.toContain('--surface-cream: #fff2df;')
     expect(css).not.toContain('--accent-gold: #ffc400;')

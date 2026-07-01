@@ -22,6 +22,18 @@ export default function DashboardPage() {
             <a className="primary-button large" href="#new-production"><Clapperboard size={18} /> 开始一部新短剧</a>
             <Link className="glass-button" to="/autopilot"><Layers3 size={18} /> 查看十道工序</Link>
           </div>
+          <div className="hero-studio-card" aria-label="自动制片中枢">
+            <div className="studio-card-mark"><span>LTX</span></div>
+            <div className="studio-card-copy">
+              <span>海滩灵感工作台</span>
+              <strong>自动制片中枢</strong>
+              <p>一句灵感进入流水线，自动完成剧本、分镜、提示词审查、G2 参考图与 ComfyUI 入队。</p>
+            </div>
+            <div className="studio-card-stats">
+              <span><strong>10 道工序</strong><small>剧本到出餐</small></span>
+              <span><strong>前 6 步可控</strong><small>模型与提示词</small></span>
+            </div>
+          </div>
         </div>
         <a className="hero-scroll" href="#new-production" aria-label="向下查看创作面板"><span>开始创作</span><ArrowDown size={17} /></a>
       </section>

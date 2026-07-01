@@ -35,4 +35,12 @@ describe('workbench router', () => {
     ).toBeInTheDocument()
     expect(screen.queryByText('LTX 2.3 Studio Console')).not.toBeInTheDocument()
   })
+
+  it('keeps the dashboard focused on the light glass one-page production entry', async () => {
+    renderRoute('/')
+
+    expect(await screen.findByText('自动制片中枢')).toBeInTheDocument()
+    expect(screen.getByText('10 道工序')).toBeInTheDocument()
+    expect(screen.getByText('海滩灵感工作台')).toBeInTheDocument()
+  })
 })

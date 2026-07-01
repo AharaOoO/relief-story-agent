@@ -838,10 +838,27 @@ def fetch_workflow_runtime_object_info(
     workflow = load_workflow(config.workflow_api_path)
     if detect_workflow_format(workflow) != "litegraph":
         return None
-    response = client.get(f"{endpoint.rstrip('/')}/object_info")
-    response.raise_for_status()
-    payload = response.json()
-    return payload if isinstance(payload, dict) else {}
+    node_types = sorted(
+        {
+            str(node.get("type") or "").strip()
+            for node in workflow.get("nodes", [])
+            if isinstance(node, dict) and str(node.get("type") or "").strip()
+        }
+    )
+    object_info: dict[str, Any] = {}
+    for node_type in node_types:
+        response = client.get(
+            f"{endpoint.rstrip('/')}/object_info/{quote(node_type, safe='')}"
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            continue
+        if node_type in payload:
+            object_info[node_type] = payload[node_type]
+        elif payload:
+            object_info[node_type] = payload
+    return object_info
 
 
 def _diagnostic_check(
@@ -1593,4 +1610,3 @@ def _wait_for_queue_slot(client: httpx.Client, endpoint: str, max_queue_size: in
         except Exception:
             return
         time.sleep(poll_interval)
-

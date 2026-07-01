@@ -49,6 +49,47 @@ def _write_sanitized_workflow(tmp_path):
     return path
 
 
+def test_runtime_object_info_fetches_only_workflow_node_types(tmp_path):
+    workflow_path = tmp_path / "targeted_object_info.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {"id": 1, "type": "LoadImage", "widgets_values": ["grid.png"]},
+                    {"id": 2, "type": "CLIPTextEncode", "widgets_values": ["prompt"]},
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    requests: list[str] = []
+
+    def handler(request: httpx.Request):
+        requests.append(request.url.path)
+        if request.url.path == "/object_info":
+            raise AssertionError("full /object_info must not block workflow submission")
+        node_type = request.url.path.rsplit("/", 1)[-1]
+        return httpx.Response(200, json={node_type: {"input": {"required": {}}}})
+
+    result = comfyui.fetch_workflow_runtime_object_info(
+        HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+        "http://comfy.local",
+        ComfyUIRunConfig(
+            enabled=True,
+            endpoint="http://comfy.local",
+            workflow_api_path=str(workflow_path),
+        ),
+    )
+
+    assert requests == [
+        "/object_info/CLIPTextEncode",
+        "/object_info/LoadImage",
+    ]
+    assert set(result or {}) == {"CLIPTextEncode", "LoadImage"}
+
+
 def test_real_shape_fixture_detects_all_four_injection_points():
     workflow = build_sanitized_ltx23_workflow()
 
@@ -505,7 +546,7 @@ def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path):
 
     def handler(request: httpx.Request):
         requests.append(request.url.path)
-        if request.url.path == "/object_info":
+        if request.url.path.startswith("/object_info/"):
             return httpx.Response(200, json={})
         if request.url.path == "/prompt":
             payload = json.loads(request.content)
@@ -521,7 +562,9 @@ def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path):
         client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
     )
 
-    assert requests == ["/object_info", "/prompt"]
+    assert requests[-1] == "/prompt"
+    assert requests[:-1]
+    assert all(path.startswith("/object_info/") for path in requests[:-1])
     persisted = json.loads(workflow_path.read_text(encoding="utf-8"))
     assert persisted == original
     assert len(persisted["nodes"]) == 60
@@ -800,28 +843,27 @@ def test_submit_storyboard_enriches_litegraph_workflow_with_runtime_object_info(
 
     def handler(request: httpx.Request):
         requests.append(request.url.path)
-        if request.url.path == "/object_info":
-            return httpx.Response(
-                200,
-                json={
-                    "LoadImage": {"input": {"required": {"image": ["COMBO", {}]}}},
-                    "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
-                    "CheckpointLoaderSimple": {
-                        "input": {"required": {"ckpt_name": ["COMBO", {}]}},
-                    },
-                    "EmptyLTXVLatentVideo": {
-                        "input": {
-                            "required": {
-                                "width": ["INT", {}],
-                                "height": ["INT", {}],
-                                "length": ["INT", {}],
-                                "batch_size": ["INT", {}],
-                            }
-                        },
-                    },
-                    "SaveVideo": {"input": {"required": {"filename_prefix": ["STRING", {}]}}},
+        object_info = {
+            "LoadImage": {"input": {"required": {"image": ["COMBO", {}]}}},
+            "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
+            "CheckpointLoaderSimple": {
+                "input": {"required": {"ckpt_name": ["COMBO", {}]}},
+            },
+            "EmptyLTXVLatentVideo": {
+                "input": {
+                    "required": {
+                        "width": ["INT", {}],
+                        "height": ["INT", {}],
+                        "length": ["INT", {}],
+                        "batch_size": ["INT", {}],
+                    }
                 },
-            )
+            },
+            "SaveVideo": {"input": {"required": {"filename_prefix": ["STRING", {}]}}},
+        }
+        if request.url.path.startswith("/object_info/"):
+            node_type = request.url.path.rsplit("/", 1)[-1]
+            return httpx.Response(200, json={node_type: object_info[node_type]})
         if request.url.path == "/prompt":
             payload = json.loads(request.content)
             submitted.append(payload)
@@ -838,7 +880,14 @@ def test_submit_storyboard_enriches_litegraph_workflow_with_runtime_object_info(
     )
 
     prompt = submitted[0]["prompt"]
-    assert requests == ["/object_info", "/prompt"]
+    assert requests == [
+        "/object_info/CLIPTextEncode",
+        "/object_info/CheckpointLoaderSimple",
+        "/object_info/EmptyLTXVLatentVideo",
+        "/object_info/LoadImage",
+        "/object_info/SaveVideo",
+        "/prompt",
+    ]
     assert submissions[0].status == "accepted"
     assert prompt["3"]["inputs"]["ckpt_name"] == "ltx-2.3.safetensors"
     assert prompt["4"]["inputs"]["width"] == ["11", 0]
@@ -1565,4 +1614,3 @@ def test_comfyui_backpressure_waits_for_queue_slot(tmp_path, monkeypatch):
     assert requests == ["/queue", "/queue", "/prompt"]
     assert len(sleeps) == 1
     assert sleeps[0] == 1.0
-

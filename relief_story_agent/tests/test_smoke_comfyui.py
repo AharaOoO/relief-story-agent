@@ -128,6 +128,14 @@ def _runtime_object_info() -> dict:
     }
 
 
+def _targeted_object_info_response(request: httpx.Request) -> httpx.Response | None:
+    if not request.url.path.startswith("/object_info/"):
+        return None
+    node_type = request.url.path.rsplit("/", 1)[-1]
+    payload = _runtime_object_info()
+    return httpx.Response(200, json={node_type: payload.get(node_type, {})})
+
+
 def test_smoke_dry_run_writes_preflight_and_patched_workflow_without_upload(tmp_path):
     request = ComfyUISmokeRequest(
         workflow_path=str(_write_workflow(tmp_path / "workflow.json")),
@@ -254,8 +262,8 @@ def test_smoke_real_run_uploads_grid_and_enqueues_prompt(tmp_path):
                 200,
                 json={"name": uploaded_name, "subfolder": "", "type": "input"},
             )
-        if request.url.path == "/object_info":
-            return httpx.Response(200, json=_runtime_object_info())
+        if response := _targeted_object_info_response(request):
+            return response
         if request.url.path == "/prompt":
             prompted_payload = json.loads(request.content.decode("utf-8"))
             return httpx.Response(200, json={"prompt_id": prompted_payload["prompt_id"]})
@@ -280,7 +288,7 @@ def test_smoke_real_run_uploads_grid_and_enqueues_prompt(tmp_path):
     assert result.prompt_id == prompted_payload["prompt_id"]
     assert result.upload_result["filename"] == uploaded_name
     assert ("POST", "/upload/image") in requests
-    assert ("GET", "/object_info") in requests
+    assert any(method == "GET" and path.startswith("/object_info/") for method, path in requests)
     assert ("POST", "/prompt") in requests
     assert prompted_payload["prompt"]["196"]["inputs"]["image"] == uploaded_name
     assert Path(result.artifact_dir, "smoke_upload.json").exists()
@@ -294,8 +302,8 @@ def test_smoke_real_run_creates_direct_client_when_not_injected(tmp_path, monkey
         nonlocal prompted_payload
         if request.url.path == "/upload/image":
             return httpx.Response(200, json={"name": "grid.png"})
-        if request.url.path == "/object_info":
-            return httpx.Response(200, json=_runtime_object_info())
+        if response := _targeted_object_info_response(request):
+            return response
         if request.url.path == "/prompt":
             prompted_payload = json.loads(request.content.decode("utf-8"))
             return httpx.Response(200, json={"prompt_id": prompted_payload["prompt_id"]})
@@ -348,8 +356,8 @@ def test_smoke_real_run_reports_prompt_failure(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/upload/image":
             return httpx.Response(200, json={"name": "grid.png"})
-        if request.url.path == "/object_info":
-            return httpx.Response(200, json=_runtime_object_info())
+        if response := _targeted_object_info_response(request):
+            return response
         if request.url.path == "/prompt":
             return httpx.Response(500, text="prompt failed")
         return httpx.Response(404)

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, CheckCircle2, ChevronRight, LoaderCircle, Pause, Play, RefreshCw, RotateCcw, Settings2 } from 'lucide-react'
+import { AlertCircle, CheckCircle2, ChevronRight, ExternalLink, FolderOpen, LoaderCircle, Pause, Play, RefreshCw, RotateCcw, Settings2 } from 'lucide-react'
 import { useParams } from 'react-router-dom'
 import { AUTOPILOT_STAGES, stageStatusFromTimeline, type AutopilotStageStatus } from '../features/autopilot/stages'
 import { StageRail } from '../features/autopilot/StageRail'
@@ -16,11 +16,56 @@ import {
   refreshRunComfyUI,
   retryRun,
   type RunEventRecord,
+  type ArtifactRecord,
 } from '../features/workbench/workbench.api'
 import { useWorkbench } from '../app/workbench/workbench.context'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 type RunAction = 'cancel' | 'retry' | 'approve' | 'refresh'
+const STAGE_ARTIFACT_KEYS: Record<string, string[]> = {
+  chief_screenwriter: ['script'],
+  deepseek_polish: ['script'],
+  quality_gate: ['quality_gate'],
+  gpt_prompt_writer: ['storyboard', 'ltx_payload'],
+  gpt_prompt_audit: ['prompt_audit'],
+  gpt_prompt_reviser: ['final_prompts'],
+  final_prompts: ['final_prompts', 'ltx_payload'],
+  four_grid_asset: ['four_grid_prompt', 'four_grid_image', 'comfyui_upload'],
+  artifacts: ['model_execution', 'timeline', 'manifest'],
+  comfyui: ['comfyui_preview'],
+}
+
+function isRemoteUrl(value: string) {
+  return /^https?:\/\//i.test(value)
+}
+
+function artifactName(path: string) {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path
+}
+
+function containingDirectory(path: string) {
+  const index = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  return index > 0 ? path.slice(0, index) : ''
+}
+
+function artifactMatchesStage(item: ArtifactRecord, stageId: string) {
+  const artifactPath = item.local_path ?? item.path ?? ''
+  const haystack = [
+    item.name,
+    item.kind,
+    item.type,
+    artifactPath,
+  ].filter(Boolean).join(' ').toLowerCase()
+  if (haystack.includes(stageId.toLowerCase())) return true
+  if ((STAGE_ARTIFACT_KEYS[stageId] ?? []).some((key) => haystack.includes(key))) return true
+  if (stageId !== 'comfyui') return false
+  const kind = (item.kind ?? item.type ?? '').toLowerCase()
+  return (
+    kind.includes('video') ||
+    /[\\/]comfyui_outputs[\\/]/i.test(artifactPath) ||
+    /\.(mp4|mov|webm|mkv)$/i.test(artifactPath)
+  )
+}
 
 export default function AutopilotPage() {
   const { runId } = useParams()
@@ -99,6 +144,20 @@ export default function AutopilotPage() {
   const completed = Object.values(statuses).filter((status) => status === 'completed' || status === 'skipped').length
   const activeStage = AUTOPILOT_STAGES.find((stage) => stage.id === (run.data?.current_stage || selectedStage))
   const promptSnapshot = run.data?.prompt_snapshot as Partial<Record<(typeof AUTOPILOT_STAGES)[number]['id'], string>> | undefined
+  const stageArtifacts = artifacts.data?.filter((item) => artifactMatchesStage(item, selectedStage)) ?? []
+
+  const openLocalArtifact = async (targetPath: string, kind: 'file' | 'folder') => {
+    if (!window.reliefDesktop) {
+      setActionMessage('请在桌面客户端中打开本地产物。')
+      return
+    }
+    try {
+      await window.reliefDesktop.openPath(targetPath)
+      setActionMessage(kind === 'folder' ? '已打开本工序产物所在目录。' : '已交给系统默认程序打开。')
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : '无法打开这个产物')
+    }
+  }
 
   return (
     <div className="autopilot-page page-surface">
@@ -146,8 +205,62 @@ export default function AutopilotPage() {
               <section className="stage-output-panel">
                 <div className="section-heading-row"><div><span className="eyebrow">LIVE OUTPUT</span><h3>本工序产物</h3></div><span className={`status-chip is-${statuses[selectedStage]}`}>{statuses[selectedStage]}</span></div>
                 {run.data?.error && statuses[selectedStage] === 'failed' && <div className="inline-notice is-error"><AlertCircle size={16} />{run.data.error}</div>}
-                {artifacts.data?.filter((item) => (item.kind ?? item.type ?? '').includes(selectedStage)).length ? (
-                  <ul>{artifacts.data.filter((item) => (item.kind ?? item.type ?? '').includes(selectedStage)).map((item, index) => <li key={item.artifact_id ?? item.id ?? index}><strong>{item.name ?? item.kind ?? item.type ?? '产物'}</strong><span>{item.local_path ?? item.path}</span></li>)}</ul>
+                {stageArtifacts.length ? (
+                  <ul>{stageArtifacts.map((item, index) => {
+                    const artifactPath = item.local_path ?? item.path ?? ''
+                    const name = item.name || artifactName(artifactPath) || item.kind || item.type || '产物'
+                    const folderPath = artifactPath && !isRemoteUrl(artifactPath)
+                      ? containingDirectory(artifactPath)
+                      : ''
+
+                    return (
+                      <li key={item.artifact_id ?? item.id ?? index}>
+                        <div className="stage-output-copy">
+                          <strong>{name}</strong>
+                          <span>{artifactPath}</span>
+                        </div>
+                        {artifactPath && (
+                          <div className="asset-action-row">
+                            {isRemoteUrl(artifactPath) ? (
+                              <a
+                                className="icon-button is-quiet"
+                                href={artifactPath}
+                                target="_blank"
+                                rel="noreferrer"
+                                aria-label={`打开链接 ${name}`}
+                                title="打开链接"
+                              >
+                                <ExternalLink size={16} />
+                              </a>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="icon-button is-quiet"
+                                  onClick={() => void openLocalArtifact(artifactPath, 'file')}
+                                  aria-label={`打开文件 ${name}`}
+                                  title="打开文件"
+                                >
+                                  <ExternalLink size={16} />
+                                </button>
+                                {folderPath && (
+                                  <button
+                                    type="button"
+                                    className="icon-button is-quiet"
+                                    onClick={() => void openLocalArtifact(folderPath, 'folder')}
+                                    aria-label={`打开所在目录 ${name}`}
+                                    title="打开所在目录"
+                                  >
+                                    <FolderOpen size={16} />
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    )
+                  })}</ul>
                 ) : (
                   <div className="stage-output-empty">{statuses[selectedStage] === 'running' ? 'Agent 正在写入本工序结果…' : statuses[selectedStage] === 'completed' ? '工序已完成，标准化结果已归档。' : '执行到这里后，产物会自动出现。'}</div>
                 )}

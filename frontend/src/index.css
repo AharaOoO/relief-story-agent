@@ -339,9 +339,11 @@ body:has(.desktop-titlebar) .floating-nav-shell { top: 50px; }
 .section-heading-row h2, .section-heading-row h3 { margin: 5px 0 4px; font-size: 21px; }
 .section-heading-row p { margin: 0; color: var(--coast-muted); font-size: 12px; }
 .stage-output-panel ul { margin: 18px 0 0; padding: 0; list-style: none; }
-.stage-output-panel li { display: flex; flex-direction: column; gap: 5px; padding: 12px 0; border-top: 1px solid var(--coast-line); }
+.stage-output-panel li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 12px 0; border-top: 1px solid var(--coast-line); }
 .stage-output-panel li strong { font-size: 13px; }
 .stage-output-panel li span { overflow: hidden; text-overflow: ellipsis; color: var(--coast-muted); font-size: 11px; }
+.stage-output-copy { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.stage-output-panel .asset-action-row { flex-direction: row; }
 .stage-output-empty { display: grid; place-items: center; min-height: 130px; margin-top: 14px; color: var(--coast-muted); border: 1px dashed var(--coast-line-strong); border-radius: 16px; font-size: 12px; }
 .run-event-feed { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--coast-line); }
 .run-event-feed > strong { font-size: 12px; }

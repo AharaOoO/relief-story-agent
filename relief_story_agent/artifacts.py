@@ -271,6 +271,7 @@ def read_run_artifact_index(run: RunState) -> dict[str, Any]:
         }
         for item in manifest.get("artifacts", [])
     ]
+    manifest["artifacts"].extend(_segment_artifact_entries(run, artifact_dir))
     manifest["comfyui_prompt_ids"] = list(run.comfyui_prompt_ids)
     manifest["actual_outputs"] = [output.model_dump() for output in run.comfyui_outputs]
     manifest["comfyui_cancellations"] = [
@@ -282,6 +283,104 @@ def read_run_artifact_index(run: RunState) -> dict[str, Any]:
         record.model_dump() for record in run.failure_records
     ]
     return manifest
+
+
+def _segment_artifact_entries(
+    run: RunState,
+    artifact_dir: Path,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for segment in sorted(run.segment_renders, key=lambda item: item.order):
+        segment_dir = (
+            artifact_dir
+            / "segments"
+            / f"{segment.order:03d}-{segment.segment_id}"
+        )
+
+        def add(
+            name: str,
+            path: str | Path,
+            kind: str,
+            *,
+            prompt_id: str = "",
+            media_type: str = "",
+        ) -> None:
+            target = Path(path)
+            entries.append(
+                {
+                    "name": name,
+                    "kind": kind,
+                    "filename": target.name,
+                    "path": str(target),
+                    "exists": target.exists(),
+                    "segment_id": segment.segment_id,
+                    "order": segment.order,
+                    "prompt_id": prompt_id,
+                    "media_type": media_type,
+                }
+            )
+
+        prompt_path = segment_dir / "grid_prompt.json"
+        if prompt_path.exists():
+            add("segment_grid_prompt", prompt_path, "json")
+        if segment.grid_image_asset is not None:
+            add(
+                "segment_grid_image",
+                segment.grid_image_asset.local_path,
+                "media",
+                media_type=segment.grid_image_asset.mime_type,
+            )
+        if segment.workflow_api_artifact:
+            add(
+                "segment_workflow_api",
+                segment.workflow_api_artifact,
+                "json",
+                prompt_id=(
+                    segment.submission.prompt_id if segment.submission else ""
+                ),
+            )
+        for name, filename in (
+            ("segment_ltx_payload", "ltx_payload.json"),
+            ("segment_submission_metadata", "submission_metadata.json"),
+        ):
+            path = segment_dir / filename
+            if path.exists():
+                add(
+                    name,
+                    path,
+                    "json",
+                    prompt_id=(
+                        segment.submission.prompt_id if segment.submission else ""
+                    ),
+                )
+        for output in segment.outputs:
+            if not output.local_path:
+                continue
+            add(
+                "segment_video"
+                if output.media_type == "video"
+                else "segment_output",
+                output.local_path,
+                "media",
+                prompt_id=output.prompt_id,
+                media_type=output.media_type,
+            )
+    if run.video_assembly.output_path:
+        path = Path(run.video_assembly.output_path)
+        entries.append(
+            {
+                "name": "assembled_video",
+                "kind": "media",
+                "filename": path.name,
+                "path": str(path),
+                "exists": path.exists(),
+                "segment_id": "",
+                "order": 0,
+                "prompt_id": "",
+                "media_type": "video",
+            }
+        )
+    return entries
 
 
 def _absolute_path(path: Path) -> Path:

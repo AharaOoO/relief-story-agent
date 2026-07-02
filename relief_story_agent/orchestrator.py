@@ -70,11 +70,14 @@ from .models import (
     GridImageAttempt,
     GridImageConfig,
     SegmentRenderState,
+    SegmentActionRequest,
+    SegmentImageRetryRequest,
     RunRequest,
     RunRetryRequest,
     RunState,
     ModelAttempt,
     ModelUsageSummary,
+    VideoAssemblyState,
 )
 from .output_contracts import require_bool, require_list, require_mapping, require_shot_contract
 from .pipeline import BASE_RUNTIME_STAGE_ORDER, retry_tail_for_stage, stage_ids_for_run
@@ -96,6 +99,10 @@ PIPELINE_STAGES = list(BASE_RUNTIME_STAGE_ORDER)
 
 
 class RetryConfigurationConflict(ValueError):
+    pass
+
+
+class SegmentActionConflict(ValueError):
     pass
 
 
@@ -297,6 +304,185 @@ class StoryRunOrchestrator:
         index = read_run_artifact_index(run)
         self.store.save(run)
         return index
+
+    def get_render_plan(self, run_id: str) -> dict[str, Any]:
+        run = self.store.get(run_id)
+        segments = sorted(run.segment_renders, key=lambda item: item.order)
+        return {
+            "run_id": run.run_id,
+            "status": run.status,
+            "current_stage": run.current_stage,
+            "duration_mode": (
+                "auto"
+                if run.request.creation_spec.duration_seconds == 0
+                else "explicit"
+            ),
+            "target_duration_seconds": run.request.creation_spec.duration_seconds,
+            "planned_duration_seconds": sum(
+                segment.duration_seconds for segment in segments
+            ),
+            "segments": [segment.model_dump() for segment in segments],
+            "video_assembly": run.video_assembly.model_dump(),
+        }
+
+    def get_segment(self, run_id: str, segment_id: str) -> SegmentRenderState:
+        run = self.store.get(run_id)
+        return self._require_segment(run, segment_id).model_copy(deep=True)
+
+    def queue_segment_image_retry(
+        self,
+        run_id: str,
+        segment_id: str,
+        request: SegmentImageRetryRequest,
+    ) -> RunState:
+        run = self.store.get(run_id)
+        segment = self._require_segment(run, segment_id)
+        self._require_segment_retryable(segment, force=request.force)
+        if run.request.comfyui is None:
+            raise SegmentActionConflict("ComfyUI is not configured for this run")
+        updates = {
+            key: value
+            for key, value in request.model_dump(
+                exclude={"force"},
+            ).items()
+            if value is not None
+        }
+        if updates:
+            current = run.request.comfyui.grid_image
+            run.request.comfyui.grid_image = GridImageConfig.model_validate(
+                {**current.model_dump(), **updates}
+            )
+            if request.aspect_ratio:
+                run.request.creation_spec.video_aspect_ratio = request.aspect_ratio
+            if request.resolution:
+                run.request.creation_spec.image_resolution = request.resolution
+        segment.grid_image_prompt = ""
+        segment.grid_image_asset = None
+        segment.grid_image_attempts = []
+        segment.grid_image_checkpoint = ""
+        self._clear_segment_video_state(segment, status="planned")
+        if segment.order == 1:
+            run.grid_image_prompt = ""
+            run.grid_image_asset = None
+            run.grid_image_attempts = []
+            run.grid_image_checkpoint = ""
+            run.grid_image_replacements = []
+        run.video_assembly = VideoAssemblyState()
+        self._queue_segment_stage(run, "four_grid_asset", segment)
+        return run
+
+    def queue_segment_video_retry(
+        self,
+        run_id: str,
+        segment_id: str,
+        request: SegmentActionRequest,
+    ) -> RunState:
+        run = self.store.get(run_id)
+        segment = self._require_segment(run, segment_id)
+        self._require_segment_retryable(segment, force=request.force)
+        if segment.grid_image_asset is None:
+            raise SegmentActionConflict(
+                "Segment video retry requires an existing grid image"
+            )
+        self._clear_segment_video_state(segment, status="image_ready")
+        run.video_assembly = VideoAssemblyState()
+        self._queue_segment_stage(run, "comfyui", segment)
+        return run
+
+    def cancel_segment(self, run_id: str, segment_id: str) -> RunState:
+        run = self.store.get(run_id)
+        segment = self._require_segment(run, segment_id)
+        if run.request.comfyui is None or segment.submission is None:
+            raise SegmentActionConflict(
+                "Segment does not have a ComfyUI submission to cancel"
+            )
+        cancellations = cancel_prompt_jobs(
+            run.request.comfyui,
+            [segment.submission.prompt_id],
+        )
+        run.comfyui_cancellations.extend(cancellations)
+        if any(item.cancelled for item in cancellations):
+            segment.status = "cancelled"
+            segment.error = ""
+        self.store.save(run)
+        return run
+
+    def retry_video_assembly(self, run_id: str) -> RunState:
+        run = self.store.get(run_id)
+        if any(segment.status != "completed" for segment in run.segment_renders):
+            raise SegmentActionConflict(
+                "Every segment must be completed before video assembly"
+            )
+        run.video_assembly = VideoAssemblyState()
+        self._assemble_segment_outputs(run)
+        self.store.save(run)
+        return run
+
+    @staticmethod
+    def _require_segment(run: RunState, segment_id: str) -> SegmentRenderState:
+        segment = next(
+            (
+                item
+                for item in run.segment_renders
+                if item.segment_id == segment_id
+            ),
+            None,
+        )
+        if segment is None:
+            raise KeyError(segment_id)
+        return segment
+
+    @staticmethod
+    def _require_segment_retryable(
+        segment: SegmentRenderState,
+        *,
+        force: bool,
+    ) -> None:
+        if segment.status == "completed" and not force:
+            raise SegmentActionConflict(
+                "Completed segment retry requires force=true"
+            )
+        if segment.status in {"queued", "running", "submitting"} and not force:
+            raise SegmentActionConflict(
+                f"Segment is currently {segment.status}; cancel it before retrying"
+            )
+
+    @staticmethod
+    def _clear_segment_video_state(
+        segment: SegmentRenderState,
+        *,
+        status: str,
+    ) -> None:
+        segment.workflow_api_artifact = ""
+        segment.submission = None
+        segment.outputs = []
+        segment.status = status  # type: ignore[assignment]
+        segment.error = ""
+        segment.submitted_at = ""
+        segment.started_at = ""
+        segment.completed_at = ""
+
+    def _queue_segment_stage(
+        self,
+        run: RunState,
+        stage: str,
+        segment: SegmentRenderState,
+    ) -> None:
+        self._sync_segment_comfyui_views(run)
+        run.status = "queued"
+        run.current_stage = "queued"
+        run.resume_stage = stage
+        run.error = ""
+        run.failed_stage = ""
+        run.cancel_requested = False
+        run.queued_at = datetime.now(timezone.utc).isoformat()
+        self._clear_lease(run)
+        run.add_event(
+            "segment_retry_queued",
+            stage=stage,
+            data={"segment_id": segment.segment_id, "order": segment.order},
+        )
+        self.store.save(run)
 
     def _find_idempotent_run(self, request: RunRequest) -> RunState | None:
         if not request.idempotency_key:
@@ -1264,6 +1450,18 @@ class StoryRunOrchestrator:
                 },
                 aspect_ratio=image_config.aspect_ratio,
                 max_chars=image_config.prompt_max_chars,
+            )
+            (segment_dir / "grid_prompt.json").write_text(
+                json.dumps(
+                    {
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "prompt": segment.grid_image_prompt,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
             )
             segment.grid_image_checkpoint = "prompt_compiled"
             self._sync_legacy_grid_state(run, segment)

@@ -622,6 +622,21 @@ class GridImageRetryOverride(BaseModel):
     resolution: Literal["1k", "2k"]
 
 
+class SegmentImageRetryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runninghub_site: Literal["cn", "ai"] | None = None
+    aspect_ratio: Literal["16:9", "9:16"] | None = None
+    resolution: Literal["1k", "2k"] | None = None
+    force: bool = False
+
+
+class SegmentActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    force: bool = False
+
+
 class RunRetryRequest(BaseModel):
     from_stage: Literal[
         "chief_screenwriter",

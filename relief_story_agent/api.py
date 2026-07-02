@@ -42,6 +42,8 @@ from .models import (
     RunRequest,
     RunRetryRequest,
     RunState,
+    SegmentActionRequest,
+    SegmentImageRetryRequest,
 )
 from .local_runtime import (
     LocalRuntimeConfig,
@@ -49,7 +51,11 @@ from .local_runtime import (
     build_local_doctor,
     build_local_readiness,
 )
-from .orchestrator import RetryConfigurationConflict, StoryRunOrchestrator
+from .orchestrator import (
+    RetryConfigurationConflict,
+    SegmentActionConflict,
+    StoryRunOrchestrator,
+)
 from .pipeline import build_pipeline_schema
 from .provider_catalog import build_provider_catalog
 from .planning import build_batch_plan
@@ -759,6 +765,84 @@ def create_app(
             return orchestrator.get_run_artifact_index(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
+
+    @app.get("/api/runs/{run_id}/render-plan")
+    def get_run_render_plan(run_id: str):
+        try:
+            return orchestrator.get_render_plan(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+
+    @app.get("/api/runs/{run_id}/segments/{segment_id}")
+    def get_run_segment(run_id: str, segment_id: str):
+        try:
+            return orchestrator.get_segment(run_id, segment_id).model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+
+    @app.post("/api/runs/{run_id}/segments/{segment_id}/retry-image")
+    def retry_segment_image(
+        run_id: str,
+        segment_id: str,
+        payload: SegmentImageRetryRequest,
+    ):
+        try:
+            run = orchestrator.queue_segment_image_retry(run_id, segment_id, payload)
+            if scheduler:
+                scheduler.submit(run_id)
+                run = orchestrator.store.get(run_id)
+            return run.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
+
+    @app.post("/api/runs/{run_id}/segments/{segment_id}/retry-video")
+    def retry_segment_video(
+        run_id: str,
+        segment_id: str,
+        payload: SegmentActionRequest,
+    ):
+        try:
+            run = orchestrator.queue_segment_video_retry(run_id, segment_id, payload)
+            if scheduler:
+                scheduler.submit(run_id)
+                run = orchestrator.store.get(run_id)
+            return run.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
+
+    @app.post("/api/runs/{run_id}/segments/{segment_id}/cancel")
+    def cancel_run_segment(run_id: str, segment_id: str):
+        try:
+            return orchestrator.cancel_segment(run_id, segment_id).model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
+
+    @app.post("/api/runs/{run_id}/assemble")
+    def retry_run_assembly(run_id: str):
+        try:
+            return orchestrator.retry_video_assembly(run_id).model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
 
     @app.post("/api/runs/{run_id}/refresh-comfyui")
     def refresh_comfyui_outputs(run_id: str):

@@ -47,7 +47,7 @@ class QualityGate:
         issues.extend(text_result.issues)
 
         duration = int(script.get("duration_seconds") or 0)
-        if duration and not 60 <= duration <= 120:
+        if duration and not 15 <= duration <= 300:
             issues.append("duration_out_of_range")
 
         if not str(script.get("core_sentence") or "").strip():
@@ -63,4 +63,3 @@ class QualityGate:
     @staticmethod
     def _contains_any(text: str, terms: tuple[str, ...]) -> bool:
         return any(term in text for term in terms)
-

@@ -16,6 +16,7 @@ import httpx
 from .grid_image import compile_four_grid_prompt, deterministic_comfyui_filename, validate_grid_image
 from .ltx_workflow import (
     build_ltx_payload_from_storyboard,
+    build_segment_ltx_payload,
     detect_workflow_format,
     find_ltx_injection_points,
     find_ltx_widget_patch_points,
@@ -31,6 +32,12 @@ from .models import (
     ComfyUISubmission,
     GridImageAsset,
     PlaceholderTarget,
+    SegmentRenderState,
+    WorkflowModelBinding,
+)
+from .workflow_models import (
+    validate_workflow_models,
+    workflow_fingerprint,
 )
 
 
@@ -44,6 +51,11 @@ class PlannedComfyUIWorkflow:
     workflow_format: str
     replacements: list[dict[str, str]] = field(default_factory=list)
     ltx_payload: dict[str, Any] | None = None
+    source_workflow: dict[str, Any] | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
+    workflow_models: list[WorkflowModelBinding] = field(default_factory=list)
+    workflow_sha256: str = ""
+    submission: ComfyUISubmission | None = None
 
 
 class ComfyUISubmissionUnknown(RuntimeError):
@@ -679,6 +691,154 @@ def plan_storyboard_workflows(
     return planned_workflows
 
 
+def prepare_segment_workflow(
+    config: ComfyUIRunConfig,
+    segment: SegmentRenderState,
+    run_id: str,
+    *,
+    object_info: dict[str, Any] | None = None,
+) -> PlannedComfyUIWorkflow:
+    if not config.workflow_api_path:
+        raise ValueError("workflow_api_path is required when ComfyUI is enabled")
+    if segment.grid_image_asset is None:
+        raise ValueError("Segment workflow requires a grid image asset")
+    if segment.grid_image_asset.upload_status != "accepted":
+        raise ValueError("Segment workflow requires an accepted uploaded grid image asset")
+    source_workflow = load_workflow(config.workflow_api_path)
+    if detect_workflow_format(source_workflow) != "litegraph":
+        raise ValueError("Segment LTX rendering requires a LiteGraph workflow")
+
+    ltx_payload = build_segment_ltx_payload(segment)
+    filename_prefix = f"{run_id}/{segment.segment_id}"
+    replacements: list[dict[str, str]] = []
+    try:
+        points = find_ltx_injection_points(source_workflow)
+        if not points.grid_image_node_id:
+            raise ValueError("Segment LTX workflow does not expose a grid image input")
+        workflow = patch_ltx_litegraph_workflow(
+            source_workflow,
+            ltx_payload=ltx_payload,
+            seed=segment.seed,
+            filename_prefix=filename_prefix,
+            grid_image_filename=segment.grid_image_asset.comfyui_filename,
+            object_info=object_info,
+        )
+        submission_key = f"segment:{segment.segment_id}"
+        replacements.extend(
+            [
+                {
+                    "key": "ltx_payload",
+                    "node": points.json_node_id,
+                    "input": "text",
+                    "source": "segment",
+                    "value_preview": _preview_value(ltx_payload),
+                },
+                {
+                    "key": "grid_image",
+                    "node": points.grid_image_node_id,
+                    "input": points.grid_image_input,
+                    "source": "segment.grid_image_asset.comfyui_filename",
+                    "value_preview": segment.grid_image_asset.comfyui_filename,
+                },
+            ]
+        )
+    except ValueError as injection_error:
+        try:
+            widget_points = find_ltx_widget_patch_points(source_workflow)
+        except ValueError as widget_error:
+            raise ValueError(
+                f"{injection_error}; widget patch detection also failed: {widget_error}"
+            ) from widget_error
+        if not widget_points.image_node_ids:
+            raise ValueError("Segment LTX widget workflow does not expose an image input")
+        workflow = patch_ltx_widget_workflow(
+            source_workflow,
+            ltx_payload=ltx_payload,
+            seed=segment.seed,
+            filename_prefix=filename_prefix,
+            image_filename=segment.grid_image_asset.comfyui_filename,
+            object_info=object_info,
+        )
+        submission_key = f"segment:{segment.segment_id}"
+        replacements.extend(
+            {
+                "key": "image",
+                "node": node_id,
+                "input": "image",
+                "source": "segment.grid_image_asset.comfyui_filename",
+                "value_preview": segment.grid_image_asset.comfyui_filename,
+            }
+            for node_id in widget_points.image_node_ids
+        )
+
+    models = validate_workflow_models(source_workflow, object_info or {})
+    fingerprint = _content_fingerprint(workflow)
+    submission = _new_submission(run_id, submission_key, fingerprint)
+    provenance = {
+        "run_id": run_id,
+        "segment_id": segment.segment_id,
+        "shot_id": segment.shot_id,
+        "order": segment.order,
+        "duration_seconds": segment.duration_seconds,
+        "fps": segment.fps,
+        "frame_count": segment.frame_count,
+        "local_frame_indices": list(segment.local_frame_indices),
+        "workflow_path": config.workflow_api_path,
+        "workflow_sha256": workflow_fingerprint(source_workflow),
+    }
+    return PlannedComfyUIWorkflow(
+        submission_key=submission_key,
+        workflow=workflow,
+        workflow_format="litegraph",
+        replacements=replacements,
+        ltx_payload=ltx_payload,
+        source_workflow=source_workflow,
+        provenance=provenance,
+        workflow_models=models,
+        workflow_sha256=provenance["workflow_sha256"],
+        submission=submission,
+    )
+
+
+def persist_planned_segment_workflow(
+    planned: PlannedComfyUIWorkflow,
+    segment_dir: str | Path,
+) -> dict[str, Path]:
+    target_dir = Path(segment_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "workflow_api": target_dir / "workflow_api.json",
+        "ltx_payload": target_dir / "ltx_payload.json",
+        "submission_metadata": target_dir / "submission_metadata.json",
+    }
+    _atomic_write_json(paths["workflow_api"], planned.workflow)
+    _atomic_write_json(paths["ltx_payload"], planned.ltx_payload or {})
+    _atomic_write_json(
+        paths["submission_metadata"],
+        {
+            "submission_key": planned.submission_key,
+            "submission": (
+                planned.submission.model_dump() if planned.submission else None
+            ),
+            "workflow_sha256": planned.workflow_sha256,
+            "workflow_models": [
+                binding.model_dump() for binding in planned.workflow_models
+            ],
+            "provenance": planned.provenance,
+        },
+    )
+    return paths
+
+
+def _atomic_write_json(path: Path, payload: Any) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    temporary.replace(path)
+
+
 def preview_storyboard_submission(
     config: ComfyUIRunConfig,
     storyboard: list[dict[str, Any]],
@@ -836,23 +996,15 @@ def fetch_workflow_runtime_object_info(
     if not config.workflow_api_path:
         return None
     workflow = load_workflow(config.workflow_api_path)
-    if detect_workflow_format(workflow) == "litegraph":
-        node_types = sorted(
-            {
-                str(node.get("type") or "").strip()
-                for node in workflow.get("nodes", [])
-                if isinstance(node, dict) and str(node.get("type") or "").strip()
-            }
-        )
-    else:
-        node_types = sorted(
-            {
-                str(node.get("class_type") or "").strip()
-                for node in workflow.values()
-                if isinstance(node, dict)
-                and str(node.get("class_type") or "").strip()
-            }
-        )
+    if detect_workflow_format(workflow) != "litegraph":
+        return None
+    node_types = sorted(
+        {
+            str(node.get("type") or "").strip()
+            for node in workflow.get("nodes", [])
+            if isinstance(node, dict) and str(node.get("type") or "").strip()
+        }
+    )
     object_info: dict[str, Any] = {}
     for node_type in node_types:
         response = client.get(
@@ -965,6 +1117,7 @@ def enqueue_workflow(
     *,
     prompt_id: str | None = None,
     client_id: str | None = None,
+    extra_data: dict[str, Any] | None = None,
     client: httpx.Client | None = None,
 ) -> str:
     payload: dict[str, Any] = {"prompt": workflow}
@@ -972,6 +1125,10 @@ def enqueue_workflow(
         payload["prompt_id"] = prompt_id
     if client_id:
         payload["client_id"] = client_id
+    if extra_data is not None or client_id:
+        payload["extra_data"] = copy.deepcopy(extra_data or {})
+        if client_id:
+            payload["extra_data"]["client_id"] = client_id
     if client is None:
         with _comfyui_http_client(timeout=30.0) as active_client:
             response = active_client.post(endpoint.rstrip("/") + "/prompt", json=payload)

@@ -13,6 +13,8 @@ from PIL import Image, ImageDraw
 from relief_story_agent.api import create_app
 from relief_story_agent.comfyui import (
     connect_comfyui,
+    persist_planned_segment_workflow,
+    prepare_segment_workflow,
     preview_storyboard_submission,
     submit_storyboard,
     upload_grid_image,
@@ -30,6 +32,7 @@ from relief_story_agent.models import (
     ComfyUIRunConfig,
     GridImageAsset,
     GridImageConfig,
+    SegmentRenderState,
 )
 from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
@@ -38,6 +41,61 @@ from relief_story_agent.tests.fixtures.ltx23_workflow_factory import build_sanit
 
 
 HTTPX_CLIENT = httpx.Client
+
+
+def test_prepare_segment_workflow_persists_exact_local_api_prompt(tmp_path):
+    workflow_path = tmp_path / "ltx.json"
+    workflow_path.write_text(
+        json.dumps(build_sanitized_ltx23_workflow(), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    segment = SegmentRenderState(
+        segment_id="segment-003",
+        shot_id="3",
+        order=3,
+        authored_time_range="25-45s",
+        render_time_range="25-45s",
+        duration_seconds=20,
+        frame_count=480,
+        local_frame_indices=[0, 160, 319, 479],
+        positive_prompt="segment three prompt",
+        negative_prompt="watermark",
+        seed=3003,
+        strength=0.76,
+        grid_panel_prompts=["a", "b", "c", "d"],
+        grid_image_asset=GridImageAsset(
+            source="generated",
+            local_path=str(tmp_path / "segment.png"),
+            sha256="a" * 64,
+            mime_type="image/png",
+            width=2048,
+            height=1152,
+            byte_size=100,
+            comfyui_filename="segment-003.png",
+            upload_status="accepted",
+        ),
+    )
+    config = ComfyUIRunConfig(
+        enabled=True,
+        workflow_api_path=str(workflow_path),
+    )
+
+    planned = prepare_segment_workflow(config, segment, "run-123")
+    paths = persist_planned_segment_workflow(
+        planned,
+        tmp_path / "segments" / "003-segment-003",
+    )
+
+    assert planned.submission_key == "segment:segment-003"
+    assert planned.submission is not None
+    assert planned.ltx_payload["frame_indices"] == "0,160,319,479"
+    assert len(planned.ltx_payload["shots"]) == 1
+    assert paths["workflow_api"].name == "workflow_api.json"
+    saved = json.loads(paths["workflow_api"].read_text(encoding="utf-8"))
+    injected = json.loads(saved["202"]["inputs"]["text"])
+    assert injected["prompt"] == "segment three prompt"
+    assert saved["196"]["inputs"]["image"] == "segment-003.png"
+    assert "run-123/segment-003" in saved["79"]["inputs"]["filename_prefix"]
 
 
 def _write_sanitized_workflow(tmp_path):

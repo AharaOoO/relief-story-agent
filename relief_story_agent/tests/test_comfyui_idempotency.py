@@ -6,7 +6,11 @@ import uuid
 import httpx
 import pytest
 
-from relief_story_agent.comfyui import ComfyUISubmissionUnknown, submit_storyboard
+from relief_story_agent.comfyui import (
+    ComfyUISubmissionUnknown,
+    enqueue_workflow,
+    submit_storyboard,
+)
 from relief_story_agent.models import (
     ComfyUIRunConfig,
     ComfyUISubmission,
@@ -19,6 +23,35 @@ from relief_story_agent.storage import JsonFileRunStore
 
 
 HTTPX_CLIENT = httpx.Client
+
+
+def test_enqueue_workflow_includes_public_provenance_and_source_workflow():
+    posted = {}
+
+    def handler(request: httpx.Request):
+        posted.update(json.loads(request.content))
+        return httpx.Response(200, json={"prompt_id": "prompt-1"})
+
+    client = HTTPX_CLIENT(transport=httpx.MockTransport(handler))
+    result = enqueue_workflow(
+        "http://comfy.local",
+        {"1": {"class_type": "PromptNode", "inputs": {"text": "patched"}}},
+        prompt_id="prompt-1",
+        client_id="client-1",
+        extra_data={
+            "relief_story_agent": {"run_id": "run-1", "segment_id": "segment-1"},
+            "extra_pnginfo": {"workflow": {"nodes": [], "links": []}},
+        },
+        client=client,
+    )
+
+    assert result == "prompt-1"
+    assert posted["extra_data"]["client_id"] == "client-1"
+    assert posted["extra_data"]["relief_story_agent"]["segment_id"] == "segment-1"
+    assert posted["extra_data"]["extra_pnginfo"]["workflow"] == {
+        "nodes": [],
+        "links": [],
+    }
 
 
 def _workflow_file(tmp_path):

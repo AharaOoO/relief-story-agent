@@ -2,11 +2,41 @@ import json
 
 from relief_story_agent.ltx_workflow import (
     build_ltx_payload_from_storyboard,
+    build_segment_ltx_payload,
     detect_workflow_format,
     find_ltx_injection_points,
     litegraph_to_api_prompt,
     patch_ltx_litegraph_workflow,
 )
+from relief_story_agent.models import SegmentRenderState
+
+
+def test_build_segment_ltx_payload_uses_local_timeline_and_one_shot():
+    segment = SegmentRenderState(
+        segment_id="segment-003",
+        shot_id="3",
+        order=3,
+        authored_time_range="25-45s",
+        render_time_range="25-45s",
+        duration_seconds=20,
+        frame_count=480,
+        local_frame_indices=[0, 160, 319, 479],
+        positive_prompt="slow dolly toward the cashier",
+        negative_prompt="text, watermark",
+        seed=31415,
+        strength=0.76,
+        grid_panel_prompts=["wide", "medium", "close", "reaction"],
+    )
+
+    payload = build_segment_ltx_payload(segment)
+
+    assert payload["duration_seconds"] == 20
+    assert payload["fps"] == 24
+    assert payload["frame_indices"] == "0,160,319,479"
+    assert payload["strengths"] == "0.76,0.76,0.76,0.76"
+    assert len(payload["shots"]) == 1
+    assert payload["shots"][0]["shot_id"] == "3"
+    assert payload["shots"][0]["time_range"] == "0-20s"
 
 
 def _mini_litegraph_workflow():

@@ -6,6 +6,7 @@ import re
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -489,11 +490,18 @@ def _validate_comfyui_workflow_models(request: RunRequest) -> dict[str, Any]:
         )
     try:
         with httpx.Client(timeout=10.0, trust_env=False) as client:
-            object_info = fetch_workflow_runtime_object_info(
-                client,
-                config.endpoint,
-                config,
-            ) or {}
+            if detect_workflow_format(workflow) == "litegraph":
+                object_info = fetch_workflow_runtime_object_info(
+                    client,
+                    config.endpoint,
+                    config,
+                ) or {}
+            else:
+                object_info = _fetch_api_workflow_object_info(
+                    client,
+                    config.endpoint,
+                    workflow,
+                )
         manifest = validate_workflow_models(workflow, object_info)
     except WorkflowModelUnavailable as exc:
         return _check(
@@ -552,6 +560,32 @@ def _workflow_may_reference_models(workflow: dict[str, Any]) -> bool:
         or value.endswith(MODEL_FILE_SUFFIXES)
         for value in normalized
     )
+
+
+def _fetch_api_workflow_object_info(
+    client: httpx.Client,
+    endpoint: str,
+    workflow: dict[str, Any],
+) -> dict[str, Any]:
+    node_types = sorted(
+        {
+            str(node.get("class_type") or "").strip()
+            for node in workflow.values()
+            if isinstance(node, dict)
+            and str(node.get("class_type") or "").strip()
+        }
+    )
+    object_info: dict[str, Any] = {}
+    for node_type in node_types:
+        response = client.get(
+            f"{endpoint.rstrip('/')}/object_info/{quote(node_type, safe='')}"
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if not isinstance(payload, dict):
+            continue
+        object_info[node_type] = payload.get(node_type, payload)
+    return object_info
 
 
 def _validate_output_root(request: RunRequest) -> dict[str, Any]:

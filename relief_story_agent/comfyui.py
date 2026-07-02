@@ -830,6 +830,93 @@ def persist_planned_segment_workflow(
     return paths
 
 
+def submit_planned_workflow(
+    config: ComfyUIRunConfig,
+    planned: PlannedComfyUIWorkflow,
+    *,
+    existing_submission: ComfyUISubmission | None = None,
+    on_update: Callable[[ComfyUISubmission], None] | None = None,
+    client: httpx.Client | None = None,
+) -> ComfyUISubmission:
+    if planned.submission is None:
+        raise ValueError("Planned workflow does not contain a submission identity")
+    candidate = planned.submission
+    if (
+        existing_submission is not None
+        and existing_submission.submission_key == candidate.submission_key
+        and existing_submission.content_fingerprint == candidate.content_fingerprint
+    ):
+        submission = existing_submission.model_copy(deep=True)
+    else:
+        submission = candidate.model_copy(deep=True)
+    owns_client = client is None
+    active_client = client or _comfyui_http_client(timeout=30.0)
+    try:
+        if submission.status == "accepted":
+            return submission
+        if existing_submission is not None and submission.status in {
+            "prepared",
+            "unknown",
+        }:
+            found_prompt_id = _find_existing_submission(
+                active_client,
+                config.endpoint,
+                submission,
+            )
+            if found_prompt_id:
+                _update_submission(
+                    submission,
+                    status="accepted",
+                    prompt_id=found_prompt_id,
+                    error="",
+                )
+                if on_update:
+                    on_update(submission.model_copy(deep=True))
+                return submission
+        _update_submission(submission, status="prepared", error="")
+        if on_update:
+            on_update(submission.model_copy(deep=True))
+        extra_data = {
+            "relief_story_agent": copy.deepcopy(planned.provenance),
+            "extra_pnginfo": {
+                "workflow": copy.deepcopy(planned.source_workflow or {}),
+            },
+        }
+        try:
+            returned_prompt_id = enqueue_workflow(
+                config.endpoint,
+                planned.workflow,
+                prompt_id=submission.prompt_id,
+                client_id=submission.client_id,
+                extra_data=extra_data,
+                client=active_client,
+            )
+        except httpx.TransportError as exc:
+            _update_submission(submission, status="unknown", error=str(exc))
+            if on_update:
+                on_update(submission.model_copy(deep=True))
+            raise ComfyUISubmissionUnknown(
+                f"ComfyUI submission status is unknown for {submission.submission_key}: {exc}"
+            ) from exc
+        except Exception as exc:
+            _update_submission(submission, status="rejected", error=str(exc))
+            if on_update:
+                on_update(submission.model_copy(deep=True))
+            raise
+        _update_submission(
+            submission,
+            status="accepted",
+            prompt_id=returned_prompt_id or submission.prompt_id,
+            error="",
+        )
+        if on_update:
+            on_update(submission.model_copy(deep=True))
+        return submission
+    finally:
+        if owns_client:
+            active_client.close()
+
+
 def _atomic_write_json(path: Path, payload: Any) -> None:
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text(
@@ -837,6 +924,35 @@ def _atomic_write_json(path: Path, payload: Any) -> None:
         encoding="utf-8",
     )
     temporary.replace(path)
+
+
+def classify_prompt_remote_state(
+    diagnostics: dict[str, Any],
+    prompt_id: str,
+) -> str:
+    queue = diagnostics.get("queue") or {}
+    if isinstance(queue, dict):
+        for queue_name, state in (
+            ("queue_running", "running"),
+            ("queue_pending", "queued"),
+        ):
+            for item in queue.get(queue_name) or []:
+                if isinstance(item, list) and len(item) > 1 and str(item[1]) == prompt_id:
+                    return state
+    history_map = diagnostics.get("history") or {}
+    history = history_map.get(prompt_id) if isinstance(history_map, dict) else None
+    if isinstance(history, dict):
+        record = _history_record_for_prompt(history, prompt_id)
+        status = record.get("status") if isinstance(record, dict) else None
+        status_text = str((status or {}).get("status_str") or "").casefold()
+        if status_text in {"error", "failed"}:
+            return "failed"
+        outputs = record.get("outputs") if isinstance(record, dict) else None
+        if isinstance(outputs, dict) and outputs:
+            return "completed"
+        if record:
+            return "running"
+    return "unknown"
 
 
 def preview_storyboard_submission(

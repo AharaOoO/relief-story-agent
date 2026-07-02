@@ -18,15 +18,22 @@ from .artifacts import (
 )
 from .comfyui import (
     ComfyUIOutputTimeout,
+    ComfyUISubmissionUnknown,
     ComfyUIWaitCancelled,
     analyze_workflow_config,
     cancel_prompt_jobs,
+    collect_prompt_diagnostics,
     collect_prompt_outputs,
+    classify_prompt_remote_state,
     detect_workflow_format,
     download_prompt_outputs,
+    fetch_workflow_runtime_object_info,
     load_workflow,
+    persist_planned_segment_workflow,
+    prepare_segment_workflow,
     preview_storyboard_submission,
     submit_storyboard,
+    submit_planned_workflow,
     upload_grid_image,
     wait_for_prompt_outputs,
 )
@@ -166,6 +173,10 @@ class InMemoryRunStore:
 
 
 class RunCancellationRequested(RuntimeError):
+    pass
+
+
+class RunMonitoringExtended(RuntimeError):
     pass
 
 
@@ -757,6 +768,15 @@ class StoryRunOrchestrator:
             self._finish_completed(run)
         except RunCancellationRequested:
             self._finish_cancelled(run)
+        except RunMonitoringExtended:
+            run.status = "running"
+            run.current_stage = "comfyui"
+            run.resume_stage = "comfyui"
+            run.lease_owner = ""
+            run.lease_expires_at = (
+                datetime.now(timezone.utc) + timedelta(seconds=1)
+            ).isoformat()
+            self.store.save(run)
         except Exception as exc:
             self._finish_failed(run, exc)
         finally:
@@ -1410,6 +1430,11 @@ class StoryRunOrchestrator:
         run.current_stage = "comfyui"
         assert run.request.comfyui is not None
 
+        provider = run.request.render_backend.provider
+        if provider != "runninghub_workflow" and run.segment_renders:
+            self._run_segmented_comfyui(run)
+            return
+
         def persist_submissions(submissions):
             run.comfyui_submissions = submissions
             run.comfyui_prompt_ids = [
@@ -1417,7 +1442,6 @@ class StoryRunOrchestrator:
             ]
             self.store.save(run)
 
-        provider = run.request.render_backend.provider
         if provider == "runninghub_workflow":
             run.add_log("comfyui", "Submitting storyboard shots to RunningHub.")
             with self.resource_limits.comfyui_submission():
@@ -1527,6 +1551,195 @@ class StoryRunOrchestrator:
             if run.artifact_dir or run.request.output_root:
                 write_artifact_manifest(run)
             self.store.save(run)
+
+    def _run_segmented_comfyui(self, run: RunState) -> None:
+        config = run.request.comfyui
+        assert config is not None
+        artifact_root = Path(run.artifact_dir or run.request.output_root or "runs")
+        if artifact_root.name != run.run_id:
+            artifact_root = artifact_root / run.run_id
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        run.artifact_dir = str(artifact_root)
+
+        with httpx.Client(timeout=30.0, trust_env=False) as client:
+            object_info = fetch_workflow_runtime_object_info(
+                client,
+                config.endpoint,
+                config,
+            ) or {}
+            for segment in sorted(run.segment_renders, key=lambda item: item.order):
+                if segment.status == "completed":
+                    continue
+                if segment.grid_image_asset is None:
+                    raise ValueError(
+                        f"Segment {segment.segment_id} has no grid image asset"
+                    )
+                segment_dir = (
+                    artifact_root
+                    / "segments"
+                    / f"{segment.order:03d}-{segment.segment_id}"
+                )
+                planned = prepare_segment_workflow(
+                    config,
+                    segment,
+                    run.run_id,
+                    object_info=object_info,
+                )
+                paths = persist_planned_segment_workflow(planned, segment_dir)
+                segment.workflow_name = Path(config.workflow_api_path or "").stem
+                segment.workflow_path = config.workflow_api_path or ""
+                segment.workflow_sha256 = planned.workflow_sha256
+                segment.workflow_api_artifact = str(paths["workflow_api"])
+                segment.workflow_models = list(planned.workflow_models)
+                segment.status = "submitting"
+                segment.error = ""
+                self.store.save(run)
+
+                def persist_submission(current, *, target=segment):
+                    target.submission = current
+                    self._sync_segment_comfyui_views(run)
+                    self.store.save(run)
+
+                try:
+                    with self.resource_limits.comfyui_submission():
+                        segment.submission = submit_planned_workflow(
+                            config,
+                            planned,
+                            existing_submission=segment.submission,
+                            on_update=persist_submission,
+                            client=client,
+                        )
+                except ComfyUISubmissionUnknown as exc:
+                    segment.status = "unknown"
+                    segment.error = str(exc)
+                    self._sync_segment_comfyui_views(run)
+                    run.add_event(
+                        "segment_monitoring_extended",
+                        stage="comfyui",
+                        message=str(exc),
+                        data={
+                            "segment_id": segment.segment_id,
+                            "order": segment.order,
+                            "remote_state": "unknown",
+                        },
+                    )
+                    self.store.save(run)
+                    raise RunMonitoringExtended(str(exc)) from exc
+
+                segment.status = "queued"
+                if not segment.submitted_at:
+                    segment.submitted_at = datetime.now(timezone.utc).isoformat()
+                self._sync_segment_comfyui_views(run)
+                run.add_event(
+                    "segment_submitted",
+                    stage="comfyui",
+                    data={
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "prompt_id": segment.submission.prompt_id,
+                    },
+                )
+                self.store.save(run)
+
+                try:
+                    outputs = wait_for_prompt_outputs(
+                        config,
+                        [segment.submission.prompt_id],
+                        client=client,
+                        should_cancel=lambda: self.store.get(
+                            run.run_id
+                        ).cancel_requested,
+                    )
+                except ComfyUIWaitCancelled as exc:
+                    run.cancel_requested = True
+                    run.comfyui_cancellations = cancel_prompt_jobs(
+                        config,
+                        [segment.submission.prompt_id],
+                        client=client,
+                    )
+                    segment.status = "cancelled"
+                    self.store.save(run)
+                    raise RunCancellationRequested(
+                        "run cancellation requested while waiting for ComfyUI"
+                    ) from exc
+                except ComfyUIOutputTimeout as exc:
+                    diagnostics = exc.diagnostics or collect_prompt_diagnostics(
+                        config,
+                        [segment.submission.prompt_id],
+                        client=client,
+                    )
+                    remote_state = classify_prompt_remote_state(
+                        diagnostics,
+                        segment.submission.prompt_id,
+                    )
+                    run.comfyui_diagnostics = diagnostics
+                    if remote_state == "failed":
+                        segment.status = "failed"
+                        segment.error = "ComfyUI reported a failed segment job"
+                        self.store.save(run)
+                        raise RuntimeError(segment.error) from exc
+                    segment.status = remote_state  # type: ignore[assignment]
+                    segment.error = "" if remote_state in {"queued", "running"} else str(exc)
+                    run.add_event(
+                        "segment_monitoring_extended",
+                        stage="comfyui",
+                        message=(
+                            "ComfyUI job remains active; monitoring will resume without resubmission."
+                            if remote_state in {"queued", "running"}
+                            else "ComfyUI submission could not yet be reconciled."
+                        ),
+                        data={
+                            "segment_id": segment.segment_id,
+                            "order": segment.order,
+                            "prompt_id": segment.submission.prompt_id,
+                            "remote_state": remote_state,
+                        },
+                    )
+                    self._sync_segment_comfyui_views(run)
+                    self.store.save(run)
+                    raise RunMonitoringExtended(str(exc)) from exc
+
+                if config.download_outputs:
+                    outputs = download_prompt_outputs(
+                        outputs,
+                        segment_dir,
+                        client=client,
+                    )
+                segment.outputs = outputs
+                segment.status = "completed"
+                segment.error = ""
+                segment.completed_at = datetime.now(timezone.utc).isoformat()
+                self._sync_segment_comfyui_views(run)
+                run.add_event(
+                    "segment_completed",
+                    stage="comfyui",
+                    data={
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "prompt_id": segment.submission.prompt_id,
+                        "output_count": len(outputs),
+                    },
+                )
+                self.store.save(run)
+        run.comfyui_diagnostics = {}
+
+    @staticmethod
+    def _sync_segment_comfyui_views(run: RunState) -> None:
+        ordered = sorted(run.segment_renders, key=lambda item: item.order)
+        run.comfyui_submissions = [
+            segment.submission
+            for segment in ordered
+            if segment.submission is not None
+        ]
+        run.comfyui_prompt_ids = [
+            segment.submission.prompt_id
+            for segment in ordered
+            if segment.submission is not None
+            and segment.submission.status == "accepted"
+        ]
+        run.comfyui_outputs = [
+            output for segment in ordered for output in segment.outputs
+        ]
 
     def _write_artifacts(self, run: RunState) -> None:
         run.current_stage = "artifacts"

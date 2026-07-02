@@ -616,6 +616,7 @@ def _dump_default_value(value: Any) -> Any:
 class GridImageRetryOverride(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    segment_id: str | None = None
     runninghub_site: Literal["cn", "ai"]
     aspect_ratio: Literal["16:9", "9:16"]
     resolution: Literal["1k", "2k"]

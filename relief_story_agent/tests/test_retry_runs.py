@@ -13,6 +13,7 @@ from relief_story_agent.models import (
     GridImageRetryOverride,
     RunRequest,
     RunRetryRequest,
+    SegmentRenderState,
 )
 from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
@@ -210,6 +211,67 @@ def test_queue_retry_applies_grid_override_and_clears_only_grid_checkpoint_state
     assert queued.retry_configuration_history[-1]["before"]["runninghub_site"] == "ai"
     assert queued.retry_configuration_history[-1]["after"]["runninghub_site"] == "cn"
     assert any(event.event_type == "retry_configuration_updated" for event in queued.events)
+
+
+def test_queue_retry_with_segment_id_clears_only_target_segment():
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore(),
+    )
+    failed = _failed_grid_run(orchestrator)
+    failed.segment_renders = [
+        SegmentRenderState(
+            segment_id=f"segment-{index}",
+            shot_id=str(index),
+            order=index,
+            authored_time_range=f"{index - 1}-{index}s",
+            render_time_range=f"{index - 1}-{index}s",
+            duration_seconds=1,
+            frame_count=24,
+            local_frame_indices=[0, 8, 15, 23],
+            positive_prompt=f"prompt {index}",
+            grid_panel_prompts=[f"panel {panel}" for panel in range(4)],
+            grid_image_asset=GridImageAsset(
+                source="generated",
+                local_path=f"D:/runs/segment-{index}.png",
+                sha256=str(index) * 64,
+                mime_type="image/png",
+                width=2048,
+                height=1152,
+                byte_size=1024,
+            ),
+            grid_image_checkpoint="workflow_patched",
+            status="image_ready" if index == 1 else "failed",
+            error="image request failed" if index == 2 else "",
+        )
+        for index in (1, 2)
+    ]
+    orchestrator.store.save(failed)
+
+    queued = orchestrator.queue_retry(
+        failed.run_id,
+        RunRetryRequest(
+            from_stage="four_grid_asset",
+            grid_image_override=GridImageRetryOverride(
+                segment_id="segment-2",
+                runninghub_site="cn",
+                aspect_ratio="9:16",
+                resolution="1k",
+            ),
+        ),
+    )
+
+    first, second = queued.segment_renders
+    assert first.status == "image_ready"
+    assert first.grid_image_asset is not None
+    assert first.grid_image_checkpoint == "workflow_patched"
+    assert second.status == "planned"
+    assert second.grid_image_asset is None
+    assert second.grid_image_attempts == []
+    assert second.grid_image_checkpoint == ""
+    assert second.submission is None
+    assert second.outputs == []
+    assert second.error == ""
 
 
 @pytest.mark.parametrize(

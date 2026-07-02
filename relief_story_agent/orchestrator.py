@@ -47,7 +47,7 @@ from .grid_image import (
     GridImageProvider,
     acquire_generated_grid_image,
     acquire_manual_grid_image,
-    compile_four_grid_prompt,
+    compile_segment_four_grid_prompt,
     deterministic_comfyui_filename,
 )
 from .image_providers import GridImageProviderRouter
@@ -62,6 +62,7 @@ from .models import (
     GridImageAsset,
     GridImageAttempt,
     GridImageConfig,
+    SegmentRenderState,
     RunRequest,
     RunRetryRequest,
     RunState,
@@ -78,6 +79,7 @@ from .prompt_templates import (
 from .providers import ModelProvider
 from .quality import QualityGate
 from .resource_limits import ExecutionResourceLimits
+from .segment_render import build_segment_render_plan
 
 
 IMAGE_PROMPT_MAX_CHARS = 220
@@ -596,28 +598,70 @@ class StoryRunOrchestrator:
             "aspect_ratio": current.aspect_ratio,
             "resolution": current.resolution,
         }
-        after = override.model_dump()
+        after = override.model_dump(exclude={"segment_id"})
         run.request.comfyui.grid_image = GridImageConfig.model_validate(
             {**current.model_dump(), **after}
         )
         run.request.creation_spec.video_aspect_ratio = override.aspect_ratio
         run.request.creation_spec.image_resolution = override.resolution
-        run.grid_image_asset = None
-        run.grid_image_attempts = []
-        run.grid_image_checkpoint = ""
-        run.grid_image_replacements = []
+        if override.segment_id:
+            segment = next(
+                (
+                    item
+                    for item in run.segment_renders
+                    if item.segment_id == override.segment_id
+                ),
+                None,
+            )
+            if segment is None:
+                raise RetryConfigurationConflict(
+                    f"grid image retry segment {override.segment_id!r} was not found"
+                )
+            segment.grid_image_prompt = ""
+            segment.grid_image_asset = None
+            segment.grid_image_attempts = []
+            segment.grid_image_checkpoint = ""
+            segment.submission = None
+            segment.outputs = []
+            segment.status = "planned"
+            segment.error = ""
+            segment.submitted_at = ""
+            segment.started_at = ""
+            segment.completed_at = ""
+            if segment.order == 1:
+                run.grid_image_asset = None
+                run.grid_image_attempts = []
+                run.grid_image_checkpoint = ""
+                run.grid_image_replacements = []
+        else:
+            run.grid_image_asset = None
+            run.grid_image_attempts = []
+            run.grid_image_checkpoint = ""
+            run.grid_image_replacements = []
+            for segment in run.segment_renders:
+                segment.grid_image_prompt = ""
+                segment.grid_image_asset = None
+                segment.grid_image_attempts = []
+                segment.grid_image_checkpoint = ""
+                segment.submission = None
+                segment.outputs = []
+                segment.status = "planned"
+                segment.error = ""
         revision = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
             "stage": "four_grid_asset",
             "before": before,
-            "after": after,
+            "after": {**after, "segment_id": override.segment_id},
         }
         run.retry_configuration_history.append(revision)
         run.add_event(
             "retry_configuration_updated",
             stage="four_grid_asset",
             message="Grid image configuration updated before retry.",
-            data={"before": before, "after": after},
+            data={
+                "before": before,
+                "after": {**after, "segment_id": override.segment_id},
+            },
         )
 
     def request_cancel(self, run_id: str) -> RunState:
@@ -1130,37 +1174,127 @@ class StoryRunOrchestrator:
         artifact_dir = Path(run.request.output_root or "runs") / run.run_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         run.artifact_dir = str(artifact_dir)
-
-        if not run.grid_image_prompt:
-            run.grid_image_prompt = compile_four_grid_prompt(
+        if not run.segment_renders:
+            if not storyboard and run.grid_image_asset is not None:
+                run.grid_image_checkpoint = "workflow_patched"
+                self.store.save(run)
+                return
+            run.segment_renders = build_segment_render_plan(
                 storyboard,
+                target_duration_seconds=run.request.creation_spec.duration_seconds,
+                fps=24,
+            )
+            if run.grid_image_asset is not None:
+                if len(run.segment_renders) != 1:
+                    raise ValueError(
+                        "Legacy multi-segment run has only one grid image; restart stage 8 to create per-segment assets"
+                    )
+                legacy = run.segment_renders[0]
+                legacy.grid_image_prompt = run.grid_image_prompt
+                legacy.grid_image_asset = run.grid_image_asset
+                legacy.grid_image_attempts = list(run.grid_image_attempts)
+                legacy.grid_image_checkpoint = run.grid_image_checkpoint
+            for segment in run.segment_renders:
+                run.add_event(
+                    "segment_planned",
+                    stage="four_grid_asset",
+                    data={
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "duration_seconds": segment.duration_seconds,
+                    },
+                )
+            self.store.save(run)
+
+        for segment in run.segment_renders:
+            self._run_segment_grid_asset(
+                run,
+                segment,
+                config=config,
+                image_config=image_config,
+                artifact_dir=artifact_dir,
+            )
+
+        first = run.segment_renders[0]
+        run.grid_image_prompt = first.grid_image_prompt
+        run.grid_image_asset = first.grid_image_asset
+        run.grid_image_attempts = list(first.grid_image_attempts)
+        run.grid_image_checkpoint = first.grid_image_checkpoint
+        self.store.save(run)
+
+    def _run_segment_grid_asset(
+        self,
+        run: RunState,
+        segment: SegmentRenderState,
+        *,
+        config,
+        image_config: GridImageConfig,
+        artifact_dir: Path,
+    ) -> None:
+        if segment.status == "image_ready" and segment.grid_image_checkpoint == "workflow_patched":
+            return
+        segment_dir = artifact_dir / "segments" / f"{segment.order:03d}-{segment.segment_id}"
+        segment_dir.mkdir(parents=True, exist_ok=True)
+        if not segment.grid_image_prompt:
+            segment.grid_image_prompt = compile_segment_four_grid_prompt(
+                {
+                    "image_prompt": segment.positive_prompt,
+                    "grid_panel_prompts": segment.grid_panel_prompts,
+                },
+                aspect_ratio=image_config.aspect_ratio,
                 max_chars=image_config.prompt_max_chars,
             )
-            run.grid_image_checkpoint = "prompt_compiled"
+            segment.grid_image_checkpoint = "prompt_compiled"
+            self._sync_legacy_grid_state(run, segment)
             self.store.save(run)
 
-        if run.grid_image_asset is None:
-            if image_config.effective_mode() == "manual_override":
-                run.grid_image_asset = acquire_manual_grid_image(
-                    image_config.manual_image_path or "",
-                    artifact_dir=artifact_dir,
-                    prompt=run.grid_image_prompt,
-                    config=image_config,
+        if segment.grid_image_asset is None:
+            segment.status = "image_generating"
+            segment.error = ""
+            run.add_event(
+                "segment_grid_started",
+                stage="four_grid_asset",
+                data={"segment_id": segment.segment_id, "order": segment.order},
+            )
+            self.store.save(run)
+            try:
+                if image_config.effective_mode() == "manual_override":
+                    segment.grid_image_asset = acquire_manual_grid_image(
+                        image_config.manual_image_path or "",
+                        artifact_dir=segment_dir,
+                        prompt=segment.grid_image_prompt,
+                        config=image_config,
+                    )
+                else:
+                    segment.grid_image_asset = self._acquire_generated_segment_asset(
+                        run,
+                        segment,
+                        artifact_dir=segment_dir,
+                        image_config=image_config,
+                    )
+            except Exception as exc:
+                segment.status = "failed"
+                segment.error = str(exc)
+                run.add_event(
+                    "segment_grid_failed",
+                    stage="four_grid_asset",
+                    message=str(exc),
+                    data={"segment_id": segment.segment_id, "order": segment.order},
                 )
-            else:
-                run.grid_image_asset = self._acquire_generated_grid_asset(
-                    run,
-                    artifact_dir=artifact_dir,
-                    image_config=image_config,
-                )
-            run.grid_image_checkpoint = "image_acquired"
+                self.store.save(run)
+                raise
+            segment.grid_image_checkpoint = "image_acquired"
+            self._sync_legacy_grid_state(run, segment)
             self.store.save(run)
 
-        run.grid_image_checkpoint = "image_validated"
-        asset = run.grid_image_asset
+        segment.grid_image_checkpoint = "image_validated"
+        asset = segment.grid_image_asset
+        assert asset is not None
+        self._sync_legacy_grid_state(run, segment)
+        self.store.save(run)
         if asset.upload_status != "accepted":
             destination = deterministic_comfyui_filename(
-                run.run_id,
+                f"{run.run_id}_{segment.segment_id}",
                 asset.sha256,
                 asset.mime_type,
             )
@@ -1176,21 +1310,101 @@ class StoryRunOrchestrator:
                 asset.comfyui_filename = destination
                 asset.upload_status = "unknown"
                 asset.upload_error = str(exc)
+                segment.error = str(exc)
+                self._sync_legacy_grid_state(run, segment)
                 self.store.save(run)
                 raise
-            run.grid_image_checkpoint = "image_uploaded"
+            segment.grid_image_checkpoint = "image_uploaded"
+            self._sync_legacy_grid_state(run, segment)
             self.store.save(run)
 
         preview = preview_storyboard_submission(
             config,
-            storyboard,
-            run.run_id,
-            duration_seconds=run.request.duration_seconds,
+            [self._segment_storyboard_item(segment)],
+            f"{run.run_id}_{segment.segment_id}",
+            duration_seconds=segment.duration_seconds,
             grid_image_asset=asset,
         )
-        run.grid_image_replacements = preview["items"][0]["replacements"]
-        run.grid_image_checkpoint = "workflow_patched"
+        segment.grid_image_checkpoint = "workflow_patched"
+        segment.status = "image_ready"
+        segment.error = ""
+        self._sync_legacy_grid_state(run, segment)
+        if segment.order == 1:
+            run.grid_image_replacements = preview["items"][0]["replacements"]
+        run.add_event(
+            "segment_grid_completed",
+            stage="four_grid_asset",
+            data={
+                "segment_id": segment.segment_id,
+                "order": segment.order,
+                "task_id": asset.task_id,
+                "filename": asset.comfyui_filename,
+            },
+        )
         self.store.save(run)
+
+    @staticmethod
+    def _sync_legacy_grid_state(run: RunState, segment: SegmentRenderState) -> None:
+        if segment.order != 1:
+            return
+        run.grid_image_prompt = segment.grid_image_prompt
+        run.grid_image_asset = segment.grid_image_asset
+        run.grid_image_attempts = list(segment.grid_image_attempts)
+        run.grid_image_checkpoint = segment.grid_image_checkpoint
+
+    def _acquire_generated_segment_asset(
+        self,
+        run: RunState,
+        segment: SegmentRenderState,
+        *,
+        artifact_dir: Path,
+        image_config: GridImageConfig,
+    ) -> GridImageAsset:
+        for attempt_number in range(1, image_config.max_attempts + 1):
+            attempt = GridImageAttempt(attempt_number=attempt_number)
+            segment.grid_image_attempts.append(attempt)
+            self.store.save(run)
+            try:
+                with self.resource_limits.image_generation():
+                    asset = acquire_generated_grid_image(
+                        self.grid_image_provider,
+                        artifact_dir=artifact_dir,
+                        prompt=segment.grid_image_prompt,
+                        config=image_config,
+                    )
+            except Exception as exc:
+                attempt.status = "failed"
+                attempt.error_type = type(exc).__name__
+                attempt.error_message = str(exc)
+                attempt.finished_at = datetime.now(timezone.utc).isoformat()
+                self.store.save(run)
+                failure = classify_failure("four_grid_asset", exc)
+                if not failure.retryable or attempt_number == image_config.max_attempts:
+                    raise
+                time.sleep(min(2 ** (attempt_number - 1), 8))
+                continue
+            attempt.status = "succeeded"
+            attempt.finished_at = datetime.now(timezone.utc).isoformat()
+            self.store.save(run)
+            return asset
+        raise RuntimeError("segment grid image generation exhausted without a result")
+
+    @staticmethod
+    def _segment_storyboard_item(segment: SegmentRenderState) -> dict[str, Any]:
+        return {
+            "shot_id": segment.shot_id,
+            "time_range": f"0-{segment.duration_seconds}s",
+            "description": segment.positive_prompt,
+            "image_prompt": segment.positive_prompt,
+            "negative_prompt": segment.negative_prompt,
+            "grid_panel_prompts": list(segment.grid_panel_prompts),
+            "comfyui_inputs": {
+                "positive": segment.positive_prompt,
+                "negative": segment.negative_prompt,
+                "seed": segment.seed,
+                "strength": segment.strength,
+            },
+        }
 
     def _run_comfyui(self, run: RunState) -> None:
         run.current_stage = "comfyui"

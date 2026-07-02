@@ -315,6 +315,82 @@ class ComfyUICancellation(BaseModel):
     checked_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+class WorkflowModelBinding(BaseModel):
+    node_id: str
+    class_type: str
+    title: str = ""
+    input_name: str
+    selected: str
+    available: bool = False
+    choices: list[str] = Field(default_factory=list)
+
+
+class SegmentRenderState(BaseModel):
+    segment_id: str
+    shot_id: str
+    order: int = Field(ge=1)
+    authored_time_range: str
+    render_time_range: str
+    duration_seconds: int = Field(gt=0)
+    fps: int = Field(default=24, ge=1, le=120)
+    frame_count: int = Field(gt=0)
+    local_frame_indices: list[int] = Field(min_length=4, max_length=4)
+    positive_prompt: str
+    negative_prompt: str = ""
+    seed: int = 0
+    strength: float = Field(default=0.7, ge=0, le=1)
+    grid_panel_prompts: list[str] = Field(default_factory=list, min_length=4, max_length=4)
+    grid_prompt_source: Literal["model", "derived"] = "derived"
+    grid_image_prompt: str = ""
+    grid_image_asset: GridImageAsset | None = None
+    grid_image_attempts: list[GridImageAttempt] = Field(default_factory=list)
+    grid_image_checkpoint: Literal[
+        "",
+        "prompt_compiled",
+        "image_acquired",
+        "image_validated",
+        "image_uploaded",
+        "workflow_patched",
+    ] = ""
+    workflow_name: str = ""
+    workflow_path: str = ""
+    workflow_sha256: str = ""
+    workflow_api_artifact: str = ""
+    workflow_models: list[WorkflowModelBinding] = Field(default_factory=list)
+    submission: ComfyUISubmission | None = None
+    outputs: list[ComfyUIOutput] = Field(default_factory=list)
+    status: Literal[
+        "planned",
+        "image_generating",
+        "image_ready",
+        "submitting",
+        "queued",
+        "running",
+        "completed",
+        "unknown",
+        "failed",
+        "cancelled",
+    ] = "planned"
+    error: str = ""
+    planned_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    submitted_at: str = ""
+    started_at: str = ""
+    completed_at: str = ""
+
+
+class VideoAssemblyState(BaseModel):
+    status: Literal["pending", "running", "completed", "failed"] = "pending"
+    clip_paths: list[str] = Field(default_factory=list)
+    concat_manifest_path: str = ""
+    output_path: str = ""
+    output_sha256: str = ""
+    duration_seconds: float = 0
+    command: list[str] = Field(default_factory=list)
+    return_code: int | None = None
+    stderr_tail: str = ""
+    error: str = ""
+
+
 class FailureRecord(BaseModel):
     stage: str
     category: Literal[
@@ -632,6 +708,9 @@ class RunState(BaseModel):
         "workflow_patched",
     ] = ""
     grid_image_replacements: list[dict[str, Any]] = Field(default_factory=list)
+    segment_renders: list[SegmentRenderState] = Field(default_factory=list)
+    video_assembly: VideoAssemblyState = Field(default_factory=VideoAssemblyState)
+    segment_schema_version: int = 2
     retry_configuration_history: list[dict[str, Any]] = Field(default_factory=list)
     artifact_dir: str = ""
     error: str = ""

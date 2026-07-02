@@ -62,6 +62,7 @@ try {
         --workpath (Join-Path $PyInstallerWork 'work') `
         --specpath $PyInstallerWork `
         --paths $RepoRoot `
+        --collect-all imageio_ffmpeg `
         $EntryPoint
     if ($LASTEXITCODE -ne 0) { throw 'Python sidecar build failed.' }
 

@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import io
 import json
+from pathlib import Path
 
 import httpx
 from PIL import Image, ImageDraw
 
 from relief_story_agent.grid_image import GeneratedImage
-from relief_story_agent.models import ComfyUIRunConfig, GridImageAsset, RunRequest
+from relief_story_agent.models import (
+    ComfyUIOutput,
+    ComfyUIRunConfig,
+    GridImageAsset,
+    RunRequest,
+    VideoAssemblyState,
+)
 from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
 from relief_story_agent.segment_render import build_segment_render_plan
@@ -295,3 +302,43 @@ def test_active_segment_timeout_extends_monitoring_without_failing_run(
     assert any(
         event.event_type == "segment_monitoring_extended" for event in run.events
     )
+
+
+def test_completed_segments_are_assembled_in_story_order(tmp_path, monkeypatch):
+    orchestrator, run = _segment_video_run(tmp_path)
+    clips = []
+    for segment in run.segment_renders:
+        clip = tmp_path / f"{segment.segment_id}.mp4"
+        clip.write_bytes(segment.segment_id.encode())
+        clips.append(str(clip))
+        segment.status = "completed"
+        segment.outputs = [
+            ComfyUIOutput(
+                prompt_id=f"prompt-{segment.order}",
+                filename=clip.name,
+                media_type="video",
+                local_path=str(clip),
+            )
+        ]
+    recorded = []
+
+    def fake_assemble(paths, output_path):
+        recorded.extend(paths)
+        Path(output_path).write_bytes(b"assembled")
+        return VideoAssemblyState(
+            status="completed",
+            clip_paths=list(paths),
+            output_path=str(output_path),
+            output_sha256="f" * 64,
+        )
+
+    monkeypatch.setattr(
+        "relief_story_agent.orchestrator.assemble_segment_videos",
+        fake_assemble,
+    )
+
+    orchestrator._assemble_segment_outputs(run)
+
+    assert recorded == clips
+    assert run.video_assembly.status == "completed"
+    assert any(event.event_type == "video_assembly_completed" for event in run.events)

@@ -87,6 +87,7 @@ from .providers import ModelProvider
 from .quality import QualityGate
 from .resource_limits import ExecutionResourceLimits
 from .segment_render import build_segment_render_plan
+from .video_assembly import assemble_segment_videos
 
 
 IMAGE_PROMPT_MAX_CHARS = 220
@@ -1722,6 +1723,7 @@ class StoryRunOrchestrator:
                 )
                 self.store.save(run)
         run.comfyui_diagnostics = {}
+        self._assemble_segment_outputs(run)
 
     @staticmethod
     def _sync_segment_comfyui_views(run: RunState) -> None:
@@ -1740,6 +1742,61 @@ class StoryRunOrchestrator:
         run.comfyui_outputs = [
             output for segment in ordered for output in segment.outputs
         ]
+
+    def _assemble_segment_outputs(self, run: RunState) -> None:
+        ordered = sorted(run.segment_renders, key=lambda item: item.order)
+        if not ordered or any(segment.status != "completed" for segment in ordered):
+            return
+        clip_paths: list[str] = []
+        for segment in ordered:
+            video = next(
+                (
+                    output
+                    for output in segment.outputs
+                    if output.media_type == "video" and output.local_path
+                ),
+                None,
+            )
+            if video is None:
+                if run.request.comfyui and run.request.comfyui.download_outputs:
+                    run.video_assembly.status = "failed"
+                    run.video_assembly.error = (
+                        f"Segment {segment.segment_id} has no downloaded video output"
+                    )
+                    self.store.save(run)
+                    raise RuntimeError(run.video_assembly.error)
+                return
+            clip_paths.append(video.local_path)
+
+        artifact_root = Path(run.artifact_dir or run.request.output_root or "runs")
+        if artifact_root.name != run.run_id:
+            artifact_root = artifact_root / run.run_id
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        run.artifact_dir = str(artifact_root)
+        output_path = artifact_root / f"{run.run_id}_assembled.mp4"
+        run.video_assembly.status = "running"
+        run.video_assembly.clip_paths = list(clip_paths)
+        run.add_event(
+            "video_assembly_started",
+            stage="comfyui",
+            data={"clip_count": len(clip_paths)},
+        )
+        self.store.save(run)
+        run.video_assembly = assemble_segment_videos(clip_paths, output_path)
+        if run.video_assembly.status != "completed":
+            run.add_event(
+                "video_assembly_failed",
+                stage="comfyui",
+                message=run.video_assembly.error,
+            )
+            self.store.save(run)
+            raise RuntimeError(run.video_assembly.error or "Video assembly failed")
+        run.add_event(
+            "video_assembly_completed",
+            stage="comfyui",
+            data={"output_path": run.video_assembly.output_path},
+        )
+        self.store.save(run)
 
     def _write_artifacts(self, run: RunState) -> None:
         run.current_stage = "artifacts"

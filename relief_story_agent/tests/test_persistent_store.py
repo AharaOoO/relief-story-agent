@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
 from pathlib import Path
@@ -7,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from relief_story_agent import storage
-from relief_story_agent.models import BatchRunRequest, RunRequest, RunState
+from relief_story_agent.models import BatchRunRequest, GridImageAsset, RunRequest, RunState
 from relief_story_agent.orchestrator import StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
 from relief_story_agent.server import build_app
@@ -59,6 +60,35 @@ def test_json_file_store_persists_runs_and_batches_across_instances(tmp_path):
     assert saved_auto_run.model_usage_summary.total_requests == 5
     assert saved_manual_run.request.idea == "压力小怪物"
     assert saved_manual_run.status == "awaiting_approval"
+
+
+def test_legacy_single_grid_run_loads_as_schema_v1_without_paid_migration(tmp_path):
+    store = JsonFileRunStore(tmp_path / "state")
+    legacy = RunState(
+        run_id="run_legacy_grid",
+        request=RunRequest(idea="legacy"),
+        grid_image_asset=GridImageAsset(
+            source="generated",
+            local_path="D:/runs/legacy.png",
+            sha256="a" * 64,
+            mime_type="image/png",
+            width=2048,
+            height=1152,
+            byte_size=100,
+        ),
+    ).model_dump()
+    legacy.pop("segment_schema_version", None)
+    legacy.pop("segment_renders", None)
+    (store.runs_dir / "run_legacy_grid.json").write_text(
+        json.dumps(legacy),
+        encoding="utf-8",
+    )
+
+    loaded = store.get("run_legacy_grid")
+
+    assert loaded.segment_schema_version == 1
+    assert loaded.segment_renders == []
+    assert loaded.grid_image_asset is not None
 
 
 def test_json_file_store_uses_unique_atomic_temp_files_across_instances(

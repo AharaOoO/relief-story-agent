@@ -92,8 +92,11 @@ def test_four_grid_stage_runs_after_prompt_audit_before_artifacts_and_comfyui(
         lambda *args, **kwargs: "run_grid.png",
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: submitted.append(kwargs["grid_image_asset"]) or [],
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: submitted.extend(
+            segment.grid_image_asset for segment in run.segment_renders
+        ),
     )
     orchestrator = StoryRunOrchestrator(
         provider=FakeModelProvider.minimal_success(),
@@ -167,8 +170,9 @@ def test_persistent_restart_reuses_generated_asset_after_comfyui_failure(tmp_pat
         lambda *args, **kwargs: "persisted.png",
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("comfy failed")),
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: (_ for _ in ()).throw(RuntimeError("comfy failed")),
     )
 
     first.execute_scheduled(run.run_id)
@@ -183,8 +187,9 @@ def test_persistent_restart_reuses_generated_asset_after_comfyui_failure(tmp_pat
         grid_image_provider=provider,
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: [],
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: None,
     )
     restarted.queue_retry(run.run_id, RunRetryRequest(from_stage="comfyui"))
     completed = restarted.execute_scheduled(run.run_id)
@@ -212,8 +217,9 @@ def test_manual_override_never_calls_image_provider(tmp_path, monkeypatch):
         lambda *args, **kwargs: "manual.png",
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: [],
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: None,
     )
     orchestrator = StoryRunOrchestrator(
         provider=FakeModelProvider.minimal_success(),

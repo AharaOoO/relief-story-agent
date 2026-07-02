@@ -747,6 +747,16 @@ class RunState(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
+    @model_validator(mode="before")
+    @classmethod
+    def _mark_legacy_single_grid_schema(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or "segment_schema_version" in data:
+            return data
+        migrated = dict(data)
+        if migrated.get("grid_image_asset") and not migrated.get("segment_renders"):
+            migrated["segment_schema_version"] = 1
+        return migrated
+
     def add_log(self, stage: str, message: str, level: Literal["info", "warn", "error"] = "info") -> None:
         self.logs.append(RunLog(stage=stage, message=message, level=level))
         self.updated_at = datetime.now(timezone.utc).isoformat()

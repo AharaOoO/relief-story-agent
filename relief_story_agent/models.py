@@ -369,6 +369,15 @@ class CreationSpec(BaseModel):
             data["image_resolution"] = "1k"
         return data
 
+    @field_validator("duration_seconds")
+    @classmethod
+    def _validate_duration_seconds(cls, value: int) -> int:
+        if value == 0 or 15 <= value <= 300:
+            return value
+        raise ValueError(
+            "duration_seconds must be 0 (auto) or between 15 and 300"
+        )
+
 
 class PromptProfileBinding(BaseModel):
     profile_id: str = "system-default"

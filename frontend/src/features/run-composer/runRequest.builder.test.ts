@@ -1,7 +1,24 @@
 import { describe, expect, it } from 'vitest'
-import { buildBatchRequest, buildRunRequest, createRunDraft } from './runRequest.builder'
+import {
+  buildBatchRequest,
+  buildRunRequest,
+  createRunDraft,
+  normalizeDurationSeconds,
+} from './runRequest.builder'
 
 describe('autopilot run request builder', () => {
+  it.each([0, 15, 90, 300])('serializes duration %s', (durationSeconds) => {
+    const request = buildRunRequest({ ...createRunDraft(), durationSeconds })
+
+    expect(request.creation_spec.duration_seconds).toBe(durationSeconds)
+  })
+
+  it('normalizes unsupported duration values without changing auto mode', () => {
+    expect(normalizeDurationSeconds(0)).toBe(0)
+    expect(normalizeDurationSeconds(1)).toBe(15)
+    expect(normalizeDurationSeconds(301)).toBe(300)
+  })
+
   it('builds a valid blank auto request with landscape 2k defaults', () => {
     const request = buildRunRequest(createRunDraft())
 

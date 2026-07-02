@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const LEGACY_STORAGE_KEY = 'relief-story-agent:run-draft:v2'
 const PREVIOUS_STORAGE_KEY = 'relief-story-agent:run-draft:v3'
 const V4_STORAGE_KEY = 'relief-story-agent:run-draft:v4'
-const CURRENT_STORAGE_KEY = 'relief-story-agent:run-draft:v5'
+const V5_STORAGE_KEY = 'relief-story-agent:run-draft:v5'
+const CURRENT_STORAGE_KEY = 'relief-story-agent:run-draft:v6'
 
 const legacyRunningHubStageModels = {
   chief_screenwriter: { provider_mode: 'runninghub', runninghub_site: 'ai', model: 'google/gemini-3.5-flash' },
@@ -88,5 +89,18 @@ describe('run draft storage migration', () => {
 
     const persisted = JSON.parse(window.localStorage.getItem(CURRENT_STORAGE_KEY) ?? '{}')
     expect(persisted.gridImageSite).toBe('cn')
+  })
+
+  it('migrates the existing v5 duration and preserves automatic duration zero', async () => {
+    window.localStorage.setItem(V5_STORAGE_KEY, JSON.stringify({
+      content: 'automatic duration',
+      durationSeconds: 0,
+    }))
+
+    const { useRunDraft } = await import('./runDraft.store')
+
+    expect(useRunDraft.getState().draft.durationSeconds).toBe(0)
+    const persisted = JSON.parse(window.localStorage.getItem(CURRENT_STORAGE_KEY) ?? '{}')
+    expect(persisted.durationSeconds).toBe(0)
   })
 })

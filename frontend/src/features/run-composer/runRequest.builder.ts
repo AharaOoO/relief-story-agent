@@ -15,6 +15,11 @@ export type StoryInputMode = 'auto' | 'idea' | 'requirements' | 'script' | 'mixe
 
 export const RUNNINGHUB_LLM_TIMEOUT_SECONDS = 300
 
+export function normalizeDurationSeconds(value: number): number {
+  if (value === 0) return 0
+  return Math.min(300, Math.max(15, Math.round(value)))
+}
+
 export type StageModelDraft = {
   provider_mode: 'runninghub' | 'openai_compatible'
   runninghub_site?: RunningHubSite
@@ -274,7 +279,7 @@ export function buildRunRequest(draft: RunDraft, index = 0): RunRequestPayload {
       preserve_original_plot: true,
     },
     creation_spec: {
-      duration_seconds: draft.durationSeconds,
+      duration_seconds: normalizeDurationSeconds(draft.durationSeconds),
       video_aspect_ratio: draft.aspectRatio,
       image_resolution: draft.imageResolution,
       style_preset_id: draft.stylePresetId,

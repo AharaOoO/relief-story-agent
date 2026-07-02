@@ -7,7 +7,24 @@ from relief_story_agent.config_validation import (
     validate_run_configuration,
 )
 from relief_story_agent.model_config import ModelConfigRegistry
-from relief_story_agent.models import RunRequest
+from relief_story_agent.models import CreationSpec, RunRequest
+
+
+@pytest.mark.parametrize("value", [0, 15, 90, 300])
+def test_creation_spec_accepts_supported_duration_values(value):
+    assert CreationSpec(duration_seconds=value).duration_seconds == value
+
+
+@pytest.mark.parametrize("value", [-1, 1, 14, 301])
+def test_creation_spec_rejects_unsupported_duration_values(value):
+    with pytest.raises(ValidationError):
+        CreationSpec(duration_seconds=value)
+
+
+def test_legacy_run_duration_migrates_into_creation_spec():
+    request = RunRequest.model_validate({"duration_seconds": 180})
+
+    assert request.creation_spec.duration_seconds == 180
 
 def test_run_request_v2_migration():
     # Test that V1 idea is migrated to input_spec

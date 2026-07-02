@@ -3,11 +3,13 @@ import {
   createRunDraft,
   createStandardStageModels,
   MODEL_STAGE_IDS,
+  normalizeDurationSeconds,
   type RunDraft,
 } from './runRequest.builder'
 
-const STORAGE_KEY = 'relief-story-agent:run-draft:v5'
+const STORAGE_KEY = 'relief-story-agent:run-draft:v6'
 const LEGACY_STORAGE_KEYS = [
+  'relief-story-agent:run-draft:v5',
   'relief-story-agent:run-draft:v4',
   'relief-story-agent:run-draft:v3',
   'relief-story-agent:run-draft:v2',
@@ -36,6 +38,7 @@ function mergeStoredDraft(stored: Partial<RunDraft>, migrateLegacyModels = false
   return {
     ...base,
     ...stored,
+    durationSeconds: normalizeDurationSeconds(stored.durationSeconds ?? base.durationSeconds),
     gridImageSite: stored.gridImageSite ?? stored.runninghubSite ?? base.gridImageSite,
     stageModels,
     stagePrompts: stored.stagePrompts ?? base.stagePrompts,

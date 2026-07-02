@@ -6,6 +6,7 @@ import pytest
 
 from relief_story_agent.api import create_app
 from relief_story_agent.models import (
+    ComfyUIRetryOverride,
     ComfyUIRunConfig,
     GridImageAsset,
     GridImageAttempt,
@@ -14,8 +15,13 @@ from relief_story_agent.models import (
     RunRequest,
     RunRetryRequest,
     SegmentRenderState,
+    StageModelConfig,
 )
-from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
+from relief_story_agent.orchestrator import (
+    InMemoryRunStore,
+    RetryConfigurationConflict,
+    StoryRunOrchestrator,
+)
 from relief_story_agent.providers import FakeModelProvider
 
 
@@ -139,6 +145,141 @@ def test_api_retries_failed_run():
     assert retry.status_code == 200
     assert retry.json()["status"] == "completed"
     assert retry.json()["retry_count"] == 1
+
+
+def _failed_quality_gate_run(orchestrator: StoryRunOrchestrator):
+    run = orchestrator.prepare_run(
+        RunRequest(
+            idea="恢复质量门禁",
+            approval_mode="auto",
+            comfyui=ComfyUIRunConfig(
+                enabled=True,
+                endpoint="http://127.0.0.1:8188",
+                workflow_api_path="D:/workflows/original.json",
+                grid_image=GridImageConfig(
+                    provider="runninghub_image_task",
+                    runninghub_site="ai",
+                    model="rhart-image-g-2",
+                    aspect_ratio="16:9",
+                    resolution="2k",
+                ),
+            ),
+        )
+    )
+    run.status = "failed"
+    run.current_stage = "failed"
+    run.failed_stage = "quality_gate"
+    run.script = {"title": "保留已完成剧本", "duration_seconds": 150}
+    run.add_event("stage_completed", stage="chief_screenwriter")
+    run.add_event("stage_completed", stage="deepseek_polish")
+    orchestrator.store.save(run)
+    return run
+
+
+def test_queue_retry_applies_model_and_prompt_overrides_to_unfinished_stages():
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore(),
+    )
+    failed = _failed_quality_gate_run(orchestrator)
+
+    queued = orchestrator.queue_retry(
+        failed.run_id,
+        RunRetryRequest(
+            from_stage="quality_gate",
+            model_config_overrides={
+                "quality_gate": StageModelConfig(
+                    provider_mode="runninghub",
+                    runninghub_site="cn",
+                    model="glm-5.2",
+                ),
+                "gpt_prompt_writer": StageModelConfig(
+                    provider_mode="runninghub",
+                    runninghub_site="ai",
+                    model="anthropic/claude-sonnet-5",
+                ),
+            },
+            prompt_overrides={
+                "quality_gate": "新的质量门禁提示词",
+                "gpt_prompt_writer": "新的分镜提示词",
+            },
+        ),
+    )
+
+    assert queued.status == "queued"
+    assert queued.resume_stage == "quality_gate"
+    assert queued.request.model_configs["quality_gate"].model == "glm-5.2"
+    assert (
+        queued.request.model_configs["gpt_prompt_writer"].model
+        == "anthropic/claude-sonnet-5"
+    )
+    assert queued.prompt_snapshot["quality_gate"] == "新的质量门禁提示词"
+    assert queued.prompt_snapshot["gpt_prompt_writer"] == "新的分镜提示词"
+    assert queued.script == {"title": "保留已完成剧本", "duration_seconds": 150}
+    assert {item["stage"] for item in queued.retry_configuration_history} >= {
+        "quality_gate",
+        "gpt_prompt_writer",
+    }
+
+
+def test_queue_retry_rejects_override_for_a_completed_stage_without_mutation():
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore(),
+    )
+    failed = _failed_quality_gate_run(orchestrator)
+
+    with pytest.raises(RetryConfigurationConflict, match="completed successfully"):
+        orchestrator.queue_retry(
+            failed.run_id,
+            RunRetryRequest(
+                from_stage="quality_gate",
+                model_config_overrides={
+                    "deepseek_polish": StageModelConfig(
+                        provider_mode="runninghub",
+                        runninghub_site="cn",
+                        model="deepseek/deepseek-v4-pro",
+                    )
+                },
+            ),
+        )
+
+    persisted = orchestrator.store.get(failed.run_id)
+    assert persisted.status == "failed"
+    assert "deepseek_polish" not in persisted.request.model_configs
+    assert persisted.retry_configuration_history == []
+
+
+def test_queue_retry_can_update_future_grid_and_comfyui_configuration():
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=InMemoryRunStore(),
+    )
+    failed = _failed_quality_gate_run(orchestrator)
+
+    queued = orchestrator.queue_retry(
+        failed.run_id,
+        RunRetryRequest(
+            from_stage="quality_gate",
+            grid_image_override=GridImageRetryOverride(
+                runninghub_site="cn",
+                aspect_ratio="9:16",
+                resolution="1k",
+            ),
+            comfyui_override=ComfyUIRetryOverride(
+                endpoint="http://127.0.0.1:8288",
+                workflow_api_path="D:/workflows/recovered.json",
+                output_timeout_seconds=1200,
+            ),
+        ),
+    )
+
+    assert queued.request.comfyui is not None
+    assert queued.request.comfyui.grid_image.runninghub_site == "cn"
+    assert queued.request.comfyui.grid_image.aspect_ratio == "9:16"
+    assert queued.request.comfyui.endpoint == "http://127.0.0.1:8288"
+    assert queued.request.comfyui.workflow_api_path == "D:/workflows/recovered.json"
+    assert queued.request.comfyui.output_timeout_seconds == 1200
 
 
 def _failed_grid_run(orchestrator: StoryRunOrchestrator):

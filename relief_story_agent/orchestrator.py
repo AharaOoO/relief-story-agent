@@ -66,6 +66,7 @@ from .models import (
     BatchRunItem,
     BatchRunRequest,
     BatchRunState,
+    ComfyUIRunConfig,
     GridImageAsset,
     GridImageAttempt,
     GridImageConfig,
@@ -80,7 +81,14 @@ from .models import (
     VideoAssemblyState,
 )
 from .output_contracts import require_bool, require_list, require_mapping, require_shot_contract
-from .pipeline import BASE_RUNTIME_STAGE_ORDER, retry_tail_for_stage, stage_ids_for_run
+from .pipeline import (
+    BASE_RUNTIME_STAGE_ORDER,
+    CANONICAL_STAGE_ORDER,
+    MODEL_STAGE_IDS,
+    retry_tail_for_stage,
+    stage_ids_for_run,
+)
+from .provider_catalog import validate_runninghub_model
 from .prompt_templates import (
     build_prompt_audit_prompt,
     build_prompt_reviser_prompt,
@@ -606,7 +614,7 @@ class StoryRunOrchestrator:
     def retry(self, run_id: str, request: RunRetryRequest | None = None) -> RunState:
         run = self.store.get(run_id)
         retry_request = request or RunRetryRequest()
-        self._apply_grid_image_retry_override(run, retry_request)
+        self._apply_retry_configuration_overrides(run, retry_request)
         start_stage = retry_request.from_stage or run.failed_stage or "chief_screenwriter"
         run.retry_count += 1
         run.add_log("retry", f"Retrying from stage: {start_stage}")
@@ -752,7 +760,7 @@ class StoryRunOrchestrator:
     ) -> RunState:
         run = self.store.get(run_id)
         retry_request = request or RunRetryRequest()
-        self._apply_grid_image_retry_override(run, retry_request)
+        self._apply_retry_configuration_overrides(run, retry_request)
         run.resume_stage = retry_request.from_stage or run.failed_stage or "chief_screenwriter"
         run.retry_count += 1
         run.status = "queued"
@@ -766,55 +774,171 @@ class StoryRunOrchestrator:
         return run
 
     @staticmethod
-    def _apply_grid_image_retry_override(
+    def _apply_retry_configuration_overrides(
         run: RunState,
         retry_request: RunRetryRequest,
     ) -> None:
-        override = retry_request.grid_image_override
-        if override is None:
+        overridden_stages = set(retry_request.model_config_overrides)
+        overridden_stages.update(retry_request.prompt_overrides)
+        if retry_request.grid_image_override is not None:
+            overridden_stages.add("four_grid_asset")
+        if retry_request.comfyui_override is not None:
+            overridden_stages.add("comfyui")
+        if not overridden_stages:
             return
+
+        context = (
+            "grid image retry override"
+            if retry_request.grid_image_override is not None
+            and len(overridden_stages) == 1
+            else "retry configuration override"
+        )
         if run.status != "failed":
+            raise RetryConfigurationConflict(f"{context} requires a failed run")
+        if run.failed_stage not in CANONICAL_STAGE_ORDER:
             raise RetryConfigurationConflict(
-                "grid image retry override requires a failed run"
+                f"{context} requires a known failed stage"
             )
-        if run.failed_stage != "four_grid_asset":
+        requested_stage = retry_request.from_stage or run.failed_stage
+        if requested_stage != run.failed_stage:
             raise RetryConfigurationConflict(
-                "grid image retry override requires four_grid_asset to be the failed stage"
-            )
-        if retry_request.from_stage != "four_grid_asset":
-            raise RetryConfigurationConflict(
-                "grid image retry override requires retry from four_grid_asset"
-            )
-        if run.request.comfyui is None:
-            raise RetryConfigurationConflict(
-                "grid image retry override requires ComfyUI configuration"
+                f"{context} requires retry from the actual failed stage "
+                f"{run.failed_stage}"
             )
 
-        current = run.request.comfyui.grid_image
-        before = {
-            "runninghub_site": current.runninghub_site,
-            "aspect_ratio": current.aspect_ratio,
-            "resolution": current.resolution,
+        completed_stages = {
+            event.stage
+            for event in run.events
+            if event.event_type == "stage_completed" and event.stage
         }
-        after = override.model_dump(exclude={"segment_id"})
-        run.request.comfyui.grid_image = GridImageConfig.model_validate(
-            {**current.model_dump(), **after}
-        )
-        run.request.creation_spec.video_aspect_ratio = override.aspect_ratio
-        run.request.creation_spec.image_resolution = override.resolution
-        if override.segment_id:
-            segment = next(
-                (
-                    item
-                    for item in run.segment_renders
-                    if item.segment_id == override.segment_id
-                ),
-                None,
-            )
-            if segment is None:
+        failed_index = CANONICAL_STAGE_ORDER.index(run.failed_stage)
+        for stage in sorted(
+            overridden_stages,
+            key=CANONICAL_STAGE_ORDER.index,
+        ):
+            if stage in completed_stages or CANONICAL_STAGE_ORDER.index(stage) < failed_index:
                 raise RetryConfigurationConflict(
-                    f"grid image retry segment {override.segment_id!r} was not found"
+                    f"stage {stage} completed successfully and cannot be changed"
                 )
+
+        for stage, config in retry_request.model_config_overrides.items():
+            if stage not in MODEL_STAGE_IDS:
+                raise RetryConfigurationConflict(
+                    f"stage {stage} does not support model configuration"
+                )
+            if config.provider_mode == "runninghub":
+                assert config.runninghub_site is not None
+                validate_runninghub_model(
+                    site=config.runninghub_site,
+                    stage=stage,
+                    model=config.model,
+                )
+
+        current_comfyui = run.request.comfyui
+        if (
+            retry_request.grid_image_override is not None
+            or retry_request.comfyui_override is not None
+        ) and current_comfyui is None:
+            raise RetryConfigurationConflict(
+                f"{context} requires ComfyUI configuration"
+            )
+
+        candidate_comfyui: ComfyUIRunConfig | None = None
+        if current_comfyui is not None:
+            comfyui_data = current_comfyui.model_dump()
+            if retry_request.grid_image_override is not None:
+                grid_data = current_comfyui.grid_image.model_dump()
+                grid_data.update(
+                    retry_request.grid_image_override.model_dump(
+                        exclude={"segment_id"}
+                    )
+                )
+                comfyui_data["grid_image"] = GridImageConfig.model_validate(
+                    grid_data
+                ).model_dump()
+                segment_id = retry_request.grid_image_override.segment_id
+                if segment_id and not any(
+                    item.segment_id == segment_id for item in run.segment_renders
+                ):
+                    raise RetryConfigurationConflict(
+                        f"grid image retry segment {segment_id!r} was not found"
+                    )
+            if retry_request.comfyui_override is not None:
+                for field_name in retry_request.comfyui_override.model_fields_set:
+                    value = getattr(retry_request.comfyui_override, field_name)
+                    comfyui_data[field_name] = value
+            candidate_comfyui = ComfyUIRunConfig.model_validate(comfyui_data)
+
+        for stage in CANONICAL_STAGE_ORDER:
+            model_override = retry_request.model_config_overrides.get(stage)
+            prompt_override = retry_request.prompt_overrides.get(stage)
+            if model_override is None and prompt_override is None:
+                continue
+            before: dict[str, Any] = {}
+            after: dict[str, Any] = {}
+            if model_override is not None:
+                current_model = run.request.model_configs.get(stage)
+                before["model_config"] = (
+                    current_model.model_dump() if current_model is not None else None
+                )
+                run.request.model_configs[stage] = model_override.model_copy(deep=True)
+                after["model_config"] = model_override.model_dump()
+            if prompt_override is not None:
+                before["prompt"] = run.prompt_snapshot.get(stage, "")
+                run.prompt_snapshot[stage] = prompt_override
+                after["prompt"] = prompt_override
+            StoryRunOrchestrator._record_retry_configuration_update(
+                run,
+                stage=stage,
+                before=before,
+                after=after,
+                message="Stage model or prompt configuration updated before retry.",
+            )
+
+        if retry_request.grid_image_override is not None:
+            override = retry_request.grid_image_override
+            assert current_comfyui is not None
+            assert candidate_comfyui is not None
+            before = {
+                "runninghub_site": current_comfyui.grid_image.runninghub_site,
+                "aspect_ratio": current_comfyui.grid_image.aspect_ratio,
+                "resolution": current_comfyui.grid_image.resolution,
+            }
+            after = override.model_dump(exclude={"segment_id"})
+            run.request.comfyui = candidate_comfyui
+            run.request.creation_spec.video_aspect_ratio = override.aspect_ratio
+            run.request.creation_spec.image_resolution = override.resolution
+            StoryRunOrchestrator._reset_grid_retry_state(run, override.segment_id)
+            StoryRunOrchestrator._record_retry_configuration_update(
+                run,
+                stage="four_grid_asset",
+                before=before,
+                after={**after, "segment_id": override.segment_id},
+                message="Grid image configuration updated before retry.",
+            )
+
+        if retry_request.comfyui_override is not None:
+            override = retry_request.comfyui_override
+            assert current_comfyui is not None
+            assert candidate_comfyui is not None
+            fields = override.model_fields_set
+            before = {field: getattr(current_comfyui, field) for field in fields}
+            run.request.comfyui = candidate_comfyui
+            after = {field: getattr(candidate_comfyui, field) for field in fields}
+            StoryRunOrchestrator._record_retry_configuration_update(
+                run,
+                stage="comfyui",
+                before=before,
+                after=after,
+                message="ComfyUI configuration updated before retry.",
+            )
+
+    @staticmethod
+    def _reset_grid_retry_state(run: RunState, segment_id: str | None) -> None:
+        if segment_id:
+            segment = next(
+                item for item in run.segment_renders if item.segment_id == segment_id
+            )
             segment.grid_image_prompt = ""
             segment.grid_image_asset = None
             segment.grid_image_attempts = []
@@ -831,35 +955,43 @@ class StoryRunOrchestrator:
                 run.grid_image_attempts = []
                 run.grid_image_checkpoint = ""
                 run.grid_image_replacements = []
-        else:
-            run.grid_image_asset = None
-            run.grid_image_attempts = []
-            run.grid_image_checkpoint = ""
-            run.grid_image_replacements = []
-            for segment in run.segment_renders:
-                segment.grid_image_prompt = ""
-                segment.grid_image_asset = None
-                segment.grid_image_attempts = []
-                segment.grid_image_checkpoint = ""
-                segment.submission = None
-                segment.outputs = []
-                segment.status = "planned"
-                segment.error = ""
+            return
+
+        run.grid_image_asset = None
+        run.grid_image_attempts = []
+        run.grid_image_checkpoint = ""
+        run.grid_image_replacements = []
+        for segment in run.segment_renders:
+            segment.grid_image_prompt = ""
+            segment.grid_image_asset = None
+            segment.grid_image_attempts = []
+            segment.grid_image_checkpoint = ""
+            segment.submission = None
+            segment.outputs = []
+            segment.status = "planned"
+            segment.error = ""
+
+    @staticmethod
+    def _record_retry_configuration_update(
+        run: RunState,
+        *,
+        stage: str,
+        before: dict[str, Any],
+        after: dict[str, Any],
+        message: str,
+    ) -> None:
         revision = {
             "updated_at": datetime.now(timezone.utc).isoformat(),
-            "stage": "four_grid_asset",
+            "stage": stage,
             "before": before,
-            "after": {**after, "segment_id": override.segment_id},
+            "after": after,
         }
         run.retry_configuration_history.append(revision)
         run.add_event(
             "retry_configuration_updated",
-            stage="four_grid_asset",
-            message="Grid image configuration updated before retry.",
-            data={
-                "before": before,
-                "after": {**after, "segment_id": override.segment_id},
-            },
+            stage=stage,
+            message=message,
+            data={"before": before, "after": after},
         )
 
     def request_cancel(self, run_id: str) -> RunState:

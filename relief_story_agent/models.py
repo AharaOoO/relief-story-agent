@@ -622,6 +622,37 @@ class GridImageRetryOverride(BaseModel):
     resolution: Literal["1k", "2k"]
 
 
+ModelStageId = Literal[
+    "chief_screenwriter",
+    "deepseek_polish",
+    "quality_gate",
+    "gpt_prompt_writer",
+    "gpt_prompt_audit",
+    "gpt_prompt_reviser",
+]
+
+RecoverableStage = Literal[
+    "chief_screenwriter",
+    "deepseek_polish",
+    "quality_gate",
+    "gpt_prompt_writer",
+    "gpt_prompt_audit",
+    "gpt_prompt_reviser",
+    "final_prompts",
+    "four_grid_asset",
+    "artifacts",
+    "comfyui",
+]
+
+
+class ComfyUIRetryOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: str | None = None
+    workflow_api_path: str | None = None
+    output_timeout_seconds: float | None = Field(default=None, gt=0)
+
+
 class SegmentImageRetryRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -638,19 +669,15 @@ class SegmentActionRequest(BaseModel):
 
 
 class RunRetryRequest(BaseModel):
-    from_stage: Literal[
-        "chief_screenwriter",
-        "deepseek_polish",
-        "quality_gate",
-        "gpt_prompt_writer",
-        "gpt_prompt_audit",
-        "gpt_prompt_reviser",
-        "final_prompts",
-        "four_grid_asset",
-        "artifacts",
-        "comfyui",
-    ] | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    from_stage: RecoverableStage | None = None
+    model_config_overrides: dict[ModelStageId, StageModelConfig] = Field(
+        default_factory=dict
+    )
+    prompt_overrides: dict[ModelStageId, str] = Field(default_factory=dict)
     grid_image_override: GridImageRetryOverride | None = None
+    comfyui_override: ComfyUIRetryOverride | None = None
 
 
 class BatchRetryRequest(RunRetryRequest):

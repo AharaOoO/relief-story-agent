@@ -7,6 +7,7 @@ from relief_story_agent.grid_image import (
     acquire_manual_grid_image,
     acquire_generated_grid_image,
     compile_four_grid_prompt,
+    compile_segment_four_grid_prompt,
     deterministic_comfyui_filename,
     GeneratedImage,
     validate_grid_image,
@@ -111,6 +112,26 @@ def test_compile_prompt_selects_four_balanced_chronological_frames():
     assert "Bottom-left: frame 5" in prompt
     assert "Bottom-right: frame 8" in prompt
     assert len(prompt) <= 600
+
+
+def test_compile_segment_prompt_uses_only_one_shot_and_four_ordered_panels():
+    prompt = compile_segment_four_grid_prompt(
+        {
+            "shot_id": 3,
+            "image_prompt": "父亲把热咖啡推向夜班护士",
+            "grid_panel_prompts": ["看见", "靠近", "推杯", "释然"],
+        },
+        aspect_ratio="16:9",
+        max_chars=1200,
+    )
+
+    assert "one story segment" in prompt
+    assert "Top-left: 看见" in prompt
+    assert "Top-right: 靠近" in prompt
+    assert "Bottom-left: 推杯" in prompt
+    assert "Bottom-right: 释然" in prompt
+    assert "16:9" in prompt
+    assert "other segments" in prompt
 
 
 def test_validate_grid_image_reports_dimensions_hash_and_quadrants(tmp_path):

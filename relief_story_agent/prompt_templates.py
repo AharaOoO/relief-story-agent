@@ -137,6 +137,17 @@ Workflow context:
 """.strip()
 
 
+SEGMENT_GRID_WRITER_REQUIREMENTS = """
+每个 shot 必须描述一个独立视频分段，不能把其他分段合并进来。
+每个 shot 增加 grid_panel_prompts，必须是四个按时间顺序排列的中文字符串，分别描述本段的开场、发展、高潮和收束画面。
+四格必须保持人物身份、服装、场景、光线、镜头轴线与空间关系连续。
+""".strip()
+
+SEGMENT_GRID_AUDIT_REQUIREMENTS = """
+检查每个 shot 的 grid_panel_prompts 是否恰好四项、只属于当前分段，并保持四格内部连续性；发现跨段混合或人物漂移时必须判定需要修正。
+""".strip()
+
+
 def build_prompt_writer_prompt(
     *,
     request: RunRequest,
@@ -147,14 +158,18 @@ def build_prompt_writer_prompt(
     if request.template_paths and request.template_paths.prompt_writer_template_path:
         tmpl = _load_template(request.template_paths.prompt_writer_template_path, DEFAULT_PROMPT_WRITER_TEMPLATE)
     else:
-        tmpl = template or DEFAULT_PROMPT_WRITER_TEMPLATE
+        tmpl = template or (
+            DEFAULT_PROMPT_WRITER_TEMPLATE
+            + "\n\n"
+            + SEGMENT_GRID_WRITER_REQUIREMENTS
+        )
     return _render_template(
         tmpl,
         {
             "script_json": _json(script),
             "storyboard_json": "",
             "audit_json": "",
-            "duration_seconds": str(script.get("duration_seconds") or request.duration_seconds),
+            "duration_seconds": _duration_prompt_value(request, script),
             "preferred_style": request.preferred_style or "由模型根据剧本选择",
             "workflow_context": workflow_context or "未配置 ComfyUI workflow",
         },
@@ -173,14 +188,18 @@ def build_prompt_audit_prompt(
     if request.template_paths and request.template_paths.prompt_audit_template_path:
         tmpl = _load_template(request.template_paths.prompt_audit_template_path, DEFAULT_PROMPT_AUDIT_TEMPLATE)
     else:
-        tmpl = template or DEFAULT_PROMPT_AUDIT_TEMPLATE
+        tmpl = template or (
+            DEFAULT_PROMPT_AUDIT_TEMPLATE
+            + "\n\n"
+            + SEGMENT_GRID_AUDIT_REQUIREMENTS
+        )
     return _render_template(
         tmpl,
         {
             "script_json": _json(script),
             "storyboard_json": _json(storyboard),
             "audit_json": "",
-            "duration_seconds": str(script.get("duration_seconds") or request.duration_seconds),
+            "duration_seconds": _duration_prompt_value(request, script),
             "preferred_style": request.preferred_style or "由模型根据剧本选择",
             "workflow_context": workflow_context or "未配置 ComfyUI workflow",
         },
@@ -197,14 +216,20 @@ def build_prompt_reviser_prompt(
     workflow_context: str = "",
     template: str | None = None,
 ) -> str:
-    tmpl = template or getattr(request.template_paths, "prompt_reviser_template_path", None) or DEFAULT_PROMPT_REVISER_TEMPLATE
+    tmpl = template or getattr(request.template_paths, "prompt_reviser_template_path", None) or (
+        DEFAULT_PROMPT_REVISER_TEMPLATE
+        + "\n\n"
+        + SEGMENT_GRID_WRITER_REQUIREMENTS
+        + "\n"
+        + SEGMENT_GRID_AUDIT_REQUIREMENTS
+    )
     return _render_template(
         tmpl,
         {
             "script_json": _json(script),
             "storyboard_json": _json(storyboard),
             "audit_json": _json(audit),
-            "duration_seconds": str(script.get("duration_seconds") or request.duration_seconds),
+            "duration_seconds": _duration_prompt_value(request, script),
             "preferred_style": request.preferred_style or "由模型根据剧本选择",
             "workflow_context": workflow_context or "未配置 ComfyUI workflow",
         },
@@ -283,6 +308,16 @@ def _render_template(
 
 def _json(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, indent=2)
+
+
+def _duration_prompt_value(request: RunRequest, script: dict[str, Any]) -> str:
+    script_duration = script.get("duration_seconds")
+    if isinstance(script_duration, (int, float)) and script_duration > 0:
+        return str(int(script_duration))
+    target = request.creation_spec.duration_seconds
+    if target == 0:
+        return "自动确定，最长 300"
+    return str(target)
 
 
 def _template_placeholders(template: str) -> set[str]:

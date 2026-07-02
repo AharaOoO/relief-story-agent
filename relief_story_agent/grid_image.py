@@ -9,6 +9,7 @@ from typing import Literal, Protocol
 from PIL import Image, ImageStat
 
 from .models import GridImageAsset, GridImageConfig
+from .segment_render import grid_panel_prompts_for_shot
 
 
 @dataclass(frozen=True)
@@ -57,6 +58,28 @@ def compile_four_grid_prompt(storyboard: list[dict], *, max_chars: int) -> str:
         " No captions, labels, readable text, watermarks, extra panels, duplicated cells, or decorative borders."
     )
     prompt = prefix + " ".join(frames) + suffix
+    return prompt[:max_chars].rstrip()
+
+
+def compile_segment_four_grid_prompt(
+    shot: dict,
+    *,
+    aspect_ratio: Literal["16:9", "9:16"],
+    max_chars: int,
+) -> str:
+    panels, _ = grid_panel_prompts_for_shot(shot)
+    labels = ["Top-left", "Top-right", "Bottom-left", "Bottom-right"]
+    panel_text = " ".join(
+        f"{label}: {text}" for label, text in zip(labels, panels, strict=True)
+    )
+    prompt = (
+        "Create one clean 2x2 cinematic contact sheet for one story segment only, "
+        f"composed for a {aspect_ratio} output. Read the cells in chronological order. "
+        "Keep character identity, wardrobe, location, lighting, camera axis, and screen direction consistent. "
+        f"{panel_text} "
+        "Do not include events, characters, or locations from other segments. "
+        "No captions, panel labels, readable text, watermarks, extra panels, duplicated cells, or decorative borders."
+    )
     return prompt[:max_chars].rstrip()
 
 

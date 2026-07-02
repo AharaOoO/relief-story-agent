@@ -24,7 +24,20 @@ def test_prompt_writer_uses_default_template_with_concise_runninghub_g2_guidance
     assert "RunningHub G2" in prompt
     assert "GPT image2" not in prompt
     assert "60-120" in prompt
+    assert "grid_panel_prompts" in prompt
     assert "{{script_json}}" not in prompt
+
+
+def test_prompt_writer_describes_automatic_duration_instead_of_zero_seconds():
+    prompt = build_prompt_writer_prompt(
+        request=RunRequest.model_validate(
+            {"creation_spec": {"duration_seconds": 0}}
+        ),
+        script={"title": "automatic duration"},
+    )
+
+    assert "目标时长：0 秒" not in prompt
+    assert "最长 300 秒" in prompt
 
 
 def test_prompt_writer_uses_user_md_template_when_path_is_configured(tmp_path):

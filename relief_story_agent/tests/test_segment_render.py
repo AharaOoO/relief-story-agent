@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from relief_story_agent.output_contracts import require_shot_contract
 from relief_story_agent.segment_render import (
     build_segment_render_plan,
     local_frame_indices,
@@ -73,6 +74,23 @@ def test_model_authored_panels_are_preserved():
 
     assert state.grid_panel_prompts == shot["grid_panel_prompts"]
     assert state.grid_prompt_source == "model"
+
+
+def test_shot_contract_accepts_exactly_four_optional_grid_panels():
+    shot = dict(SIX_SHOTS[0])
+    shot["grid_panel_prompts"] = ["opening", "development", "climax", "exit"]
+
+    normalized = require_shot_contract([shot], "gpt_prompt_writer")
+
+    assert normalized[0]["grid_panel_prompts"] == shot["grid_panel_prompts"]
+
+
+def test_shot_contract_rejects_incomplete_grid_panels():
+    shot = dict(SIX_SHOTS[0])
+    shot["grid_panel_prompts"] = ["opening", "exit"]
+
+    with pytest.raises(ValueError, match="exactly four"):
+        require_shot_contract([shot], "gpt_prompt_writer")
 
 
 def test_legacy_shot_derives_four_panels():

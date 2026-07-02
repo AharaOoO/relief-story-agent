@@ -130,6 +130,26 @@ describe('RunComposer input mode detection', () => {
     expect(useRunDraft.getState().draft.gridImageSite).toBe('ai')
   })
 
+  it('supports automatic, preset, and exact durations up to five minutes', async () => {
+    renderComposer()
+
+    const preset = screen.getByLabelText('时长预设')
+    expect(Array.from((preset as HTMLSelectElement).options).map((option) => option.value)).toEqual(
+      expect.arrayContaining(['0', '30', '60', '90', '120', '180', '240', '300']),
+    )
+    fireEvent.change(preset, { target: { value: '0' } })
+    fireEvent.click(screen.getByRole('button', { name: /一键开始生成/ }))
+    await waitFor(() => expect(createRun).toHaveBeenCalled())
+    expect(vi.mocked(createRun).mock.calls.at(-1)?.[0].creation_spec.duration_seconds).toBe(0)
+
+    fireEvent.change(preset, { target: { value: '240' } })
+    fireEvent.change(screen.getByLabelText('精确分钟'), { target: { value: '4' } })
+    fireEvent.change(screen.getByLabelText('精确秒数'), { target: { value: '15' } })
+    fireEvent.click(screen.getByRole('button', { name: /一键开始生成/ }))
+    await waitFor(() => expect(createRun).toHaveBeenCalledTimes(2))
+    expect(vi.mocked(createRun).mock.calls.at(-1)?.[0].creation_spec.duration_seconds).toBe(255)
+  })
+
   it('treats a legacy passed preflight response as ready', async () => {
     vi.mocked(validateRun).mockResolvedValue({
       passed: true,

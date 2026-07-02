@@ -40,12 +40,16 @@ vi.mock('../features/workbench/workbench.api', () => ({
       path: 'https://example.com/preview.png',
     },
   ]),
+  fetchRenderPlan: vi.fn().mockResolvedValue({ run_id: 'run-one', status: 'completed', current_stage: 'completed', duration_mode: 'auto', target_duration_seconds: 0, planned_duration_seconds: 0, segments: [], video_assembly: { status: 'pending', clip_paths: [], output_path: '', error: '' } }),
   fetchRunEvents: vi.fn().mockResolvedValue({ run_id: 'run-one', after: 0, next_cursor: 0, is_terminal: true, events: [] }),
   fetchTimeline: vi.fn().mockResolvedValue([
     { stage_id: 'chief_screenwriter', status: 'completed' },
   ]),
   refreshRunComfyUI: vi.fn(),
   retryRun: vi.fn(),
+  retrySegmentImage: vi.fn(),
+  retrySegmentVideo: vi.fn(),
+  cancelSegment: vi.fn(),
 }))
 
 function renderPage() {

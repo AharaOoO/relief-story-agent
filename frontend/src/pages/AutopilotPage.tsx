@@ -5,16 +5,21 @@ import { useParams } from 'react-router-dom'
 import { AUTOPILOT_STAGES, getStageDisplayName, stageStatusFromTimeline, type AutopilotStageStatus } from '../features/autopilot/stages'
 import { StageRail } from '../features/autopilot/StageRail'
 import { StageWorkspace } from '../features/autopilot/StageWorkspace'
+import { SegmentExecutionPanel } from '../features/autopilot/SegmentExecutionPanel'
 import { RunComposer } from '../features/run-composer/RunComposer'
 import {
   approveRun,
   cancelRun,
   fetchRun,
+  fetchRenderPlan,
   fetchRunArtifacts,
   fetchRunEvents,
   fetchTimeline,
   refreshRunComfyUI,
   retryRun,
+  retrySegmentImage,
+  retrySegmentVideo,
+  cancelSegment,
   type RunEventRecord,
   type ArtifactRecord,
   type GridImageRetryOverride,
@@ -24,6 +29,7 @@ import { getStatusLabel } from '../shared/utils/formatStatus'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
 type RunAction = 'cancel' | 'retry-original' | 'retry-override' | 'approve' | 'refresh'
+type SegmentAction = { kind: 'retry-image' | 'retry-video' | 'cancel'; segmentId: string }
 const STAGE_ARTIFACT_KEYS: Record<string, string[]> = {
   chief_screenwriter: ['script'],
   deepseek_polish: ['script'],
@@ -103,6 +109,12 @@ export default function AutopilotPage() {
     enabled: Boolean(runId),
     refetchInterval: runId && !TERMINAL.has(run.data?.status ?? '') ? 1_500 : false,
   })
+  const renderPlan = useQuery({
+    queryKey: ['run-render-plan', runId],
+    queryFn: () => fetchRenderPlan(runId ?? ''),
+    enabled: Boolean(runId),
+    refetchInterval: (query) => query.state.data?.segments.some((segment) => ['image_generating', 'submitting', 'queued', 'running', 'unknown'].includes(segment.status)) ? 2_000 : false,
+  })
 
   useEffect(() => {
     eventCursor.current = 0
@@ -175,6 +187,23 @@ export default function AutopilotPage() {
       setActionMessage(kind === 'refresh' ? '已刷新 ComfyUI 输出。' : '操作已生效。')
     },
     onError: (error) => setActionMessage(error instanceof Error ? error.message : '操作失败，请查看诊断。'),
+  })
+  const segmentAction = useMutation<unknown, Error, SegmentAction>({
+    mutationFn: ({ kind, segmentId }) => {
+      if (kind === 'retry-image') return retrySegmentImage(runId ?? '', segmentId)
+      if (kind === 'retry-video') return retrySegmentVideo(runId ?? '', segmentId)
+      return cancelSegment(runId ?? '', segmentId)
+    },
+    onMutate: ({ kind }) => setActionMessage(kind === 'cancel' ? '正在停止这个分段…' : kind === 'retry-image' ? '正在重新生成这个分段的参考图…' : '正在重新提交这个分段的视频…'),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['run', runId] }),
+        queryClient.invalidateQueries({ queryKey: ['run-render-plan', runId] }),
+        queryClient.invalidateQueries({ queryKey: ['run-artifacts', runId] }),
+      ])
+      setActionMessage('分段操作已生效。')
+    },
+    onError: (error) => setActionMessage(error instanceof Error ? error.message : '分段操作失败，请查看诊断。'),
   })
 
   const statuses = useMemo(() => Object.fromEntries(
@@ -282,6 +311,15 @@ export default function AutopilotPage() {
                 promptSnapshot={promptSnapshot}
                 gridImageRecovery={canRecoverGridImage && gridImageRecovery ? { value: gridImageRecovery, onChange: setGridImageRecovery } : undefined}
               />
+              {renderPlan.data?.segments.length && ['four_grid_asset', 'comfyui'].includes(selectedStage) ? (
+                <SegmentExecutionPanel
+                  plan={renderPlan.data}
+                  busy={segmentAction.isPending}
+                  onRetryImage={(segmentId) => segmentAction.mutate({ kind: 'retry-image', segmentId })}
+                  onRetryVideo={(segmentId) => segmentAction.mutate({ kind: 'retry-video', segmentId })}
+                  onCancel={(segmentId) => segmentAction.mutate({ kind: 'cancel', segmentId })}
+                />
+              ) : null}
               <section className="stage-output-panel">
                 <div className="section-heading-row"><div><span className="eyebrow">LIVE OUTPUT</span><h3>本工序产物</h3></div><span className={`status-chip is-${statuses[selectedStage]}`}>{getStatusLabel(statuses[selectedStage])}</span></div>
                 {run.data?.error && statuses[selectedStage] === 'failed' && <div className="inline-notice is-error"><AlertCircle size={16} />{run.data.error}</div>}

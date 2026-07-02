@@ -122,6 +122,66 @@ export type ArtifactRecord = {
   exists?: boolean
   created_at?: string
   metadata?: Record<string, unknown>
+  segment_id?: string
+  order?: number
+  prompt_id?: string
+  media_type?: string
+}
+
+export type WorkflowModelBinding = {
+  node_id: string
+  class_type: string
+  title: string
+  input_name: string
+  selected: string
+  available: boolean
+  choices: string[]
+}
+
+export type SegmentRenderState = {
+  segment_id: string
+  shot_id: string
+  order: number
+  authored_time_range: string
+  render_time_range: string
+  duration_seconds: number
+  fps: number
+  frame_count: number
+  local_frame_indices: number[]
+  positive_prompt: string
+  negative_prompt: string
+  seed: number
+  strength: number
+  grid_panel_prompts: string[]
+  grid_image_prompt: string
+  grid_image_asset?: { local_path?: string; comfyui_filename?: string; provider?: string; model?: string; task_id?: string }
+  workflow_name: string
+  workflow_path: string
+  workflow_sha256: string
+  workflow_api_artifact: string
+  workflow_models: WorkflowModelBinding[]
+  submission?: { prompt_id: string; client_id: string; status: string; error?: string }
+  outputs: Array<{ filename: string; media_type: string; local_path?: string; url?: string; prompt_id: string }>
+  status: string
+  error: string
+}
+
+export type VideoAssemblyState = {
+  status: string
+  clip_paths: string[]
+  output_path: string
+  error: string
+}
+
+export type RenderPlan = {
+  run_id: string
+  status: string
+  current_stage: string
+  duration_mode: 'auto' | 'explicit'
+  target_duration_seconds: number
+  planned_duration_seconds: number
+  segments: SegmentRenderState[]
+  video_assembly: VideoAssemblyState
 }
 
 export type RunEventRecord = {
@@ -201,6 +261,26 @@ export function listRuns(): Promise<ListResponse<RunSummary>> {
 
 export function fetchRun(runId: string): Promise<RunDetail> {
   return requestJson(endpointPaths.runDetail(runId))
+}
+
+export function fetchRenderPlan(runId: string): Promise<RenderPlan> {
+  return requestJson(endpointPaths.runRenderPlan(runId))
+}
+
+export function retrySegmentImage(runId: string, segmentId: string, payload: { runninghub_site?: 'cn' | 'ai'; aspect_ratio?: '16:9' | '9:16'; resolution?: '1k' | '2k'; force?: boolean } = {}): Promise<RunDetail> {
+  return postJson(endpointPaths.runSegmentRetryImage(runId, segmentId), payload)
+}
+
+export function retrySegmentVideo(runId: string, segmentId: string, force = false): Promise<RunDetail> {
+  return postJson(endpointPaths.runSegmentRetryVideo(runId, segmentId), { force })
+}
+
+export function cancelSegment(runId: string, segmentId: string): Promise<RunDetail> {
+  return postJson(endpointPaths.runSegmentCancel(runId, segmentId), {})
+}
+
+export function assembleRunVideo(runId: string): Promise<RunDetail> {
+  return postJson(endpointPaths.runAssemble(runId), {})
 }
 
 export async function fetchTimeline(runId: string): Promise<TimelineEntry[]> {

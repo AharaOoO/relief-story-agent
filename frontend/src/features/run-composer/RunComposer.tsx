@@ -36,6 +36,11 @@ const INPUT_MODES: Array<{ id: RunDraft['inputMode']; label: string; placeholder
   { id: 'script', label: '已有剧本', placeholder: '粘贴现有剧本，流水线会在保留原剧情的前提下完成影视化改稿。' },
   { id: 'mixed', label: '剧本 + 要求', placeholder: '粘贴剧本，并在末尾补充改编要求与必须保留的内容。' },
 ]
+const DURATION_PRESETS = [0, 30, 60, 90, 120, 180, 240, 300] as const
+
+function clampExactDuration(totalSeconds: number) {
+  return Math.min(300, Math.max(15, Math.round(totalSeconds)))
+}
 
 function inferInputMode(content: string): RunDraft['inputMode'] {
   const text = content.trim()
@@ -287,6 +292,13 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
     })
   }
 
+  const updateExactDuration = (part: 'minutes' | 'seconds', value: number) => {
+    const current = draft.durationSeconds === 0 ? 15 : draft.durationSeconds
+    const minutes = part === 'minutes' ? Math.max(0, value) : Math.floor(current / 60)
+    const seconds = part === 'seconds' ? Math.max(0, Math.min(59, value)) : current % 60
+    patchDraft({ durationSeconds: clampExactDuration(minutes * 60 + seconds) })
+  }
+
   return (
     <section className={compact ? 'run-composer is-compact' : 'run-composer'} aria-label="创作任务">
       {heading && <div className="composer-heading"><span className="eyebrow">NEW PRODUCTION</span><h2>{heading}</h2></div>}
@@ -313,15 +325,30 @@ export function RunComposer({ compact = false, heading, onDraftChange }: RunComp
       />
 
       <div className="composer-controls">
-        <label className="select-control">
-          <span>时长</span>
-          <select value={draft.durationSeconds} onChange={(event) => patchDraft({ durationSeconds: Number(event.target.value) })}>
-            <option value={60}>约 1 分钟</option>
-            <option value={90}>约 90 秒</option>
-            <option value={180}>约 3 分钟</option>
-            <option value={300}>约 5 分钟</option>
-          </select>
-        </label>
+        <div className="duration-control">
+          <label className="select-control">
+            <span>时长</span>
+            <select
+              aria-label="时长预设"
+              value={DURATION_PRESETS.includes(draft.durationSeconds as typeof DURATION_PRESETS[number]) ? draft.durationSeconds : 'custom'}
+              onChange={(event) => event.target.value !== 'custom' && patchDraft({ durationSeconds: Number(event.target.value) })}
+            >
+              <option value={0}>自动按分镜</option>
+              <option value={30}>30 秒</option>
+              <option value={60}>1 分钟</option>
+              <option value={90}>90 秒</option>
+              <option value={120}>2 分钟</option>
+              <option value={180}>3 分钟</option>
+              <option value={240}>4 分钟</option>
+              <option value={300}>5 分钟</option>
+              <option value="custom">精确时长</option>
+            </select>
+          </label>
+          <div className="duration-exact" aria-label="精确时长">
+            <label><span className="sr-only">精确分钟</span><input aria-label="精确分钟" type="number" min={0} max={5} disabled={draft.durationSeconds === 0} value={draft.durationSeconds === 0 ? 0 : Math.floor(draft.durationSeconds / 60)} onChange={(event) => updateExactDuration('minutes', Number(event.target.value))} /><small>分</small></label>
+            <label><span className="sr-only">精确秒数</span><input aria-label="精确秒数" type="number" min={0} max={59} disabled={draft.durationSeconds === 0} value={draft.durationSeconds === 0 ? 0 : draft.durationSeconds % 60} onChange={(event) => updateExactDuration('seconds', Number(event.target.value))} /><small>秒</small></label>
+          </div>
+        </div>
 
         <div className="segmented-control" aria-label="画面比例">
           <button type="button" className={draft.aspectRatio === '16:9' ? 'is-active' : ''} onClick={() => patchDraft({ aspectRatio: '16:9' })}>横屏 16:9</button>

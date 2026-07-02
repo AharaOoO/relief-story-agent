@@ -54,8 +54,26 @@ def test_runninghub_llm_uses_site_key_and_parses_fenced_json(monkeypatch):
     assert result.usage.total_tokens == 28
 
 
-def test_runninghub_llm_rejects_a_model_not_curated_for_the_stage(monkeypatch):
+def test_runninghub_llm_allows_any_model_from_the_selected_site(monkeypatch):
     monkeypatch.setenv("RUNNINGHUB_AI_SHARED_API_KEY", "ai-secret")
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"passed": true}'))],
+        usage=None,
+        model="google/gemini-3.5-flash",
+        _request_id="req_rh_ai",
+    )
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            return response
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            assert kwargs["base_url"] == "https://llm.runninghub.ai/v1"
+            assert kwargs["api_key"] == "ai-secret"
+            self.chat = SimpleNamespace(completions=FakeCompletions())
+
+    monkeypatch.setattr("relief_story_agent.runninghub_llm.OpenAI", FakeOpenAI)
     provider = RunningHubLLMProvider()
     config = StageModelConfig(
         provider_mode="runninghub",
@@ -63,8 +81,9 @@ def test_runninghub_llm_rejects_a_model_not_curated_for_the_stage(monkeypatch):
         model="google/gemini-3.5-flash",
     )
 
-    with pytest.raises(ValueError, match="not available.*quality_gate"):
-        provider.generate_json("quality_gate", "Audit", config)
+    result = provider.generate_json("quality_gate", "Audit", config)
+
+    assert result.payload == {"passed": True}
 
 
 def test_runninghub_llm_explains_enterprise_shared_key_requirement(monkeypatch):

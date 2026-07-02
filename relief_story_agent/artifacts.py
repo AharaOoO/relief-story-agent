@@ -78,6 +78,7 @@ def write_run_artifacts(run: RunState) -> Path:
         _build_comfyui_preview(run, final_storyboard),
     )
     write_run_timeline_artifact(run, artifact_dir=artifact_dir)
+    write_execution_manifest(run, artifact_dir=artifact_dir)
     if run.grid_image_asset:
         _write_json(
             artifact_dir / "09_four_grid_prompt.json",
@@ -141,6 +142,7 @@ def write_run_checkpoint_artifacts(run: RunState) -> Path:
 
     run.artifact_dir = str(artifact_dir)
     write_run_timeline_artifact(run, artifact_dir=artifact_dir)
+    write_execution_manifest(run, artifact_dir=artifact_dir)
     write_artifact_manifest(run)
     return artifact_dir
 
@@ -156,6 +158,82 @@ def write_run_timeline_artifact(run: RunState, *, artifact_dir: Path | None = No
     run.artifact_dir = str(target_dir)
     path = target_dir / "08_timeline.json"
     _write_json(path, _build_timeline(run))
+    return path
+
+
+def write_execution_manifest(
+    run: RunState,
+    *,
+    artifact_dir: Path | None = None,
+) -> Path:
+    target_dir = artifact_dir or (
+        _absolute_path(Path(run.artifact_dir))
+        if run.artifact_dir
+        else _artifact_dir_for_run(run)
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    run.artifact_dir = str(target_dir)
+    segments = sorted(run.segment_renders, key=lambda item: item.order)
+    first = segments[0] if segments else None
+    model_bindings = []
+    seen_bindings: set[tuple[str, str, str, str]] = set()
+    for segment in segments:
+        for binding in segment.workflow_models:
+            key = (
+                binding.node_id,
+                binding.class_type,
+                binding.input_name,
+                binding.selected,
+            )
+            if key in seen_bindings:
+                continue
+            seen_bindings.add(key)
+            model_bindings.append(binding.model_dump())
+    payload = {
+        "run_id": run.run_id,
+        "duration_mode": (
+            "auto" if run.request.creation_spec.duration_seconds == 0 else "explicit"
+        ),
+        "target_duration_seconds": run.request.creation_spec.duration_seconds,
+        "planned_duration_seconds": sum(
+            segment.duration_seconds for segment in segments
+        ),
+        "workflow": {
+            "name": first.workflow_name if first else "",
+            "path": first.workflow_path if first else "",
+            "sha256": first.workflow_sha256 if first else "",
+        },
+        "workflow_models": model_bindings,
+        "segments": [
+            {
+                "segment_id": segment.segment_id,
+                "shot_id": segment.shot_id,
+                "order": segment.order,
+                "authored_time_range": segment.authored_time_range,
+                "render_time_range": segment.render_time_range,
+                "duration_seconds": segment.duration_seconds,
+                "fps": segment.fps,
+                "frame_count": segment.frame_count,
+                "local_frame_indices": list(segment.local_frame_indices),
+                "positive_prompt": segment.positive_prompt,
+                "negative_prompt": segment.negative_prompt,
+                "seed": segment.seed,
+                "strength": segment.strength,
+                "grid_panel_prompts": list(segment.grid_panel_prompts),
+                "grid_image_prompt": segment.grid_image_prompt,
+                "workflow_name": segment.workflow_name,
+                "workflow_path": segment.workflow_path,
+                "workflow_sha256": segment.workflow_sha256,
+                "workflow_models": [
+                    binding.model_dump() for binding in segment.workflow_models
+                ],
+                "status": segment.status,
+            }
+            for segment in segments
+        ],
+    }
+    path = target_dir / "execution_manifest.json"
+    _write_json(path, payload)
     return path
 
 

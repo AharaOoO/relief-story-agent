@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from .comfyui import resolve_placeholder_map
+from .comfyui import fetch_workflow_runtime_object_info, resolve_placeholder_map
 from .grid_image import validate_grid_image
 from .ltx_workflow import (
     detect_workflow_format,
@@ -21,6 +21,13 @@ from .model_config import ModelConfigRegistry
 from .models import BatchRunRequest, RunRequest
 from .pipeline import CANONICAL_STAGE_ORDER, stage_ids_for_run
 from .provenance import build_run_configuration_provenance
+from .workflow_models import (
+    MODEL_FILE_SUFFIXES,
+    MODEL_INPUT_MARKERS,
+    WorkflowModelUnavailable,
+    validate_workflow_models,
+    workflow_fingerprint,
+)
 
 
 SUPPORTED_TEMPLATE_PLACEHOLDERS = {
@@ -60,6 +67,7 @@ def validate_run_configuration(
     ]
     if check_comfyui_connection:
         checks.append(_validate_comfyui_endpoint(request))
+        checks.append(_validate_comfyui_workflow_models(request))
     passed = all(check["status"] != "failed" for check in checks)
     blockers = [
         {"check": check["name"], "message": check["message"]}
@@ -445,6 +453,104 @@ def _validate_comfyui_endpoint(request: RunRequest) -> dict[str, Any]:
             "queue_running": len(queue_running),
             "queue_pending": len(queue_pending),
         },
+    )
+
+
+def _validate_comfyui_workflow_models(request: RunRequest) -> dict[str, Any]:
+    config = request.comfyui
+    if not config or not config.enabled:
+        return _check(
+            "comfyui_workflow_models",
+            "skipped",
+            "ComfyUI is disabled.",
+        )
+    if not config.workflow_api_path:
+        return _check(
+            "comfyui_workflow_models",
+            "skipped",
+            "No ComfyUI workflow is configured.",
+        )
+    try:
+        workflow = json.loads(
+            Path(config.workflow_api_path).read_text(encoding="utf-8")
+        )
+    except Exception as exc:
+        return _check(
+            "comfyui_workflow_models",
+            "failed",
+            f"Cannot read workflow model selections: {exc}",
+        )
+    if not _workflow_may_reference_models(workflow):
+        return _check(
+            "comfyui_workflow_models",
+            "skipped",
+            "Workflow does not expose model loader selections.",
+            {"workflow_sha256": workflow_fingerprint(workflow)},
+        )
+    try:
+        with httpx.Client(timeout=10.0, trust_env=False) as client:
+            object_info = fetch_workflow_runtime_object_info(
+                client,
+                config.endpoint,
+                config,
+            ) or {}
+        manifest = validate_workflow_models(workflow, object_info)
+    except WorkflowModelUnavailable as exc:
+        return _check(
+            "comfyui_workflow_models",
+            "failed",
+            "ComfyUI is missing one or more models selected by the workflow.",
+            {
+                "workflow_sha256": workflow_fingerprint(workflow),
+                "missing_models": exc.details,
+            },
+        )
+    except Exception as exc:
+        return _check(
+            "comfyui_workflow_models",
+            "failed",
+            f"Cannot verify ComfyUI workflow models: {exc}",
+            {"workflow_sha256": workflow_fingerprint(workflow)},
+        )
+    return _check(
+        "comfyui_workflow_models",
+        "passed",
+        "Every model selected by the workflow is available in ComfyUI.",
+        {
+            "workflow_sha256": workflow_fingerprint(workflow),
+            "models": [item.model_dump() for item in manifest],
+        },
+    )
+
+
+def _workflow_may_reference_models(workflow: dict[str, Any]) -> bool:
+    values: list[str] = []
+    if detect_workflow_format(workflow) == "litegraph":
+        for node in workflow.get("nodes") or []:
+            if not isinstance(node, dict):
+                continue
+            values.append(str(node.get("type") or ""))
+            widgets = node.get("widgets_values")
+            if isinstance(widgets, dict):
+                values.extend(str(item) for item in widgets.values())
+            elif isinstance(widgets, list):
+                values.extend(str(item) for item in widgets)
+    else:
+        for node in workflow.values():
+            if not isinstance(node, dict):
+                continue
+            values.append(str(node.get("class_type") or ""))
+            inputs = node.get("inputs") or {}
+            if isinstance(inputs, dict):
+                values.extend(str(name) for name in inputs)
+                values.extend(
+                    str(value) for value in inputs.values() if isinstance(value, str)
+                )
+    normalized = [value.casefold() for value in values]
+    return any(
+        any(marker in value for marker in MODEL_INPUT_MARKERS)
+        or value.endswith(MODEL_FILE_SUFFIXES)
+        for value in normalized
     )
 
 

@@ -772,6 +772,66 @@ def test_config_validation_can_check_comfyui_connection(tmp_path, monkeypatch):
     assert created_clients[0].get("trust_env") is False
 
 
+def test_config_validation_blocks_unavailable_workflow_model(tmp_path, monkeypatch):
+    workflow = tmp_path / "workflow_api.json"
+    workflow.write_text(
+        json.dumps(
+            {
+                "151": {
+                    "class_type": "CheckpointLoaderSimple",
+                    "inputs": {"ckpt_name": "missing.safetensors"},
+                    "_meta": {"title": "LTX loader"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def handler(request: httpx.Request):
+        if request.url.path == "/queue":
+            return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
+        if request.url.path == "/object_info/CheckpointLoaderSimple":
+            return httpx.Response(
+                200,
+                json={
+                    "CheckpointLoaderSimple": {
+                        "input": {
+                            "required": {
+                                "ckpt_name": [["installed.safetensors"], {}]
+                            }
+                        }
+                    }
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    monkeypatch.setattr(
+        "relief_story_agent.config_validation.httpx.Client",
+        lambda **kwargs: HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+    request = RunRequest(
+        idea="missing model",
+        comfyui=ComfyUIRunConfig(
+            enabled=True,
+            endpoint="http://comfy.local",
+            workflow_api_path=str(workflow),
+        ),
+    )
+
+    result = validate_run_configuration(
+        request,
+        ModelConfigRegistry(),
+        check_comfyui_connection=True,
+    )
+
+    check = next(
+        item for item in result["checks"] if item["name"] == "comfyui_workflow_models"
+    )
+    assert check["status"] == "failed"
+    assert check["details"]["missing_models"][0]["node_id"] == "151"
+    assert check["details"]["missing_models"][0]["selected"] == "missing.safetensors"
+
+
 def test_config_validation_reports_comfyui_connection_failure(tmp_path, monkeypatch):
     workflow = tmp_path / "workflow_api.json"
     workflow.write_text(

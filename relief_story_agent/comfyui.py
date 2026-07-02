@@ -836,15 +836,23 @@ def fetch_workflow_runtime_object_info(
     if not config.workflow_api_path:
         return None
     workflow = load_workflow(config.workflow_api_path)
-    if detect_workflow_format(workflow) != "litegraph":
-        return None
-    node_types = sorted(
-        {
-            str(node.get("type") or "").strip()
-            for node in workflow.get("nodes", [])
-            if isinstance(node, dict) and str(node.get("type") or "").strip()
-        }
-    )
+    if detect_workflow_format(workflow) == "litegraph":
+        node_types = sorted(
+            {
+                str(node.get("type") or "").strip()
+                for node in workflow.get("nodes", [])
+                if isinstance(node, dict) and str(node.get("type") or "").strip()
+            }
+        )
+    else:
+        node_types = sorted(
+            {
+                str(node.get("class_type") or "").strip()
+                for node in workflow.values()
+                if isinstance(node, dict)
+                and str(node.get("class_type") or "").strip()
+            }
+        )
     object_info: dict[str, Any] = {}
     for node_type in node_types:
         response = client.get(

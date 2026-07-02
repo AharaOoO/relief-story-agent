@@ -30,6 +30,20 @@ This behavior conflicts with the product requirement that every segment have its
 8. The application never installs, selects, or changes workflow model files silently.
 9. Before submission, users can see the workflow name, workflow path, model manifest, segment duration, FPS, frame count, local keyframe indices, seed, image, prompts, and expected output.
 10. Every submitted API workflow is persisted as an artifact before the network request.
+11. Story duration supports a convenient 0-5 minute control: `0` means derive duration from the finalized storyboard, while explicit values range from 15 to 300 seconds.
+
+## Duration Control
+
+Replace the fixed 90-second assumption with `target_duration_seconds`, validated from 0 through 300:
+
+- `0`: automatic duration, derived from the finalized storyboard time ranges;
+- `15-300`: explicit total duration in seconds;
+- values from 1 through 14 are rejected because they cannot produce a useful multi-segment short;
+- the existing request field remains readable during migration and maps to `target_duration_seconds`.
+
+The desktop creation surface provides presets for `自动`, `30 秒`, `60 秒`, `90 秒`, `2 分钟`, `3 分钟`, `4 分钟`, and `5 分钟`, plus a numeric minute/second editor for exact values. A slider may supplement these controls but is never the only precision input.
+
+When an explicit duration differs from the authored storyboard total, segment durations are proportionally retimed while preserving order and ensuring every segment receives at least one second. The final segment absorbs rounding so the sum exactly equals the selected target. All segment ranges, frame counts, local reference indices, manifests, and UI estimates are regenerated from the retimed plan before any paid G2 request.
 
 ## Storyboard Contract
 
@@ -88,6 +102,8 @@ Legacy single-image fields remain readable for old runs but new runs write only 
 ## Segment Planning
 
 `build_segment_render_plan(final_storyboard, fps, workflow)` validates all ranges and creates one state per segment.
+
+It also accepts `target_duration_seconds`. Automatic mode preserves storyboard ranges. Explicit mode proportionally retimes all segments and records both `authored_time_range` and `render_time_range` so users can inspect what changed.
 
 For the current six-shot example the plan is:
 
@@ -206,6 +222,7 @@ Always show:
 - total planned duration and completed duration
 - G2 and ComfyUI site/endpoint
 - assembly state
+- selected total duration mode, authored duration, and planned render duration
 
 ### Segment Rows
 
@@ -298,4 +315,3 @@ Using the supplied six-segment storyboard and selected LTX workflow:
 - the UI exposes all workflow/model/render parameters before submission;
 - local monitoring never reports failed while the remote prompt is queued or running;
 - six clips and one assembled story video are discoverable from the asset library.
-

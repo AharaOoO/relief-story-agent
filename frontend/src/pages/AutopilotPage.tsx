@@ -5,6 +5,12 @@ import { useParams } from 'react-router-dom'
 import { AUTOPILOT_STAGES, getStageDisplayName, stageStatusFromTimeline, type AutopilotStageStatus } from '../features/autopilot/stages'
 import { StageRail } from '../features/autopilot/StageRail'
 import { StageWorkspace } from '../features/autopilot/StageWorkspace'
+import {
+  buildRecoveryRetryPayload,
+  createRecoveryDraft,
+  stageEditingState,
+  type RecoveryDraft,
+} from '../features/autopilot/recoveryDraft'
 import { SegmentExecutionPanel } from '../features/autopilot/SegmentExecutionPanel'
 import { RunComposer } from '../features/run-composer/RunComposer'
 import {
@@ -22,13 +28,12 @@ import {
   cancelSegment,
   type RunEventRecord,
   type ArtifactRecord,
-  type GridImageRetryOverride,
 } from '../features/workbench/workbench.api'
 import { useWorkbench } from '../app/workbench/workbench.context'
 import { getStatusLabel } from '../shared/utils/formatStatus'
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled'])
-type RunAction = 'cancel' | 'retry-original' | 'retry-override' | 'approve' | 'refresh'
+type RunAction = 'cancel' | 'retry-original' | 'retry-edits' | 'approve' | 'refresh'
 type SegmentAction = { kind: 'retry-image' | 'retry-video' | 'cancel'; segmentId: string }
 const STAGE_ARTIFACT_KEYS: Record<string, string[]> = {
   chief_screenwriter: ['script'],
@@ -82,9 +87,10 @@ export default function AutopilotPage() {
   const [selectedStage, setSelectedStage] = useState('chief_screenwriter')
   const [eventItems, setEventItems] = useState<RunEventRecord[]>([])
   const [actionMessage, setActionMessage] = useState('')
-  const [gridImageRecovery, setGridImageRecovery] = useState<GridImageRetryOverride | null>(null)
+  const [recoveryDraft, setRecoveryDraft] = useState<RecoveryDraft | null>(null)
   const eventCursor = useRef(0)
   const userSelectedStage = useRef(false)
+  const recoveryRunId = useRef('')
   const run = useQuery({
     queryKey: ['run', runId],
     queryFn: () => fetchRun(runId ?? ''),
@@ -123,21 +129,15 @@ export default function AutopilotPage() {
   }, [runId])
 
   useEffect(() => {
-    const frozen = run.data?.request?.comfyui?.grid_image
-    if (run.data?.status !== 'failed' || run.data.failed_stage !== 'four_grid_asset' || !frozen) {
-      setGridImageRecovery(null)
+    if (run.data?.status !== 'failed') {
+      recoveryRunId.current = ''
+      setRecoveryDraft(null)
       return
     }
-    setGridImageRecovery({
-      runninghub_site: frozen.runninghub_site,
-      aspect_ratio: frozen.aspect_ratio,
-      resolution: frozen.resolution,
-    })
-  }, [
-    run.data?.failed_stage,
-    run.data?.request?.comfyui?.grid_image,
-    run.data?.status,
-  ])
+    if (recoveryRunId.current === run.data.run_id) return
+    recoveryRunId.current = run.data.run_id
+    setRecoveryDraft(createRecoveryDraft(run.data))
+  }, [run.data])
 
   useEffect(() => {
     if (!runId || userSelectedStage.current) return
@@ -167,12 +167,12 @@ export default function AutopilotPage() {
       if (kind === 'cancel') return cancelRun(runId ?? '')
       const retryStage = run.data?.failed_stage || selectedStage
       if (kind === 'retry-original') return retryRun(runId ?? '', { from_stage: retryStage })
-      if (kind === 'retry-override') {
-        if (!gridImageRecovery) throw new Error('恢复配置尚未准备好，请刷新任务后重试。')
-        return retryRun(runId ?? '', {
-          from_stage: retryStage,
-          grid_image_override: gridImageRecovery,
-        })
+      if (kind === 'retry-edits') {
+        if (!run.data || !recoveryDraft) throw new Error('恢复草稿尚未准备好，请刷新任务后重试。')
+        return retryRun(
+          runId ?? '',
+          buildRecoveryRetryPayload(run.data, recoveryDraft, statuses),
+        )
       }
       if (kind === 'approve') return approveRun(runId ?? '')
       return refreshRunComfyUI(runId ?? '')
@@ -184,6 +184,7 @@ export default function AutopilotPage() {
       await queryClient.invalidateQueries({ queryKey: ['run', runId] })
       await queryClient.invalidateQueries({ queryKey: ['run-timeline', runId] })
       await queryClient.invalidateQueries({ queryKey: ['run-artifacts', runId] })
+      await queryClient.invalidateQueries({ queryKey: ['run-render-plan', runId] })
       setActionMessage(kind === 'refresh' ? '已刷新 ComfyUI 输出。' : '操作已生效。')
     },
     onError: (error) => setActionMessage(error instanceof Error ? error.message : '操作失败，请查看诊断。'),
@@ -219,10 +220,13 @@ export default function AutopilotPage() {
   const isViewingCurrentStage = !currentStageId || selectedStage === currentStageId
   const promptSnapshot = run.data?.prompt_snapshot as Partial<Record<(typeof AUTOPILOT_STAGES)[number]['id'], string>> | undefined
   const stageArtifacts = artifacts.data?.filter((item) => artifactMatchesStage(item, selectedStage)) ?? []
-  const canRecoverGridImage = run.data?.status === 'failed'
-    && run.data.failed_stage === 'four_grid_asset'
-    && selectedStage === 'four_grid_asset'
-    && Boolean(gridImageRecovery)
+  const canRecover = run.data?.status === 'failed' && Boolean(recoveryDraft)
+  const selectedEditingState = stageEditingState(
+    selectedStage,
+    statuses,
+    run.data?.status ?? '',
+    run.data?.failed_stage,
+  )
 
   const selectStage = (stageId: string) => {
     userSelectedStage.current = true
@@ -277,9 +281,10 @@ export default function AutopilotPage() {
                 {run.data?.status === 'awaiting_approval' && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('approve')}><CheckCircle2 size={16} /> 批准并继续</button>}
                 <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('refresh')}><RefreshCw size={16} /> 刷新成片</button>
                 {!TERMINAL.has(run.data?.status ?? '') && <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('cancel')}><Pause size={16} /> 停止任务</button>}
-                {canRecoverGridImage && <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('retry-original')}><RotateCcw size={16} /> 按原配置重试</button>}
-                {canRecoverGridImage && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('retry-override')}><RotateCcw size={16} /> 应用修改并重试本工序</button>}
-                {!canRecoverGridImage && (run.data?.status === 'failed' || run.data?.status === 'cancelled') && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('retry-original')}><RotateCcw size={16} /> 从失败工序重试</button>}
+                {canRecover && <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => action.mutate('retry-original')}><RotateCcw size={16} /> 按原配置重试</button>}
+                {canRecover && <button type="button" className="secondary-button" disabled={action.isPending} onClick={() => run.data && setRecoveryDraft(createRecoveryDraft(run.data))}>放弃修改</button>}
+                {canRecover && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('retry-edits')}><RotateCcw size={16} /> 保存修改并从失败处重试</button>}
+                {!canRecover && run.data?.status === 'cancelled' && <button type="button" className="primary-button" disabled={action.isPending} onClick={() => action.mutate('retry-original')}><RotateCcw size={16} /> 从失败工序重试</button>}
               </div>
             </div>
             {actionMessage && <div className={`inline-notice ${action.isError ? 'is-error' : ''}`} role="status">{action.isPending && <LoaderCircle className="spin" size={16} />}{actionMessage}</div>}
@@ -306,10 +311,10 @@ export default function AutopilotPage() {
             <div className="live-stage-column">
               <StageWorkspace
                 stageId={selectedStage}
-                readOnly={!canRecoverGridImage}
+                readOnly={selectedEditingState !== 'editable'}
                 runRequest={run.data?.request}
                 promptSnapshot={promptSnapshot}
-                gridImageRecovery={canRecoverGridImage && gridImageRecovery ? { value: gridImageRecovery, onChange: setGridImageRecovery } : undefined}
+                recovery={canRecover && recoveryDraft ? { value: recoveryDraft, onChange: setRecoveryDraft } : undefined}
               />
               {renderPlan.data?.segments.length && ['four_grid_asset', 'comfyui'].includes(selectedStage) ? (
                 <SegmentExecutionPanel

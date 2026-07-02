@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import AutopilotPage from './AutopilotPage'
-import { fetchRun, fetchRunArtifacts, retryRun } from '../features/workbench/workbench.api'
+import { fetchRun, fetchRunArtifacts, fetchTimeline, retryRun } from '../features/workbench/workbench.api'
 import type { RunRequestPayload } from '../features/run-composer/runRequest.builder'
 
 vi.mock('../features/workbench/workbench.api', () => ({
@@ -11,8 +11,8 @@ vi.mock('../features/workbench/workbench.api', () => ({
   cancelRun: vi.fn(),
   fetchProviderCatalog: vi.fn().mockResolvedValue({
     runninghub: {
-      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_SHARED_API_KEY', stages: {} },
-      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_SHARED_API_KEY', stages: {} },
+      cn: { base_url: 'https://llm.runninghub.cn/v1', api_key_env: 'RUNNINGHUB_CN_SHARED_API_KEY', models: ['glm-5.2'], recommended_by_stage: {}, source_url: '', snapshot_date: '' },
+      ai: { base_url: 'https://llm.runninghub.ai/v1', api_key_env: 'RUNNINGHUB_AI_SHARED_API_KEY', models: ['google/gemini-3.5-flash'], recommended_by_stage: {}, source_url: '', snapshot_date: '' },
     },
   }),
   fetchRun: vi.fn().mockResolvedValue({
@@ -116,6 +116,9 @@ describe('AutopilotPage', () => {
         name: 'chief_screenwriter_preview.png',
         path: 'https://example.com/preview.png',
       },
+    ])
+    vi.mocked(fetchTimeline).mockResolvedValue([
+      { stage_id: 'chief_screenwriter', status: 'completed' },
     ])
     window.reliefDesktop = {
       platform: 'win32',
@@ -256,7 +259,7 @@ describe('AutopilotPage', () => {
 
     expect(await screen.findByRole('heading', { name: '四宫格参考图' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: '国内站 .cn' }))
-    fireEvent.click(screen.getByRole('button', { name: '应用修改并重试本工序' }))
+    fireEvent.click(screen.getByRole('button', { name: '保存修改并从失败处重试' }))
 
     await waitFor(() => expect(retryRun).toHaveBeenCalledWith('run-one', {
       from_stage: 'four_grid_asset',
@@ -295,6 +298,69 @@ describe('AutopilotPage', () => {
 
     await waitFor(() => expect(retryRun).toHaveBeenCalledWith('run-one', {
       from_stage: 'four_grid_asset',
+    }))
+  })
+
+  it('keeps only completed stages frozen after a quality-gate failure', async () => {
+    vi.mocked(fetchTimeline).mockResolvedValue([
+      { stage_id: 'chief_screenwriter', status: 'completed' },
+      { stage_id: 'deepseek_polish', status: 'completed' },
+      { stage_id: 'quality_gate', status: 'failed' },
+    ])
+    vi.mocked(fetchRun).mockResolvedValue(makeRun({
+      status: 'failed',
+      current_stage: 'failed',
+      failed_stage: 'quality_gate',
+      prompt_snapshot: {
+        deepseek_polish: 'completed prompt',
+        quality_gate: 'original gate prompt',
+        gpt_prompt_writer: 'original writer prompt',
+      },
+      request: {
+        idea: 'failed quality gate',
+        model_configs: {
+          deepseek_polish: { provider_mode: 'runninghub', runninghub_site: 'cn', model: 'deepseek/deepseek-v4-pro' },
+          quality_gate: { provider_mode: 'runninghub', runninghub_site: 'cn', model: 'deepseek/deepseek-v4-flash' },
+          gpt_prompt_writer: { provider_mode: 'runninghub', runninghub_site: 'ai', model: 'openai/gpt-5.5' },
+        },
+        prompt_profile: { profile_id: 'system-default', profile_version: 1, stage_overrides: {} },
+        comfyui: {
+          enabled: true,
+          endpoint: 'http://127.0.0.1:8188',
+          workflow_api_path: 'D:/workflow.json',
+          output_timeout_seconds: 600,
+          wait_for_completion: true,
+          download_outputs: true,
+          grid_image: {
+            provider: 'runninghub_image_task',
+            runninghub_site: 'ai',
+            model: 'rhart-image-g-2',
+            aspect_ratio: '16:9',
+            resolution: '2k',
+            quality: 'high',
+          },
+        },
+      } as unknown as RunRequestPayload,
+    }))
+
+    const { container } = renderPage()
+
+    await waitFor(() => expect(container.querySelector('.stage-big-number')).toHaveTextContent('03'))
+    expect(container.querySelector<HTMLTextAreaElement>('.prompt-editor textarea')).not.toBeDisabled()
+
+    const stageButtons = Array.from(container.querySelectorAll<HTMLButtonElement>('.stage-rail button'))
+    fireEvent.click(stageButtons[1])
+    expect(container.querySelector<HTMLTextAreaElement>('.prompt-editor textarea')).toBeDisabled()
+
+    fireEvent.click(stageButtons[3])
+    const writerPrompt = container.querySelector<HTMLTextAreaElement>('.prompt-editor textarea')
+    expect(writerPrompt).not.toBeDisabled()
+    fireEvent.change(writerPrompt!, { target: { value: 'updated writer prompt' } })
+    fireEvent.click(screen.getByRole('button', { name: '保存修改并从失败处重试' }))
+
+    await waitFor(() => expect(retryRun).toHaveBeenCalledWith('run-one', {
+      from_stage: 'quality_gate',
+      prompt_overrides: { gpt_prompt_writer: 'updated writer prompt' },
     }))
   })
 })

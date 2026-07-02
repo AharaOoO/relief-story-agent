@@ -4,6 +4,7 @@ import type {
   BatchRequestPayload,
   ModelStageId,
   RunRequestPayload,
+  StageModelDraft,
 } from '../run-composer/runRequest.builder'
 import type { TimelineEntry } from '../autopilot/stages'
 
@@ -13,7 +14,10 @@ export type ProviderCatalog = {
     {
       base_url: string
       api_key_env: string
-      stages: Record<string, string[]>
+      models: string[]
+      recommended_by_stage: Partial<Record<ModelStageId, string[]>>
+      source_url: string
+      snapshot_date: string
     }
   >
 }
@@ -87,7 +91,14 @@ export type GridImageRetryOverride = {
 
 export type RunRetryPayload = {
   from_stage?: string
+  model_config_overrides?: Partial<Record<ModelStageId, StageModelDraft>>
+  prompt_overrides?: Partial<Record<ModelStageId, string>>
   grid_image_override?: GridImageRetryOverride
+  comfyui_override?: {
+    endpoint?: string
+    workflow_api_path?: string | null
+    output_timeout_seconds?: number
+  }
 }
 
 export type ListResponse<T> = {

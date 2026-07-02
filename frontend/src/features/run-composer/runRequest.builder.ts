@@ -90,6 +90,7 @@ export type RunRequestPayload = {
     workflow_api_path: string | null
     wait_for_completion: boolean
     download_outputs: boolean
+    output_timeout_seconds?: number
     grid_image: {
       provider: 'runninghub_image_task'
       runninghub_site: RunningHubSite
@@ -143,21 +144,53 @@ export const STANDARD_STAGE_MODEL_PRESETS: Record<ModelStageId, readonly Standar
   ],
 }
 
+export const RUNNINGHUB_MODELS: Record<RunningHubSite, readonly string[]> = {
+  cn: [
+    'glm-5.2', 'glm-5.1', 'glm-5-turbo', 'glm-5', 'qwen/qwen3.7-max',
+    'glm-5v-turbo', 'qwen/qwen3.7-plus', 'deepseek/deepseek-v4-pro',
+    'qwen/qwen3.6-plus', 'bytedance/doubao-seed-evolving',
+    'bytedance/doubao-seed-2.1-pro', 'bytedance/doubao-seed-2.1-turbo',
+    'bytedance/doubao-seed-2.0-pro', 'bytedance/doubao-seed-2.0-code',
+    'deepseek/deepseek-v4-flash', 'qwen/qwen3.6-flash',
+    'bytedance/doubao-seed-2.0-lite', 'bytedance/doubao-seed-2.0-mini',
+    'minimax/minimax-m2.7', 'qwen/qwen3.6-max-preview',
+  ],
+  ai: [
+    'google/gemini-3.1-flash-lite-preview', 'google/gemini-3.5-flash',
+    'openai/gpt-5.5', 'openai/gpt-5.5-pro', 'openai/gpt-5.4-pro',
+    'anthropic/claude-opus-4.8', 'anthropic/claude-opus-4.7', 'glm-5.2',
+    'anthropic/claude-opus-4.6', 'openai/gpt-5.4', 'openai/gpt-5.3-codex',
+    'glm-5.1', 'glm-5-turbo', 'anthropic/claude-sonnet-4.6', 'glm-5',
+    'anthropic/claude-sonnet-5', 'qwen/qwen3.7-max', 'glm-5v-turbo',
+    'qwen/qwen3.7-plus', 'deepseek/deepseek-v4-pro', 'xai/grok-4.3',
+    'qwen/qwen3.6-plus', 'google/gemini-3.1-pro-preview',
+    'bytedance/doubao-seed-evolving', 'bytedance/doubao-seed-2.1-pro',
+    'anthropic/claude-sonnet-4.5', 'bytedance/doubao-seed-2.1-turbo',
+    'anthropic/claude-opus-4.5', 'bytedance/doubao-seed-2.0-pro',
+    'bytedance/doubao-seed-2.0-code', 'deepseek/deepseek-v4-flash',
+    'qwen/qwen3.6-flash', 'openai/gpt-5.4-mini', 'openai/gpt-5.4-nano',
+    'google/gemini-3-flash-preview', 'google/gemini-2.5-flash',
+    'bytedance/doubao-seed-2.0-lite', 'bytedance/doubao-seed-2.0-mini',
+    'minimax/minimax-m2.7', 'anthropic/claude-haiku-4.5',
+    'qwen/qwen3.6-max-preview', 'google/gemini-2.5-pro',
+  ],
+}
+
 export const RUNNINGHUB_STAGE_MODEL_OPTIONS: Record<RunningHubSite, Record<ModelStageId, readonly string[]>> = {
   cn: {
     chief_screenwriter: ['qwen/qwen3.7-plus', 'qwen/qwen3.7-max'],
     deepseek_polish: ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash'],
-    quality_gate: ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash'],
+    quality_gate: ['deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-pro'],
     gpt_prompt_writer: ['qwen/qwen3.7-max', 'qwen/qwen3.7-plus'],
     gpt_prompt_audit: ['deepseek/deepseek-v4-pro', 'deepseek/deepseek-v4-flash'],
     gpt_prompt_reviser: ['qwen/qwen3.7-plus', 'qwen/qwen3.7-max'],
   },
   ai: {
-    chief_screenwriter: ['google/gemini-3.5-flash'],
-    deepseek_polish: ['deepseek/deepseek-v4-pro'],
-    quality_gate: ['deepseek/deepseek-v4-pro', 'openai/gpt-5.5'],
-    gpt_prompt_writer: ['openai/gpt-5.5'],
-    gpt_prompt_audit: ['openai/gpt-5.4-mini', 'openai/gpt-5.5'],
+    chief_screenwriter: ['google/gemini-3.5-flash', 'anthropic/claude-sonnet-5'],
+    deepseek_polish: ['deepseek/deepseek-v4-pro', 'anthropic/claude-sonnet-5'],
+    quality_gate: ['deepseek/deepseek-v4-flash', 'openai/gpt-5.5'],
+    gpt_prompt_writer: ['openai/gpt-5.5', 'google/gemini-3.5-flash'],
+    gpt_prompt_audit: ['openai/gpt-5.4-mini', 'deepseek/deepseek-v4-pro'],
     gpt_prompt_reviser: ['openai/gpt-5.4-mini', 'openai/gpt-5.5'],
   },
 }
@@ -167,6 +200,11 @@ export function defaultRunningHubModel(site: RunningHubSite, stageId: ModelStage
 }
 
 export function runningHubModelOptions(site: RunningHubSite, stageId: ModelStageId): readonly string[] {
+  void stageId
+  return RUNNINGHUB_MODELS[site]
+}
+
+export function recommendedRunningHubModels(site: RunningHubSite, stageId: ModelStageId): readonly string[] {
   return RUNNINGHUB_STAGE_MODEL_OPTIONS[site][stageId]
 }
 

@@ -9,24 +9,44 @@ from pathlib import Path
 from threading import RLock
 from typing import Any
 
-from .artifacts import write_artifact_manifest, write_run_artifacts, write_run_timeline_artifact
+from .artifacts import (
+    read_run_artifact_index,
+    write_artifact_manifest,
+    write_run_artifacts,
+    write_run_checkpoint_artifacts,
+    write_run_timeline_artifact,
+)
 from .comfyui import (
     ComfyUIOutputTimeout,
+    ComfyUISubmissionUnknown,
     ComfyUIWaitCancelled,
     analyze_workflow_config,
     cancel_prompt_jobs,
+    collect_prompt_diagnostics,
     collect_prompt_outputs,
+    classify_prompt_remote_state,
     detect_workflow_format,
     download_prompt_outputs,
+    fetch_workflow_runtime_object_info,
     load_workflow,
+    persist_planned_segment_workflow,
+    prepare_segment_workflow,
     preview_storyboard_submission,
     submit_storyboard,
+    submit_planned_workflow,
     upload_grid_image,
     wait_for_prompt_outputs,
+)
+from .runninghub import (
+    submit_runninghub_storyboard,
+    wait_for_runninghub_outputs,
+    RunningHubWaitCancelled,
+    RunningHubOutputTimeout,
 )
 from .content import (
     build_chief_screenwriter_prompt,
     build_deepseek_polish_prompt,
+    build_quality_gate_prompt,
 )
 from .execution_policy import ExecutionPolicyExceeded, enforce_execution_policy
 from .failure_policy import classify_failure
@@ -34,10 +54,10 @@ from .grid_image import (
     GridImageProvider,
     acquire_generated_grid_image,
     acquire_manual_grid_image,
-    compile_four_grid_prompt,
+    compile_segment_four_grid_prompt,
     deterministic_comfyui_filename,
 )
-from .image_providers import OpenAICompatibleGridImageProvider
+from .image_providers import GridImageProviderRouter
 from .ltx_workflow import find_ltx_injection_points
 from .model_config import ModelConfigRegistry
 from .model_runtime import ModelCallExecutor
@@ -46,17 +66,29 @@ from .models import (
     BatchRunItem,
     BatchRunRequest,
     BatchRunState,
+    ComfyUIRunConfig,
     GridImageAsset,
     GridImageAttempt,
     GridImageConfig,
+    SegmentRenderState,
+    SegmentActionRequest,
+    SegmentImageRetryRequest,
     RunRequest,
     RunRetryRequest,
     RunState,
     ModelAttempt,
     ModelUsageSummary,
+    VideoAssemblyState,
 )
 from .output_contracts import require_bool, require_list, require_mapping, require_shot_contract
-from .pipeline import BASE_RUNTIME_STAGE_ORDER, retry_tail_for_stage, stage_ids_for_run
+from .pipeline import (
+    BASE_RUNTIME_STAGE_ORDER,
+    CANONICAL_STAGE_ORDER,
+    MODEL_STAGE_IDS,
+    retry_tail_for_stage,
+    stage_ids_for_run,
+)
+from .provider_catalog import validate_runninghub_model
 from .prompt_templates import (
     build_prompt_audit_prompt,
     build_prompt_reviser_prompt,
@@ -65,11 +97,21 @@ from .prompt_templates import (
 from .providers import ModelProvider
 from .quality import QualityGate
 from .resource_limits import ExecutionResourceLimits
+from .segment_render import build_segment_render_plan
+from .video_assembly import assemble_segment_videos
 
 
 IMAGE_PROMPT_MAX_CHARS = 220
 CHECKPOINT_COMPLETE = "__checkpoint_complete__"
 PIPELINE_STAGES = list(BASE_RUNTIME_STAGE_ORDER)
+
+
+class RetryConfigurationConflict(ValueError):
+    pass
+
+
+class SegmentActionConflict(ValueError):
+    pass
 
 
 class InMemoryRunStore:
@@ -150,6 +192,10 @@ class RunCancellationRequested(RuntimeError):
     pass
 
 
+class RunMonitoringExtended(RuntimeError):
+    pass
+
+
 class StoryRunOrchestrator:
     def __init__(
         self,
@@ -161,16 +207,25 @@ class StoryRunOrchestrator:
         model_registry: ModelConfigRegistry | None = None,
         grid_image_provider: GridImageProvider | None = None,
         resource_limits: ExecutionResourceLimits | None = None,
+        profile_store: Any = None,
     ):
         self.provider = provider
         self.store = store or InMemoryRunStore()
         self.quality_gate = quality_gate or QualityGate()
         self.model_executor = model_executor or ModelCallExecutor(provider)
         self.model_registry = model_registry or ModelConfigRegistry()
-        self.grid_image_provider = grid_image_provider or OpenAICompatibleGridImageProvider()
+        self.grid_image_provider = grid_image_provider or GridImageProviderRouter()
         self.resource_limits = resource_limits or ExecutionResourceLimits()
+        
+        if profile_store is None:
+            from .prompt_profiles import PromptProfileStore
+            from pathlib import Path
+            self.profile_store = PromptProfileStore(Path.home() / ".relief_story" / "profiles")
+        else:
+            self.profile_store = profile_store
 
     def create_run(self, request: RunRequest) -> RunState:
+        request = self._apply_runtime_defaults(request)
         existing = self._find_idempotent_run(request)
         if existing:
             return existing
@@ -200,16 +255,34 @@ class StoryRunOrchestrator:
         *,
         parent_batch_id: str = "",
     ) -> RunState:
+        request = self._apply_runtime_defaults(request)
         if not parent_batch_id:
             existing = self._find_idempotent_run(request)
             if existing:
                 return existing
+        profile_id = "system-default"
+        if request.prompt_profile:
+            profile_id = request.prompt_profile.profile_id
+        try:
+            profile = self.profile_store.get(profile_id)
+            profile_version = profile.version
+            profile_hash = profile.content_hash
+            prompt_snapshot = profile.stages.model_dump()
+            if request.prompt_profile and request.prompt_profile.stage_overrides:
+                prompt_snapshot.update(request.prompt_profile.stage_overrides)
+        except Exception as exc:
+            raise ValueError(f"Failed to load prompt profile {profile_id!r}: {exc}") from exc
+
         now = datetime.now(timezone.utc).isoformat()
         run = RunState(
             run_id="run_" + uuid.uuid4().hex[:12],
             request=request,
             idempotency_key=request.idempotency_key,
             request_fingerprint=self._run_request_fingerprint(request),
+            prompt_profile_id=profile_id,
+            prompt_profile_version=profile_version,
+            prompt_profile_hash=profile_hash,
+            prompt_snapshot=prompt_snapshot,
             status="queued",
             current_stage="queued",
             parent_batch_id=parent_batch_id,
@@ -220,6 +293,204 @@ class StoryRunOrchestrator:
         run.add_event("run_queued", message="Run queued for background execution.")
         self.store.save(run)
         return run
+
+    def _apply_runtime_defaults(self, request: RunRequest) -> RunRequest:
+        if request.output_root:
+            return request
+        state_dir = getattr(self.store, "state_dir", None)
+        if state_dir is None:
+            return request
+        output_root = (Path(state_dir) / "artifacts").resolve()
+        return request.model_copy(update={"output_root": str(output_root)})
+
+    def get_run_artifact_index(self, run_id: str) -> dict[str, Any]:
+        run = self.store.get(run_id)
+        normalized_request = self._apply_runtime_defaults(run.request)
+        if normalized_request != run.request:
+            run.request = normalized_request
+            run.request_fingerprint = self._run_request_fingerprint(normalized_request)
+        index = read_run_artifact_index(run)
+        self.store.save(run)
+        return index
+
+    def get_render_plan(self, run_id: str) -> dict[str, Any]:
+        run = self.store.get(run_id)
+        segments = sorted(run.segment_renders, key=lambda item: item.order)
+        return {
+            "run_id": run.run_id,
+            "status": run.status,
+            "current_stage": run.current_stage,
+            "duration_mode": (
+                "auto"
+                if run.request.creation_spec.duration_seconds == 0
+                else "explicit"
+            ),
+            "target_duration_seconds": run.request.creation_spec.duration_seconds,
+            "planned_duration_seconds": sum(
+                segment.duration_seconds for segment in segments
+            ),
+            "segments": [segment.model_dump() for segment in segments],
+            "video_assembly": run.video_assembly.model_dump(),
+        }
+
+    def get_segment(self, run_id: str, segment_id: str) -> SegmentRenderState:
+        run = self.store.get(run_id)
+        return self._require_segment(run, segment_id).model_copy(deep=True)
+
+    def queue_segment_image_retry(
+        self,
+        run_id: str,
+        segment_id: str,
+        request: SegmentImageRetryRequest,
+    ) -> RunState:
+        run = self.store.get(run_id)
+        segment = self._require_segment(run, segment_id)
+        self._require_segment_retryable(segment, force=request.force)
+        if run.request.comfyui is None:
+            raise SegmentActionConflict("ComfyUI is not configured for this run")
+        updates = {
+            key: value
+            for key, value in request.model_dump(
+                exclude={"force"},
+            ).items()
+            if value is not None
+        }
+        if updates:
+            current = run.request.comfyui.grid_image
+            run.request.comfyui.grid_image = GridImageConfig.model_validate(
+                {**current.model_dump(), **updates}
+            )
+            if request.aspect_ratio:
+                run.request.creation_spec.video_aspect_ratio = request.aspect_ratio
+            if request.resolution:
+                run.request.creation_spec.image_resolution = request.resolution
+        segment.grid_image_prompt = ""
+        segment.grid_image_asset = None
+        segment.grid_image_attempts = []
+        segment.grid_image_checkpoint = ""
+        self._clear_segment_video_state(segment, status="planned")
+        if segment.order == 1:
+            run.grid_image_prompt = ""
+            run.grid_image_asset = None
+            run.grid_image_attempts = []
+            run.grid_image_checkpoint = ""
+            run.grid_image_replacements = []
+        run.video_assembly = VideoAssemblyState()
+        self._queue_segment_stage(run, "four_grid_asset", segment)
+        return run
+
+    def queue_segment_video_retry(
+        self,
+        run_id: str,
+        segment_id: str,
+        request: SegmentActionRequest,
+    ) -> RunState:
+        run = self.store.get(run_id)
+        segment = self._require_segment(run, segment_id)
+        self._require_segment_retryable(segment, force=request.force)
+        if segment.grid_image_asset is None:
+            raise SegmentActionConflict(
+                "Segment video retry requires an existing grid image"
+            )
+        self._clear_segment_video_state(segment, status="image_ready")
+        run.video_assembly = VideoAssemblyState()
+        self._queue_segment_stage(run, "comfyui", segment)
+        return run
+
+    def cancel_segment(self, run_id: str, segment_id: str) -> RunState:
+        run = self.store.get(run_id)
+        segment = self._require_segment(run, segment_id)
+        if run.request.comfyui is None or segment.submission is None:
+            raise SegmentActionConflict(
+                "Segment does not have a ComfyUI submission to cancel"
+            )
+        cancellations = cancel_prompt_jobs(
+            run.request.comfyui,
+            [segment.submission.prompt_id],
+        )
+        run.comfyui_cancellations.extend(cancellations)
+        if any(item.cancelled for item in cancellations):
+            segment.status = "cancelled"
+            segment.error = ""
+        self.store.save(run)
+        return run
+
+    def retry_video_assembly(self, run_id: str) -> RunState:
+        run = self.store.get(run_id)
+        if any(segment.status != "completed" for segment in run.segment_renders):
+            raise SegmentActionConflict(
+                "Every segment must be completed before video assembly"
+            )
+        run.video_assembly = VideoAssemblyState()
+        self._assemble_segment_outputs(run)
+        self.store.save(run)
+        return run
+
+    @staticmethod
+    def _require_segment(run: RunState, segment_id: str) -> SegmentRenderState:
+        segment = next(
+            (
+                item
+                for item in run.segment_renders
+                if item.segment_id == segment_id
+            ),
+            None,
+        )
+        if segment is None:
+            raise KeyError(segment_id)
+        return segment
+
+    @staticmethod
+    def _require_segment_retryable(
+        segment: SegmentRenderState,
+        *,
+        force: bool,
+    ) -> None:
+        if segment.status == "completed" and not force:
+            raise SegmentActionConflict(
+                "Completed segment retry requires force=true"
+            )
+        if segment.status in {"queued", "running", "submitting"} and not force:
+            raise SegmentActionConflict(
+                f"Segment is currently {segment.status}; cancel it before retrying"
+            )
+
+    @staticmethod
+    def _clear_segment_video_state(
+        segment: SegmentRenderState,
+        *,
+        status: str,
+    ) -> None:
+        segment.workflow_api_artifact = ""
+        segment.submission = None
+        segment.outputs = []
+        segment.status = status  # type: ignore[assignment]
+        segment.error = ""
+        segment.submitted_at = ""
+        segment.started_at = ""
+        segment.completed_at = ""
+
+    def _queue_segment_stage(
+        self,
+        run: RunState,
+        stage: str,
+        segment: SegmentRenderState,
+    ) -> None:
+        self._sync_segment_comfyui_views(run)
+        run.status = "queued"
+        run.current_stage = "queued"
+        run.resume_stage = stage
+        run.error = ""
+        run.failed_stage = ""
+        run.cancel_requested = False
+        run.queued_at = datetime.now(timezone.utc).isoformat()
+        self._clear_lease(run)
+        run.add_event(
+            "segment_retry_queued",
+            stage=stage,
+            data={"segment_id": segment.segment_id, "order": segment.order},
+        )
+        self.store.save(run)
 
     def _find_idempotent_run(self, request: RunRequest) -> RunState | None:
         if not request.idempotency_key:
@@ -343,6 +614,7 @@ class StoryRunOrchestrator:
     def retry(self, run_id: str, request: RunRetryRequest | None = None) -> RunState:
         run = self.store.get(run_id)
         retry_request = request or RunRetryRequest()
+        self._apply_retry_configuration_overrides(run, retry_request)
         start_stage = retry_request.from_stage or run.failed_stage or "chief_screenwriter"
         run.retry_count += 1
         run.add_log("retry", f"Retrying from stage: {start_stage}")
@@ -442,6 +714,7 @@ class StoryRunOrchestrator:
                 self._renew_lease(run)
                 self._run_chief_screenwriter(run)
                 run.last_completed_stage = "chief_screenwriter"
+                self._checkpoint_stage_artifacts(run)
                 run.status = "awaiting_approval"
                 run.current_stage = "core_selection"
                 run.add_log("core_selection", "Waiting for core approval.")
@@ -487,6 +760,7 @@ class StoryRunOrchestrator:
     ) -> RunState:
         run = self.store.get(run_id)
         retry_request = request or RunRetryRequest()
+        self._apply_retry_configuration_overrides(run, retry_request)
         run.resume_stage = retry_request.from_stage or run.failed_stage or "chief_screenwriter"
         run.retry_count += 1
         run.status = "queued"
@@ -498,6 +772,227 @@ class StoryRunOrchestrator:
         run.add_event("retry_queued", stage=run.resume_stage, message=f"Retry queued from stage: {run.resume_stage}")
         self.store.save(run)
         return run
+
+    @staticmethod
+    def _apply_retry_configuration_overrides(
+        run: RunState,
+        retry_request: RunRetryRequest,
+    ) -> None:
+        overridden_stages = set(retry_request.model_config_overrides)
+        overridden_stages.update(retry_request.prompt_overrides)
+        if retry_request.grid_image_override is not None:
+            overridden_stages.add("four_grid_asset")
+        if retry_request.comfyui_override is not None:
+            overridden_stages.add("comfyui")
+        if not overridden_stages:
+            return
+
+        context = (
+            "grid image retry override"
+            if retry_request.grid_image_override is not None
+            and len(overridden_stages) == 1
+            else "retry configuration override"
+        )
+        if run.status != "failed":
+            raise RetryConfigurationConflict(f"{context} requires a failed run")
+        if run.failed_stage not in CANONICAL_STAGE_ORDER:
+            raise RetryConfigurationConflict(
+                f"{context} requires a known failed stage"
+            )
+        requested_stage = retry_request.from_stage or run.failed_stage
+        if requested_stage != run.failed_stage:
+            raise RetryConfigurationConflict(
+                f"{context} requires retry from the actual failed stage "
+                f"{run.failed_stage}"
+            )
+
+        completed_stages = {
+            event.stage
+            for event in run.events
+            if event.event_type == "stage_completed" and event.stage
+        }
+        failed_index = CANONICAL_STAGE_ORDER.index(run.failed_stage)
+        for stage in sorted(
+            overridden_stages,
+            key=CANONICAL_STAGE_ORDER.index,
+        ):
+            if stage in completed_stages or CANONICAL_STAGE_ORDER.index(stage) < failed_index:
+                raise RetryConfigurationConflict(
+                    f"stage {stage} completed successfully and cannot be changed"
+                )
+
+        for stage, config in retry_request.model_config_overrides.items():
+            if stage not in MODEL_STAGE_IDS:
+                raise RetryConfigurationConflict(
+                    f"stage {stage} does not support model configuration"
+                )
+            if config.provider_mode == "runninghub":
+                assert config.runninghub_site is not None
+                validate_runninghub_model(
+                    site=config.runninghub_site,
+                    stage=stage,
+                    model=config.model,
+                )
+
+        current_comfyui = run.request.comfyui
+        if (
+            retry_request.grid_image_override is not None
+            or retry_request.comfyui_override is not None
+        ) and current_comfyui is None:
+            raise RetryConfigurationConflict(
+                f"{context} requires ComfyUI configuration"
+            )
+
+        candidate_comfyui: ComfyUIRunConfig | None = None
+        if current_comfyui is not None:
+            comfyui_data = current_comfyui.model_dump()
+            if retry_request.grid_image_override is not None:
+                grid_data = current_comfyui.grid_image.model_dump()
+                grid_data.update(
+                    retry_request.grid_image_override.model_dump(
+                        exclude={"segment_id"}
+                    )
+                )
+                comfyui_data["grid_image"] = GridImageConfig.model_validate(
+                    grid_data
+                ).model_dump()
+                segment_id = retry_request.grid_image_override.segment_id
+                if segment_id and not any(
+                    item.segment_id == segment_id for item in run.segment_renders
+                ):
+                    raise RetryConfigurationConflict(
+                        f"grid image retry segment {segment_id!r} was not found"
+                    )
+            if retry_request.comfyui_override is not None:
+                for field_name in retry_request.comfyui_override.model_fields_set:
+                    value = getattr(retry_request.comfyui_override, field_name)
+                    comfyui_data[field_name] = value
+            candidate_comfyui = ComfyUIRunConfig.model_validate(comfyui_data)
+
+        for stage in CANONICAL_STAGE_ORDER:
+            model_override = retry_request.model_config_overrides.get(stage)
+            prompt_override = retry_request.prompt_overrides.get(stage)
+            if model_override is None and prompt_override is None:
+                continue
+            before: dict[str, Any] = {}
+            after: dict[str, Any] = {}
+            if model_override is not None:
+                current_model = run.request.model_configs.get(stage)
+                before["model_config"] = (
+                    current_model.model_dump() if current_model is not None else None
+                )
+                run.request.model_configs[stage] = model_override.model_copy(deep=True)
+                after["model_config"] = model_override.model_dump()
+            if prompt_override is not None:
+                before["prompt"] = run.prompt_snapshot.get(stage, "")
+                run.prompt_snapshot[stage] = prompt_override
+                after["prompt"] = prompt_override
+            StoryRunOrchestrator._record_retry_configuration_update(
+                run,
+                stage=stage,
+                before=before,
+                after=after,
+                message="Stage model or prompt configuration updated before retry.",
+            )
+
+        if retry_request.grid_image_override is not None:
+            override = retry_request.grid_image_override
+            assert current_comfyui is not None
+            assert candidate_comfyui is not None
+            before = {
+                "runninghub_site": current_comfyui.grid_image.runninghub_site,
+                "aspect_ratio": current_comfyui.grid_image.aspect_ratio,
+                "resolution": current_comfyui.grid_image.resolution,
+            }
+            after = override.model_dump(exclude={"segment_id"})
+            run.request.comfyui = candidate_comfyui
+            run.request.creation_spec.video_aspect_ratio = override.aspect_ratio
+            run.request.creation_spec.image_resolution = override.resolution
+            StoryRunOrchestrator._reset_grid_retry_state(run, override.segment_id)
+            StoryRunOrchestrator._record_retry_configuration_update(
+                run,
+                stage="four_grid_asset",
+                before=before,
+                after={**after, "segment_id": override.segment_id},
+                message="Grid image configuration updated before retry.",
+            )
+
+        if retry_request.comfyui_override is not None:
+            override = retry_request.comfyui_override
+            assert current_comfyui is not None
+            assert candidate_comfyui is not None
+            fields = override.model_fields_set
+            before = {field: getattr(current_comfyui, field) for field in fields}
+            run.request.comfyui = candidate_comfyui
+            after = {field: getattr(candidate_comfyui, field) for field in fields}
+            StoryRunOrchestrator._record_retry_configuration_update(
+                run,
+                stage="comfyui",
+                before=before,
+                after=after,
+                message="ComfyUI configuration updated before retry.",
+            )
+
+    @staticmethod
+    def _reset_grid_retry_state(run: RunState, segment_id: str | None) -> None:
+        if segment_id:
+            segment = next(
+                item for item in run.segment_renders if item.segment_id == segment_id
+            )
+            segment.grid_image_prompt = ""
+            segment.grid_image_asset = None
+            segment.grid_image_attempts = []
+            segment.grid_image_checkpoint = ""
+            segment.submission = None
+            segment.outputs = []
+            segment.status = "planned"
+            segment.error = ""
+            segment.submitted_at = ""
+            segment.started_at = ""
+            segment.completed_at = ""
+            if segment.order == 1:
+                run.grid_image_asset = None
+                run.grid_image_attempts = []
+                run.grid_image_checkpoint = ""
+                run.grid_image_replacements = []
+            return
+
+        run.grid_image_asset = None
+        run.grid_image_attempts = []
+        run.grid_image_checkpoint = ""
+        run.grid_image_replacements = []
+        for segment in run.segment_renders:
+            segment.grid_image_prompt = ""
+            segment.grid_image_asset = None
+            segment.grid_image_attempts = []
+            segment.grid_image_checkpoint = ""
+            segment.submission = None
+            segment.outputs = []
+            segment.status = "planned"
+            segment.error = ""
+
+    @staticmethod
+    def _record_retry_configuration_update(
+        run: RunState,
+        *,
+        stage: str,
+        before: dict[str, Any],
+        after: dict[str, Any],
+        message: str,
+    ) -> None:
+        revision = {
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+            "stage": stage,
+            "before": before,
+            "after": after,
+        }
+        run.retry_configuration_history.append(revision)
+        run.add_event(
+            "retry_configuration_updated",
+            stage=stage,
+            message=message,
+            data={"before": before, "after": after},
+        )
 
     def request_cancel(self, run_id: str) -> RunState:
         run = self.store.get(run_id)
@@ -586,11 +1081,21 @@ class StoryRunOrchestrator:
                 self._run_stage(run, stage)
                 run.last_completed_stage = stage
                 run.add_event("stage_completed", stage=stage)
+                self._checkpoint_stage_artifacts(run)
                 self.store.save(run)
             self._check_cancelled(run)
             self._finish_completed(run)
         except RunCancellationRequested:
             self._finish_cancelled(run)
+        except RunMonitoringExtended:
+            run.status = "running"
+            run.current_stage = "comfyui"
+            run.resume_stage = "comfyui"
+            run.lease_owner = ""
+            run.lease_expires_at = (
+                datetime.now(timezone.utc) + timedelta(seconds=1)
+            ).isoformat()
+            self.store.save(run)
         except Exception as exc:
             self._finish_failed(run, exc)
         finally:
@@ -666,8 +1171,13 @@ class StoryRunOrchestrator:
     def _refresh_terminal_artifacts(self, run: RunState) -> None:
         if not run.artifact_dir and not run.request.output_root:
             return
-        write_run_timeline_artifact(run)
-        write_artifact_manifest(run)
+        write_run_checkpoint_artifacts(run)
+
+    def _checkpoint_stage_artifacts(self, run: RunState) -> None:
+        if run.current_stage == "artifacts":
+            return
+        if run.artifact_dir or run.request.output_root:
+            write_run_checkpoint_artifacts(run)
 
     @staticmethod
     def _clear_lease(run: RunState) -> None:
@@ -780,12 +1290,14 @@ class StoryRunOrchestrator:
     def _run_chief_screenwriter(self, run: RunState) -> None:
         run.current_stage = "chief_screenwriter"
         run.add_log("chief_screenwriter", "Generating core candidates and draft script.")
+        idea_text = run.request.input_spec.content if run.request.input_spec.content else run.request.idea
         prompt = build_chief_screenwriter_prompt(
-            idea=run.request.idea,
-            audience_pressure=run.request.audience_pressure,
-            preferred_style=run.request.preferred_style,
-            preferred_series=run.request.preferred_series,
-            duration_seconds=run.request.duration_seconds,
+            idea=idea_text,
+            audience_pressure=run.request.creation_spec.audience,
+            preferred_style=run.request.creation_spec.style_preset_id,
+            preferred_series=run.request.creation_spec.series_name,
+            duration_seconds=run.request.creation_spec.duration_seconds,
+            template=run.prompt_snapshot.get("chief_screenwriter"),
         )
         payload = self._generate_model_json(
             run,
@@ -805,7 +1317,8 @@ class StoryRunOrchestrator:
             {
                 "selected_core": run.selected_core,
                 "draft_script": run.script,
-            }
+            },
+            template=run.prompt_snapshot.get("deepseek_polish"),
         )
         payload = self._generate_model_json(
             run,
@@ -819,10 +1332,65 @@ class StoryRunOrchestrator:
 
     def _run_quality_gate(self, run: RunState) -> None:
         run.current_stage = "quality_gate"
-        run.add_log("quality_gate", "Checking polished script quality gates.")
-        gate = self.quality_gate.check_script_object(run.script)
-        if not gate.passed:
-            raise ValueError(f"deepseek_polish quality gate failed: {gate.issues}")
+        run.add_log(
+            "quality_gate",
+            "Auditing the polished script with the configured model and local hard rules.",
+        )
+        prompt = build_quality_gate_prompt(
+            run.script,
+            template=run.prompt_snapshot.get("quality_gate"),
+        )
+        model_report = self._generate_model_json(
+            run,
+            stage="quality_gate",
+            prompt=prompt,
+        )
+        model_passed = require_bool(model_report, "quality_gate", "passed")
+        model_issues = self._normalize_quality_issues(
+            model_report.get("issues"),
+            source="model",
+        )
+        rule_report = self.quality_gate.check_script_object(run.script)
+        rule_issues = [
+            {"source": "local_rule", "code": code, "message": code}
+            for code in rule_report.issues
+        ]
+        passed = model_passed and rule_report.passed
+        run.quality_gate_report = {
+            "passed": passed,
+            "model_passed": model_passed,
+            "rule_passed": rule_report.passed,
+            "issues": model_issues + rule_issues,
+            "revision_instructions": list(
+                model_report.get("revision_instructions") or []
+            ),
+            "scores": dict(model_report.get("scores") or {}),
+        }
+        self.store.save(run)
+        if not passed:
+            codes = [issue["code"] for issue in run.quality_gate_report["issues"]]
+            raise ValueError(f"deepseek_polish quality gate failed: {codes}")
+
+    @staticmethod
+    def _normalize_quality_issues(value: Any, *, source: str) -> list[dict[str, str]]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            raise ValueError("quality_gate issues must be an array")
+        normalized: list[dict[str, str]] = []
+        for index, item in enumerate(value):
+            if isinstance(item, str):
+                code = item.strip()
+                message = code
+            elif isinstance(item, dict):
+                code = str(item.get("code") or "").strip()
+                message = str(item.get("message") or code).strip()
+            else:
+                raise ValueError(f"quality_gate issues[{index}] must be a string or object")
+            if not code:
+                raise ValueError(f"quality_gate issues[{index}] requires code")
+            normalized.append({"source": source, "code": code, "message": message})
+        return normalized
 
     def _run_prompt_writer(self, run: RunState) -> None:
         run.current_stage = "gpt_prompt_writer"
@@ -831,6 +1399,7 @@ class StoryRunOrchestrator:
             request=run.request,
             script=run.script,
             workflow_context=self._build_workflow_context(run.request),
+            template=run.prompt_snapshot.get("gpt_prompt_writer"),
         )
         payload = self._generate_model_json(
             run,
@@ -842,6 +1411,11 @@ class StoryRunOrchestrator:
             stage="gpt_prompt_writer",
         )
         run.storyboard = shots
+        
+        gate = self.quality_gate.check_storyboard_object(run.storyboard)
+        if not gate.passed:
+            raise ValueError(f"gpt_prompt_writer quality gate failed: {gate.issues}")
+            
         run.final_storyboard = []
 
     def _run_prompt_audit(self, run: RunState) -> None:
@@ -852,6 +1426,7 @@ class StoryRunOrchestrator:
             script=run.script,
             storyboard=run.storyboard,
             workflow_context=self._build_workflow_context(run.request),
+            template=run.prompt_snapshot.get("gpt_prompt_audit"),
         )
         audit = self._generate_model_json(
             run,
@@ -873,6 +1448,7 @@ class StoryRunOrchestrator:
             storyboard=run.storyboard,
             audit=run.prompt_audit,
             workflow_context=self._build_workflow_context(run.request),
+            template=run.prompt_snapshot.get("gpt_prompt_reviser"),
         )
         payload = self._generate_model_json(
             run,
@@ -937,37 +1513,139 @@ class StoryRunOrchestrator:
         artifact_dir = Path(run.request.output_root or "runs") / run.run_id
         artifact_dir.mkdir(parents=True, exist_ok=True)
         run.artifact_dir = str(artifact_dir)
-
-        if not run.grid_image_prompt:
-            run.grid_image_prompt = compile_four_grid_prompt(
+        if not run.segment_renders:
+            if not storyboard and run.grid_image_asset is not None:
+                run.grid_image_checkpoint = "workflow_patched"
+                self.store.save(run)
+                return
+            run.segment_renders = build_segment_render_plan(
                 storyboard,
+                target_duration_seconds=run.request.creation_spec.duration_seconds,
+                fps=24,
+            )
+            if run.grid_image_asset is not None:
+                if len(run.segment_renders) != 1:
+                    raise ValueError(
+                        "Legacy multi-segment run has only one grid image; restart stage 8 to create per-segment assets"
+                    )
+                legacy = run.segment_renders[0]
+                legacy.grid_image_prompt = run.grid_image_prompt
+                legacy.grid_image_asset = run.grid_image_asset
+                legacy.grid_image_attempts = list(run.grid_image_attempts)
+                legacy.grid_image_checkpoint = run.grid_image_checkpoint
+            for segment in run.segment_renders:
+                run.add_event(
+                    "segment_planned",
+                    stage="four_grid_asset",
+                    data={
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "duration_seconds": segment.duration_seconds,
+                    },
+                )
+            self.store.save(run)
+
+        for segment in run.segment_renders:
+            self._run_segment_grid_asset(
+                run,
+                segment,
+                config=config,
+                image_config=image_config,
+                artifact_dir=artifact_dir,
+            )
+
+        first = run.segment_renders[0]
+        run.grid_image_prompt = first.grid_image_prompt
+        run.grid_image_asset = first.grid_image_asset
+        run.grid_image_attempts = list(first.grid_image_attempts)
+        run.grid_image_checkpoint = first.grid_image_checkpoint
+        self.store.save(run)
+
+    def _run_segment_grid_asset(
+        self,
+        run: RunState,
+        segment: SegmentRenderState,
+        *,
+        config,
+        image_config: GridImageConfig,
+        artifact_dir: Path,
+    ) -> None:
+        if segment.status == "image_ready" and segment.grid_image_checkpoint == "workflow_patched":
+            return
+        segment_dir = artifact_dir / "segments" / f"{segment.order:03d}-{segment.segment_id}"
+        segment_dir.mkdir(parents=True, exist_ok=True)
+        if not segment.grid_image_prompt:
+            segment.grid_image_prompt = compile_segment_four_grid_prompt(
+                {
+                    "image_prompt": segment.positive_prompt,
+                    "grid_panel_prompts": segment.grid_panel_prompts,
+                },
+                aspect_ratio=image_config.aspect_ratio,
                 max_chars=image_config.prompt_max_chars,
             )
-            run.grid_image_checkpoint = "prompt_compiled"
+            (segment_dir / "grid_prompt.json").write_text(
+                json.dumps(
+                    {
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "prompt": segment.grid_image_prompt,
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
+            segment.grid_image_checkpoint = "prompt_compiled"
+            self._sync_legacy_grid_state(run, segment)
             self.store.save(run)
 
-        if run.grid_image_asset is None:
-            if image_config.effective_mode() == "manual_override":
-                run.grid_image_asset = acquire_manual_grid_image(
-                    image_config.manual_image_path or "",
-                    artifact_dir=artifact_dir,
-                    prompt=run.grid_image_prompt,
-                    config=image_config,
+        if segment.grid_image_asset is None:
+            segment.status = "image_generating"
+            segment.error = ""
+            run.add_event(
+                "segment_grid_started",
+                stage="four_grid_asset",
+                data={"segment_id": segment.segment_id, "order": segment.order},
+            )
+            self.store.save(run)
+            try:
+                if image_config.effective_mode() == "manual_override":
+                    segment.grid_image_asset = acquire_manual_grid_image(
+                        image_config.manual_image_path or "",
+                        artifact_dir=segment_dir,
+                        prompt=segment.grid_image_prompt,
+                        config=image_config,
+                    )
+                else:
+                    segment.grid_image_asset = self._acquire_generated_segment_asset(
+                        run,
+                        segment,
+                        artifact_dir=segment_dir,
+                        image_config=image_config,
+                    )
+            except Exception as exc:
+                segment.status = "failed"
+                segment.error = str(exc)
+                run.add_event(
+                    "segment_grid_failed",
+                    stage="four_grid_asset",
+                    message=str(exc),
+                    data={"segment_id": segment.segment_id, "order": segment.order},
                 )
-            else:
-                run.grid_image_asset = self._acquire_generated_grid_asset(
-                    run,
-                    artifact_dir=artifact_dir,
-                    image_config=image_config,
-                )
-            run.grid_image_checkpoint = "image_acquired"
+                self.store.save(run)
+                raise
+            segment.grid_image_checkpoint = "image_acquired"
+            self._sync_legacy_grid_state(run, segment)
             self.store.save(run)
 
-        run.grid_image_checkpoint = "image_validated"
-        asset = run.grid_image_asset
+        segment.grid_image_checkpoint = "image_validated"
+        asset = segment.grid_image_asset
+        assert asset is not None
+        self._sync_legacy_grid_state(run, segment)
+        self.store.save(run)
         if asset.upload_status != "accepted":
             destination = deterministic_comfyui_filename(
-                run.run_id,
+                f"{run.run_id}_{segment.segment_id}",
                 asset.sha256,
                 asset.mime_type,
             )
@@ -983,26 +1661,110 @@ class StoryRunOrchestrator:
                 asset.comfyui_filename = destination
                 asset.upload_status = "unknown"
                 asset.upload_error = str(exc)
+                segment.error = str(exc)
+                self._sync_legacy_grid_state(run, segment)
                 self.store.save(run)
                 raise
-            run.grid_image_checkpoint = "image_uploaded"
+            segment.grid_image_checkpoint = "image_uploaded"
+            self._sync_legacy_grid_state(run, segment)
             self.store.save(run)
 
         preview = preview_storyboard_submission(
             config,
-            storyboard,
-            run.run_id,
-            duration_seconds=run.request.duration_seconds,
+            [self._segment_storyboard_item(segment)],
+            f"{run.run_id}_{segment.segment_id}",
+            duration_seconds=segment.duration_seconds,
             grid_image_asset=asset,
         )
-        run.grid_image_replacements = preview["items"][0]["replacements"]
-        run.grid_image_checkpoint = "workflow_patched"
+        segment.grid_image_checkpoint = "workflow_patched"
+        segment.status = "image_ready"
+        segment.error = ""
+        self._sync_legacy_grid_state(run, segment)
+        if segment.order == 1:
+            run.grid_image_replacements = preview["items"][0]["replacements"]
+        run.add_event(
+            "segment_grid_completed",
+            stage="four_grid_asset",
+            data={
+                "segment_id": segment.segment_id,
+                "order": segment.order,
+                "task_id": asset.task_id,
+                "filename": asset.comfyui_filename,
+            },
+        )
         self.store.save(run)
+
+    @staticmethod
+    def _sync_legacy_grid_state(run: RunState, segment: SegmentRenderState) -> None:
+        if segment.order != 1:
+            return
+        run.grid_image_prompt = segment.grid_image_prompt
+        run.grid_image_asset = segment.grid_image_asset
+        run.grid_image_attempts = list(segment.grid_image_attempts)
+        run.grid_image_checkpoint = segment.grid_image_checkpoint
+
+    def _acquire_generated_segment_asset(
+        self,
+        run: RunState,
+        segment: SegmentRenderState,
+        *,
+        artifact_dir: Path,
+        image_config: GridImageConfig,
+    ) -> GridImageAsset:
+        for attempt_number in range(1, image_config.max_attempts + 1):
+            attempt = GridImageAttempt(attempt_number=attempt_number)
+            segment.grid_image_attempts.append(attempt)
+            self.store.save(run)
+            try:
+                with self.resource_limits.image_generation():
+                    asset = acquire_generated_grid_image(
+                        self.grid_image_provider,
+                        artifact_dir=artifact_dir,
+                        prompt=segment.grid_image_prompt,
+                        config=image_config,
+                    )
+            except Exception as exc:
+                attempt.status = "failed"
+                attempt.error_type = type(exc).__name__
+                attempt.error_message = str(exc)
+                attempt.finished_at = datetime.now(timezone.utc).isoformat()
+                self.store.save(run)
+                failure = classify_failure("four_grid_asset", exc)
+                if not failure.retryable or attempt_number == image_config.max_attempts:
+                    raise
+                time.sleep(min(2 ** (attempt_number - 1), 8))
+                continue
+            attempt.status = "succeeded"
+            attempt.finished_at = datetime.now(timezone.utc).isoformat()
+            self.store.save(run)
+            return asset
+        raise RuntimeError("segment grid image generation exhausted without a result")
+
+    @staticmethod
+    def _segment_storyboard_item(segment: SegmentRenderState) -> dict[str, Any]:
+        return {
+            "shot_id": segment.shot_id,
+            "time_range": f"0-{segment.duration_seconds}s",
+            "description": segment.positive_prompt,
+            "image_prompt": segment.positive_prompt,
+            "negative_prompt": segment.negative_prompt,
+            "grid_panel_prompts": list(segment.grid_panel_prompts),
+            "comfyui_inputs": {
+                "positive": segment.positive_prompt,
+                "negative": segment.negative_prompt,
+                "seed": segment.seed,
+                "strength": segment.strength,
+            },
+        }
 
     def _run_comfyui(self, run: RunState) -> None:
         run.current_stage = "comfyui"
-        run.add_log("comfyui", "Submitting storyboard shots to ComfyUI.")
         assert run.request.comfyui is not None
+
+        provider = run.request.render_backend.provider
+        if provider != "runninghub_workflow" and run.segment_renders:
+            self._run_segmented_comfyui(run)
+            return
 
         def persist_submissions(submissions):
             run.comfyui_submissions = submissions
@@ -1011,58 +1773,101 @@ class StoryRunOrchestrator:
             ]
             self.store.save(run)
 
-        with self.resource_limits.comfyui_submission():
-            run.comfyui_submissions = submit_storyboard(
-                run.request.comfyui,
-                run.final_storyboard or run.storyboard,
-                run.run_id,
-                duration_seconds=run.request.duration_seconds,
-                existing_submissions=run.comfyui_submissions,
-                on_update=persist_submissions,
-                grid_image_asset=run.grid_image_asset,
-            )
-        persist_submissions(run.comfyui_submissions)
-        if run.request.comfyui.wait_for_completion and run.comfyui_prompt_ids:
-            run.add_log("comfyui", "Waiting for ComfyUI outputs.")
-            try:
-                run.comfyui_outputs = wait_for_prompt_outputs(
+        if provider == "runninghub_workflow":
+            run.add_log("comfyui", "Submitting storyboard shots to RunningHub.")
+            with self.resource_limits.comfyui_submission():
+                run.comfyui_submissions = submit_runninghub_storyboard(
                     run.request.comfyui,
-                    run.comfyui_prompt_ids,
-                    should_cancel=lambda: self.store.get(run.run_id).cancel_requested,
+                    run.final_storyboard or run.storyboard,
+                    run.run_id,
+                    duration_seconds=run.request.duration_seconds,
+                    existing_submissions=run.comfyui_submissions,
+                    on_update=persist_submissions,
+                    grid_image_asset=run.grid_image_asset,
                 )
-            except ComfyUIWaitCancelled as exc:
-                run.cancel_requested = True
-                run.comfyui_cancellations = cancel_prompt_jobs(
+            persist_submissions(run.comfyui_submissions)
+            if run.request.comfyui.wait_for_completion and run.comfyui_prompt_ids:
+                run.add_log("comfyui", "Waiting for RunningHub outputs.")
+                try:
+                    run.comfyui_outputs = wait_for_runninghub_outputs(
+                        run.request.comfyui,
+                        run.comfyui_prompt_ids,
+                        should_cancel=lambda: self.store.get(run.run_id).cancel_requested,
+                    )
+                except RunningHubWaitCancelled as exc:
+                    run.cancel_requested = True
+                    run.add_log(
+                        "comfyui",
+                        "Cancellation observed while waiting for RunningHub; task cancellation requested locally.",
+                    )
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise RunCancellationRequested(
+                        "run cancellation requested while waiting for RunningHub"
+                    ) from exc
+                except RunningHubOutputTimeout as exc:
+                    run.comfyui_diagnostics = exc.diagnostics
+                    run.add_log("comfyui", str(exc), level="warn")
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise
+        else:
+            run.add_log("comfyui", "Submitting storyboard shots to ComfyUI.")
+            with self.resource_limits.comfyui_submission():
+                run.comfyui_submissions = submit_storyboard(
                     run.request.comfyui,
-                    run.comfyui_prompt_ids,
+                    run.final_storyboard or run.storyboard,
+                    run.run_id,
+                    duration_seconds=run.request.duration_seconds,
+                    existing_submissions=run.comfyui_submissions,
+                    on_update=persist_submissions,
+                    grid_image_asset=run.grid_image_asset,
                 )
-                run.add_log(
-                    "comfyui",
-                    "Cancellation observed while waiting; requested precise remote job cancellation.",
-                )
-                run.add_event(
-                    "comfyui_cancellation_requested",
-                    stage="comfyui",
-                    data={
-                        "results": [
-                            item.model_dump() for item in run.comfyui_cancellations
-                        ]
-                    },
-                )
-                if run.artifact_dir or run.request.output_root:
-                    write_artifact_manifest(run)
-                self.store.save(run)
-                raise RunCancellationRequested(
-                    "run cancellation requested while waiting for ComfyUI"
-                ) from exc
-            except ComfyUIOutputTimeout as exc:
-                run.comfyui_diagnostics = exc.diagnostics
-                run.add_log("comfyui", str(exc), level="warn")
-                if run.artifact_dir or run.request.output_root:
-                    write_artifact_manifest(run)
-                self.store.save(run)
-                raise
+            persist_submissions(run.comfyui_submissions)
+            if run.request.comfyui.wait_for_completion and run.comfyui_prompt_ids:
+                run.add_log("comfyui", "Waiting for ComfyUI outputs.")
+                try:
+                    run.comfyui_outputs = wait_for_prompt_outputs(
+                        run.request.comfyui,
+                        run.comfyui_prompt_ids,
+                        should_cancel=lambda: self.store.get(run.run_id).cancel_requested,
+                    )
+                except ComfyUIWaitCancelled as exc:
+                    run.cancel_requested = True
+                    run.comfyui_cancellations = cancel_prompt_jobs(
+                        run.request.comfyui,
+                        run.comfyui_prompt_ids,
+                    )
+                    run.add_log(
+                        "comfyui",
+                        "Cancellation observed while waiting; requested precise remote job cancellation.",
+                    )
+                    run.add_event(
+                        "comfyui_cancellation_requested",
+                        stage="comfyui",
+                        data={
+                            "results": [
+                                item.model_dump() for item in run.comfyui_cancellations
+                            ]
+                        },
+                    )
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise RunCancellationRequested(
+                        "run cancellation requested while waiting for ComfyUI"
+                    ) from exc
+                except ComfyUIOutputTimeout as exc:
+                    run.comfyui_diagnostics = exc.diagnostics
+                    run.add_log("comfyui", str(exc), level="warn")
+                    if run.artifact_dir or run.request.output_root:
+                        write_artifact_manifest(run)
+                    self.store.save(run)
+                    raise
             run.comfyui_diagnostics = {}
+
             if run.request.comfyui.download_outputs:
                 artifact_dir = write_artifact_manifest(run)
                 run.comfyui_outputs = download_prompt_outputs(
@@ -1077,6 +1882,251 @@ class StoryRunOrchestrator:
             if run.artifact_dir or run.request.output_root:
                 write_artifact_manifest(run)
             self.store.save(run)
+
+    def _run_segmented_comfyui(self, run: RunState) -> None:
+        config = run.request.comfyui
+        assert config is not None
+        artifact_root = Path(run.artifact_dir or run.request.output_root or "runs")
+        if artifact_root.name != run.run_id:
+            artifact_root = artifact_root / run.run_id
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        run.artifact_dir = str(artifact_root)
+
+        with httpx.Client(timeout=30.0, trust_env=False) as client:
+            object_info = fetch_workflow_runtime_object_info(
+                client,
+                config.endpoint,
+                config,
+            ) or {}
+            for segment in sorted(run.segment_renders, key=lambda item: item.order):
+                if segment.status == "completed":
+                    continue
+                if segment.grid_image_asset is None:
+                    raise ValueError(
+                        f"Segment {segment.segment_id} has no grid image asset"
+                    )
+                segment_dir = (
+                    artifact_root
+                    / "segments"
+                    / f"{segment.order:03d}-{segment.segment_id}"
+                )
+                planned = prepare_segment_workflow(
+                    config,
+                    segment,
+                    run.run_id,
+                    object_info=object_info,
+                )
+                paths = persist_planned_segment_workflow(planned, segment_dir)
+                segment.workflow_name = Path(config.workflow_api_path or "").stem
+                segment.workflow_path = config.workflow_api_path or ""
+                segment.workflow_sha256 = planned.workflow_sha256
+                segment.workflow_api_artifact = str(paths["workflow_api"])
+                segment.workflow_models = list(planned.workflow_models)
+                segment.status = "submitting"
+                segment.error = ""
+                self.store.save(run)
+
+                def persist_submission(current, *, target=segment):
+                    target.submission = current
+                    self._sync_segment_comfyui_views(run)
+                    self.store.save(run)
+
+                try:
+                    with self.resource_limits.comfyui_submission():
+                        segment.submission = submit_planned_workflow(
+                            config,
+                            planned,
+                            existing_submission=segment.submission,
+                            on_update=persist_submission,
+                            client=client,
+                        )
+                except ComfyUISubmissionUnknown as exc:
+                    segment.status = "unknown"
+                    segment.error = str(exc)
+                    self._sync_segment_comfyui_views(run)
+                    run.add_event(
+                        "segment_monitoring_extended",
+                        stage="comfyui",
+                        message=str(exc),
+                        data={
+                            "segment_id": segment.segment_id,
+                            "order": segment.order,
+                            "remote_state": "unknown",
+                        },
+                    )
+                    self.store.save(run)
+                    raise RunMonitoringExtended(str(exc)) from exc
+
+                segment.status = "queued"
+                if not segment.submitted_at:
+                    segment.submitted_at = datetime.now(timezone.utc).isoformat()
+                self._sync_segment_comfyui_views(run)
+                run.add_event(
+                    "segment_submitted",
+                    stage="comfyui",
+                    data={
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "prompt_id": segment.submission.prompt_id,
+                    },
+                )
+                self.store.save(run)
+
+                try:
+                    outputs = wait_for_prompt_outputs(
+                        config,
+                        [segment.submission.prompt_id],
+                        client=client,
+                        should_cancel=lambda: self.store.get(
+                            run.run_id
+                        ).cancel_requested,
+                    )
+                except ComfyUIWaitCancelled as exc:
+                    run.cancel_requested = True
+                    run.comfyui_cancellations = cancel_prompt_jobs(
+                        config,
+                        [segment.submission.prompt_id],
+                        client=client,
+                    )
+                    segment.status = "cancelled"
+                    self.store.save(run)
+                    raise RunCancellationRequested(
+                        "run cancellation requested while waiting for ComfyUI"
+                    ) from exc
+                except ComfyUIOutputTimeout as exc:
+                    diagnostics = exc.diagnostics or collect_prompt_diagnostics(
+                        config,
+                        [segment.submission.prompt_id],
+                        client=client,
+                    )
+                    remote_state = classify_prompt_remote_state(
+                        diagnostics,
+                        segment.submission.prompt_id,
+                    )
+                    run.comfyui_diagnostics = diagnostics
+                    if remote_state == "failed":
+                        segment.status = "failed"
+                        segment.error = "ComfyUI reported a failed segment job"
+                        self.store.save(run)
+                        raise RuntimeError(segment.error) from exc
+                    segment.status = remote_state  # type: ignore[assignment]
+                    segment.error = "" if remote_state in {"queued", "running"} else str(exc)
+                    run.add_event(
+                        "segment_monitoring_extended",
+                        stage="comfyui",
+                        message=(
+                            "ComfyUI job remains active; monitoring will resume without resubmission."
+                            if remote_state in {"queued", "running"}
+                            else "ComfyUI submission could not yet be reconciled."
+                        ),
+                        data={
+                            "segment_id": segment.segment_id,
+                            "order": segment.order,
+                            "prompt_id": segment.submission.prompt_id,
+                            "remote_state": remote_state,
+                        },
+                    )
+                    self._sync_segment_comfyui_views(run)
+                    self.store.save(run)
+                    raise RunMonitoringExtended(str(exc)) from exc
+
+                if config.download_outputs:
+                    outputs = download_prompt_outputs(
+                        outputs,
+                        segment_dir,
+                        client=client,
+                    )
+                segment.outputs = outputs
+                segment.status = "completed"
+                segment.error = ""
+                segment.completed_at = datetime.now(timezone.utc).isoformat()
+                self._sync_segment_comfyui_views(run)
+                run.add_event(
+                    "segment_completed",
+                    stage="comfyui",
+                    data={
+                        "segment_id": segment.segment_id,
+                        "order": segment.order,
+                        "prompt_id": segment.submission.prompt_id,
+                        "output_count": len(outputs),
+                    },
+                )
+                self.store.save(run)
+        run.comfyui_diagnostics = {}
+        self._assemble_segment_outputs(run)
+
+    @staticmethod
+    def _sync_segment_comfyui_views(run: RunState) -> None:
+        ordered = sorted(run.segment_renders, key=lambda item: item.order)
+        run.comfyui_submissions = [
+            segment.submission
+            for segment in ordered
+            if segment.submission is not None
+        ]
+        run.comfyui_prompt_ids = [
+            segment.submission.prompt_id
+            for segment in ordered
+            if segment.submission is not None
+            and segment.submission.status == "accepted"
+        ]
+        run.comfyui_outputs = [
+            output for segment in ordered for output in segment.outputs
+        ]
+
+    def _assemble_segment_outputs(self, run: RunState) -> None:
+        ordered = sorted(run.segment_renders, key=lambda item: item.order)
+        if not ordered or any(segment.status != "completed" for segment in ordered):
+            return
+        clip_paths: list[str] = []
+        for segment in ordered:
+            video = next(
+                (
+                    output
+                    for output in segment.outputs
+                    if output.media_type == "video" and output.local_path
+                ),
+                None,
+            )
+            if video is None:
+                if run.request.comfyui and run.request.comfyui.download_outputs:
+                    run.video_assembly.status = "failed"
+                    run.video_assembly.error = (
+                        f"Segment {segment.segment_id} has no downloaded video output"
+                    )
+                    self.store.save(run)
+                    raise RuntimeError(run.video_assembly.error)
+                return
+            clip_paths.append(video.local_path)
+
+        artifact_root = Path(run.artifact_dir or run.request.output_root or "runs")
+        if artifact_root.name != run.run_id:
+            artifact_root = artifact_root / run.run_id
+        artifact_root.mkdir(parents=True, exist_ok=True)
+        run.artifact_dir = str(artifact_root)
+        output_path = artifact_root / f"{run.run_id}_assembled.mp4"
+        run.video_assembly.status = "running"
+        run.video_assembly.clip_paths = list(clip_paths)
+        run.add_event(
+            "video_assembly_started",
+            stage="comfyui",
+            data={"clip_count": len(clip_paths)},
+        )
+        self.store.save(run)
+        run.video_assembly = assemble_segment_videos(clip_paths, output_path)
+        if run.video_assembly.status != "completed":
+            run.add_event(
+                "video_assembly_failed",
+                stage="comfyui",
+                message=run.video_assembly.error,
+            )
+            self.store.save(run)
+            raise RuntimeError(run.video_assembly.error or "Video assembly failed")
+        run.add_event(
+            "video_assembly_completed",
+            stage="comfyui",
+            data={"output_path": run.video_assembly.output_path},
+        )
+        self.store.save(run)
 
     def _write_artifacts(self, run: RunState) -> None:
         run.current_stage = "artifacts"

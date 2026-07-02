@@ -662,6 +662,7 @@ def test_async_api_run_idempotency_key_does_not_queue_duplicate_work():
         assert provider.calls == [
             "chief_screenwriter",
             "deepseek_polish",
+            "quality_gate",
             "gpt_prompt_writer",
             "gpt_prompt_audit",
         ]
@@ -697,6 +698,7 @@ def test_manual_async_run_waits_for_approval_then_continues_in_background():
         assert provider.calls == [
             "chief_screenwriter",
             "deepseek_polish",
+            "quality_gate",
             "gpt_prompt_writer",
             "gpt_prompt_audit",
         ]

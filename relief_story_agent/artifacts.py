@@ -51,8 +51,7 @@ PUBLISH_INDEX_COLUMNS = [
 
 
 def write_run_artifacts(run: RunState) -> Path:
-    output_root = Path(run.request.output_root or "runs")
-    artifact_dir = output_root / run.run_id
+    artifact_dir = _artifact_dir_for_run(run)
     artifact_dir.mkdir(parents=True, exist_ok=True)
 
     final_storyboard = run.final_storyboard or run.storyboard
@@ -79,6 +78,7 @@ def write_run_artifacts(run: RunState) -> Path:
         _build_comfyui_preview(run, final_storyboard),
     )
     write_run_timeline_artifact(run, artifact_dir=artifact_dir)
+    write_execution_manifest(run, artifact_dir=artifact_dir)
     if run.grid_image_asset:
         _write_json(
             artifact_dir / "09_four_grid_prompt.json",
@@ -104,13 +104,56 @@ def write_run_artifacts(run: RunState) -> Path:
     return artifact_dir
 
 
+def write_run_checkpoint_artifacts(run: RunState) -> Path:
+    """Persist every valid result available so far without inventing future outputs."""
+    artifact_dir = _artifact_dir_for_run(run)
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    final_storyboard = run.final_storyboard or run.storyboard
+
+    if run.script:
+        _write_json(artifact_dir / "01_script.json", run.script)
+    if run.storyboard:
+        _write_json(artifact_dir / "02_storyboard.json", run.storyboard)
+        _write_json(
+            artifact_dir / "03_ltx_payload.json",
+            build_ltx_payload_from_storyboard(
+                final_storyboard,
+                duration_seconds=int(
+                    run.script.get("duration_seconds") or run.request.duration_seconds
+                ),
+            ),
+        )
+        _write_json(
+            artifact_dir / "07_comfyui_preview.json",
+            _build_comfyui_preview(run, final_storyboard),
+        )
+    if run.prompt_audit:
+        _write_json(artifact_dir / "04_prompt_audit.json", run.prompt_audit)
+    if run.final_storyboard:
+        _write_json(artifact_dir / "05_final_prompts.json", final_storyboard)
+    if run.model_attempts:
+        _write_json(
+            artifact_dir / "06_model_execution.json",
+            {
+                "summary": run.model_usage_summary.model_dump(),
+                "attempts": [attempt.model_dump() for attempt in run.model_attempts],
+            },
+        )
+
+    run.artifact_dir = str(artifact_dir)
+    write_run_timeline_artifact(run, artifact_dir=artifact_dir)
+    write_execution_manifest(run, artifact_dir=artifact_dir)
+    write_artifact_manifest(run)
+    return artifact_dir
+
+
 def write_run_timeline_artifact(run: RunState, *, artifact_dir: Path | None = None) -> Path:
     if artifact_dir is not None:
         target_dir = artifact_dir
     elif run.artifact_dir:
-        target_dir = Path(run.artifact_dir)
+        target_dir = _absolute_path(Path(run.artifact_dir))
     else:
-        target_dir = Path(run.request.output_root or "runs") / run.run_id
+        target_dir = _artifact_dir_for_run(run)
     target_dir.mkdir(parents=True, exist_ok=True)
     run.artifact_dir = str(target_dir)
     path = target_dir / "08_timeline.json"
@@ -118,8 +161,88 @@ def write_run_timeline_artifact(run: RunState, *, artifact_dir: Path | None = No
     return path
 
 
+def write_execution_manifest(
+    run: RunState,
+    *,
+    artifact_dir: Path | None = None,
+) -> Path:
+    target_dir = artifact_dir or (
+        _absolute_path(Path(run.artifact_dir))
+        if run.artifact_dir
+        else _artifact_dir_for_run(run)
+    )
+    target_dir.mkdir(parents=True, exist_ok=True)
+    run.artifact_dir = str(target_dir)
+    segments = sorted(run.segment_renders, key=lambda item: item.order)
+    first = segments[0] if segments else None
+    model_bindings = []
+    seen_bindings: set[tuple[str, str, str, str]] = set()
+    for segment in segments:
+        for binding in segment.workflow_models:
+            key = (
+                binding.node_id,
+                binding.class_type,
+                binding.input_name,
+                binding.selected,
+            )
+            if key in seen_bindings:
+                continue
+            seen_bindings.add(key)
+            model_bindings.append(binding.model_dump())
+    payload = {
+        "run_id": run.run_id,
+        "duration_mode": (
+            "auto" if run.request.creation_spec.duration_seconds == 0 else "explicit"
+        ),
+        "target_duration_seconds": run.request.creation_spec.duration_seconds,
+        "planned_duration_seconds": sum(
+            segment.duration_seconds for segment in segments
+        ),
+        "workflow": {
+            "name": first.workflow_name if first else "",
+            "path": first.workflow_path if first else "",
+            "sha256": first.workflow_sha256 if first else "",
+        },
+        "workflow_models": model_bindings,
+        "segments": [
+            {
+                "segment_id": segment.segment_id,
+                "shot_id": segment.shot_id,
+                "order": segment.order,
+                "authored_time_range": segment.authored_time_range,
+                "render_time_range": segment.render_time_range,
+                "duration_seconds": segment.duration_seconds,
+                "fps": segment.fps,
+                "frame_count": segment.frame_count,
+                "local_frame_indices": list(segment.local_frame_indices),
+                "positive_prompt": segment.positive_prompt,
+                "negative_prompt": segment.negative_prompt,
+                "seed": segment.seed,
+                "strength": segment.strength,
+                "grid_panel_prompts": list(segment.grid_panel_prompts),
+                "grid_image_prompt": segment.grid_image_prompt,
+                "workflow_name": segment.workflow_name,
+                "workflow_path": segment.workflow_path,
+                "workflow_sha256": segment.workflow_sha256,
+                "workflow_models": [
+                    binding.model_dump() for binding in segment.workflow_models
+                ],
+                "status": segment.status,
+            }
+            for segment in segments
+        ],
+    }
+    path = target_dir / "execution_manifest.json"
+    _write_json(path, payload)
+    return path
+
+
 def write_artifact_manifest(run: RunState) -> Path:
-    artifact_dir = Path(run.artifact_dir) if run.artifact_dir else Path(run.request.output_root or "runs") / run.run_id
+    artifact_dir = (
+        _absolute_path(Path(run.artifact_dir))
+        if run.artifact_dir
+        else _artifact_dir_for_run(run)
+    )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     run.artifact_dir = str(artifact_dir)
     _write_json(artifact_dir / "00_manifest.json", _build_manifest(run, artifact_dir))
@@ -127,16 +250,28 @@ def write_artifact_manifest(run: RunState) -> Path:
 
 
 def read_run_artifact_index(run: RunState) -> dict[str, Any]:
-    artifact_dir = Path(run.artifact_dir) if run.artifact_dir else Path(run.request.output_root or "runs") / run.run_id
+    artifact_dir = (
+        _absolute_path(Path(run.artifact_dir))
+        if run.artifact_dir
+        else _artifact_dir_for_run(run)
+    )
     manifest_path = artifact_dir / "00_manifest.json"
+    if not manifest_path.exists() and _has_checkpoint_data(run):
+        artifact_dir = write_run_checkpoint_artifacts(run)
+        manifest_path = artifact_dir / "00_manifest.json"
     if manifest_path.exists():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     else:
         manifest = _build_manifest(run, artifact_dir)
     manifest["artifacts"] = [
-        {**item, "exists": Path(item["path"]).exists()}
+        {
+            **item,
+            "path": str(_manifest_artifact_path(item, artifact_dir)),
+            "exists": _manifest_artifact_path(item, artifact_dir).exists(),
+        }
         for item in manifest.get("artifacts", [])
     ]
+    manifest["artifacts"].extend(_segment_artifact_entries(run, artifact_dir))
     manifest["comfyui_prompt_ids"] = list(run.comfyui_prompt_ids)
     manifest["actual_outputs"] = [output.model_dump() for output in run.comfyui_outputs]
     manifest["comfyui_cancellations"] = [
@@ -148,6 +283,131 @@ def read_run_artifact_index(run: RunState) -> dict[str, Any]:
         record.model_dump() for record in run.failure_records
     ]
     return manifest
+
+
+def _segment_artifact_entries(
+    run: RunState,
+    artifact_dir: Path,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    for segment in sorted(run.segment_renders, key=lambda item: item.order):
+        segment_dir = (
+            artifact_dir
+            / "segments"
+            / f"{segment.order:03d}-{segment.segment_id}"
+        )
+
+        def add(
+            name: str,
+            path: str | Path,
+            kind: str,
+            *,
+            prompt_id: str = "",
+            media_type: str = "",
+        ) -> None:
+            target = Path(path)
+            entries.append(
+                {
+                    "name": name,
+                    "kind": kind,
+                    "filename": target.name,
+                    "path": str(target),
+                    "exists": target.exists(),
+                    "segment_id": segment.segment_id,
+                    "order": segment.order,
+                    "prompt_id": prompt_id,
+                    "media_type": media_type,
+                }
+            )
+
+        prompt_path = segment_dir / "grid_prompt.json"
+        if prompt_path.exists():
+            add("segment_grid_prompt", prompt_path, "json")
+        if segment.grid_image_asset is not None:
+            add(
+                "segment_grid_image",
+                segment.grid_image_asset.local_path,
+                "media",
+                media_type=segment.grid_image_asset.mime_type,
+            )
+        if segment.workflow_api_artifact:
+            add(
+                "segment_workflow_api",
+                segment.workflow_api_artifact,
+                "json",
+                prompt_id=(
+                    segment.submission.prompt_id if segment.submission else ""
+                ),
+            )
+        for name, filename in (
+            ("segment_ltx_payload", "ltx_payload.json"),
+            ("segment_submission_metadata", "submission_metadata.json"),
+        ):
+            path = segment_dir / filename
+            if path.exists():
+                add(
+                    name,
+                    path,
+                    "json",
+                    prompt_id=(
+                        segment.submission.prompt_id if segment.submission else ""
+                    ),
+                )
+        for output in segment.outputs:
+            if not output.local_path:
+                continue
+            add(
+                "segment_video"
+                if output.media_type == "video"
+                else "segment_output",
+                output.local_path,
+                "media",
+                prompt_id=output.prompt_id,
+                media_type=output.media_type,
+            )
+    if run.video_assembly.output_path:
+        path = Path(run.video_assembly.output_path)
+        entries.append(
+            {
+                "name": "assembled_video",
+                "kind": "media",
+                "filename": path.name,
+                "path": str(path),
+                "exists": path.exists(),
+                "segment_id": "",
+                "order": 0,
+                "prompt_id": "",
+                "media_type": "video",
+            }
+        )
+    return entries
+
+
+def _absolute_path(path: Path) -> Path:
+    return path.expanduser().resolve()
+
+
+def _artifact_dir_for_run(run: RunState) -> Path:
+    output_root = _absolute_path(Path(run.request.output_root or "runs"))
+    return output_root / run.run_id
+
+
+def _manifest_artifact_path(item: dict[str, Any], artifact_dir: Path) -> Path:
+    path = Path(str(item.get("path") or ""))
+    if path.is_absolute():
+        return path
+    filename = str(item.get("filename") or path.name)
+    return artifact_dir / filename
+
+
+def _has_checkpoint_data(run: RunState) -> bool:
+    return bool(
+        run.script
+        or run.storyboard
+        or run.final_storyboard
+        or run.prompt_audit
+        or run.model_attempts
+    )
 
 
 def read_batch_artifact_index(

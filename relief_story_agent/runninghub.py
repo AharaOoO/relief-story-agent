@@ -395,3 +395,176 @@ def _check(
         "message": message,
         "details": details,
     }
+
+
+class RunningHubWaitCancelled(RuntimeError):
+    """Raised when a run cancellation is observed while waiting for RunningHub outputs."""
+
+
+class RunningHubOutputTimeout(TimeoutError):
+    def __init__(self, message: str, diagnostics: dict[str, Any]):
+        super().__init__(message)
+        self.diagnostics = diagnostics
+
+
+def submit_runninghub_storyboard(
+    config: ComfyUIRunConfig,
+    storyboard: list[dict[str, Any]],
+    run_id: str,
+    *,
+    duration_seconds: int = 90,
+    existing_submissions: list[ComfyUISubmission] | None = None,
+    on_update: Any = None,
+    client: httpx.Client | None = None,
+    grid_image_asset: GridImageAsset | None = None,
+) -> list[ComfyUISubmission]:
+    from .comfyui import plan_storyboard_workflows, _content_fingerprint, _new_submission, _update_submission, _notify
+
+    existing = existing_submissions or []
+    submissions: list[ComfyUISubmission] = []
+
+    planned_workflows = plan_storyboard_workflows(
+        config,
+        storyboard,
+        run_id,
+        duration_seconds=duration_seconds,
+        grid_image_asset=grid_image_asset,
+        allow_unuploaded_grid_image=True,
+    )
+
+    for planned in planned_workflows:
+        fingerprint = _content_fingerprint(planned.workflow)
+        previous = next(
+            (
+                item
+                for item in existing
+                if item.submission_key == planned.submission_key
+                and item.content_fingerprint == fingerprint
+            ),
+            None,
+        )
+        submission = previous.model_copy(deep=True) if previous else _new_submission(
+            run_id,
+            planned.submission_key,
+            fingerprint,
+        )
+        submissions.append(submission)
+        if submission.status == "accepted":
+            continue
+
+        _update_submission(submission, status="prepared", error="")
+        if on_update:
+            _notify(on_update, submissions)
+
+        node_info_list = []
+        for rep in planned.replacements:
+            node_id = str(rep["node"])
+            field_name = rep["input"]
+            try:
+                field_value = planned.workflow[node_id]["inputs"][field_name]
+            except KeyError:
+                field_value = rep.get("value_preview", "")
+
+            node_info_list.append(RunningHubNodeInfo(
+                nodeId=node_id,
+                fieldName=field_name,
+                fieldValue=field_value,
+                description=rep.get("key", "")
+            ))
+
+        wf_id = config.runninghub_workflow_id or str(config.workflow_api_path or "")
+        request = RunningHubWorkflowRequest(
+            workflowId=wf_id,
+            nodeInfoList=node_info_list,
+            api_key_env=config.api_key_env or DEFAULT_RUNNINGHUB_API_KEY_ENV,
+        )
+
+        try:
+            res = submit_runninghub_task(request, client=client)
+            if res.get("status") == "submitted":
+                task_id = res.get("task_id")
+                _update_submission(submission, status="accepted", prompt_id=task_id)
+                if on_update:
+                    _notify(on_update, submissions)
+            else:
+                err_msg = res.get("message") or "Failed to submit to RunningHub"
+                _update_submission(submission, status="rejected", error=err_msg)
+                if on_update:
+                    _notify(on_update, submissions)
+                raise ValueError(f"RunningHub submission failed: {err_msg}")
+        except Exception as exc:
+            _update_submission(submission, status="rejected", error=str(exc))
+            if on_update:
+                _notify(on_update, submissions)
+            raise
+
+    return submissions
+
+
+def wait_for_runninghub_outputs(
+    config: ComfyUIRunConfig,
+    task_ids: list[str],
+    *,
+    should_cancel: Any = None,
+    client: httpx.Client | None = None,
+) -> list[ComfyUIOutput]:
+    import time
+    from .models import ComfyUIOutput
+
+    outputs: list[ComfyUIOutput] = []
+    pending_ids = list(task_ids)
+
+    timeout = config.output_timeout_seconds or 600.0
+    poll_interval = config.output_poll_interval_seconds or 5.0
+    start_time = time.time()
+
+    while pending_ids:
+        if should_cancel and should_cancel():
+            raise RunningHubWaitCancelled("RunningHub wait cancelled")
+
+        if time.time() - start_time > timeout:
+            raise RunningHubOutputTimeout(
+                "RunningHub outputs timeout exceeded",
+                {"pending_tasks": pending_ids}
+            )
+
+        for task_id in list(pending_ids):
+            status_req = RunningHubTaskRequest(
+                taskId=task_id,
+                api_key_env=config.api_key_env or DEFAULT_RUNNINGHUB_API_KEY_ENV,
+            )
+            try:
+                status_res = fetch_runninghub_status(status_req, client=client)
+                remote_status = status_res.get("remote_status")
+
+                if remote_status == "SUCCESS":
+                    out_req = RunningHubTaskOutputsRequest(
+                        taskId=task_id,
+                        api_key_env=config.api_key_env or DEFAULT_RUNNINGHUB_API_KEY_ENV,
+                    )
+                    out_res = fetch_runninghub_outputs(out_req, client=client)
+                    remote_outputs = out_res.get("outputs", [])
+
+                    for out in remote_outputs:
+                        file_url = out.get("fileUrl")
+                        if file_url:
+                            outputs.append(ComfyUIOutput(
+                                prompt_id=task_id,
+                                node_id="",
+                                filename=file_url.split("/")[-1] or "output.mp4",
+                                url=file_url,
+                            ))
+                    pending_ids.remove(task_id)
+                elif remote_status in {"FAILED", "CANCELLED"}:
+                    raise ValueError(f"RunningHub task {task_id} failed with remote status: {remote_status}")
+            except Exception as exc:
+                if "failed with remote status" in str(exc):
+                    raise
+                # Log or ignore transient polling errors to be resilient
+                pass
+
+        if pending_ids:
+            time.sleep(poll_interval)
+
+    return outputs
+

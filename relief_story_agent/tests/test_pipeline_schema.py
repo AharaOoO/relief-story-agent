@@ -8,7 +8,11 @@ from fastapi.testclient import TestClient
 
 from relief_story_agent.api import create_app
 from relief_story_agent.orchestrator import StoryRunOrchestrator
-from relief_story_agent.pipeline import CANONICAL_STAGE_ORDER, build_pipeline_schema
+from relief_story_agent.pipeline import (
+    CANONICAL_STAGE_ORDER,
+    MODEL_STAGE_IDS,
+    build_pipeline_schema,
+)
 from relief_story_agent.providers import FakeModelProvider
 
 
@@ -32,6 +36,9 @@ def test_pipeline_schema_exposes_fixed_order_and_stage_metadata():
     stages = {stage["stage_id"]: stage for stage in schema["stages"]}
     assert stages["chief_screenwriter"]["category"] == "model"
     assert stages["chief_screenwriter"]["side_effects"] == ["model_call"]
+    assert stages["quality_gate"]["category"] == "model"
+    assert stages["quality_gate"]["side_effects"] == ["model_call"]
+    assert "quality_gate" in MODEL_STAGE_IDS
     assert stages["gpt_prompt_reviser"]["automatic"] == "conditional_once"
     assert stages["four_grid_asset"]["category"] == "asset"
     assert stages["comfyui"]["side_effects"] == ["comfyui_prompt"]

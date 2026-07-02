@@ -15,4 +15,12 @@ describe('formatStatus', () => {
     expect(getStatusLabel('not_from_backend')).toBe('未知')
     expect(getStatusTone('not_from_backend')).toBe('neutral')
   })
+
+  it('covers pipeline and batch-specific statuses shown in the new UI', () => {
+    expect(getStatusLabel('pending')).toBe('待命')
+    expect(getStatusLabel('waiting')).toBe('等待确认')
+    expect(getStatusLabel('skipped')).toBe('已跳过')
+    expect(getStatusLabel('partial_failed')).toBe('部分失败')
+    expect(getStatusTone('partial_failed')).toBe('danger')
+  })
 })

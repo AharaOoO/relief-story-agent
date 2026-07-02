@@ -407,7 +407,7 @@ def test_cli_diagnose_reports_invalid_request_schema_without_traceback(tmp_path)
 def test_cli_model_check_reports_invalid_run_request_schema_without_traceback(tmp_path):
     request_path = tmp_path / "run_request.json"
     request_path.write_text(
-        json.dumps({"output_root": str(tmp_path / "outputs")}),
+        json.dumps({"duration_seconds": "not-a-number"}),
         encoding="utf-8",
     )
     model_config_path = tmp_path / "models.json"

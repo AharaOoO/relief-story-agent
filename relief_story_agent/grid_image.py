@@ -9,6 +9,7 @@ from typing import Literal, Protocol
 from PIL import Image, ImageStat
 
 from .models import GridImageAsset, GridImageConfig
+from .segment_render import grid_panel_prompts_for_shot
 
 
 @dataclass(frozen=True)
@@ -17,6 +18,9 @@ class GeneratedImage:
     mime_type: str
     provider: str
     model: str
+    task_id: str = ""
+    aspect_ratio: str = ""
+    resolution: str = ""
 
 
 class GridImageProvider(Protocol):
@@ -57,7 +61,35 @@ def compile_four_grid_prompt(storyboard: list[dict], *, max_chars: int) -> str:
     return prompt[:max_chars].rstrip()
 
 
-def validate_grid_image(path: str | Path, *, min_dimension: int, max_bytes: int) -> ValidatedImage:
+def compile_segment_four_grid_prompt(
+    shot: dict,
+    *,
+    aspect_ratio: Literal["16:9", "9:16"],
+    max_chars: int,
+) -> str:
+    panels, _ = grid_panel_prompts_for_shot(shot)
+    labels = ["Top-left", "Top-right", "Bottom-left", "Bottom-right"]
+    panel_text = " ".join(
+        f"{label}: {text}" for label, text in zip(labels, panels, strict=True)
+    )
+    prompt = (
+        "Create one clean 2x2 cinematic contact sheet for one story segment only, "
+        f"composed for a {aspect_ratio} output. Read the cells in chronological order. "
+        "Keep character identity, wardrobe, location, lighting, camera axis, and screen direction consistent. "
+        f"{panel_text} "
+        "Do not include events, characters, or locations from other segments. "
+        "No captions, panel labels, readable text, watermarks, extra panels, duplicated cells, or decorative borders."
+    )
+    return prompt[:max_chars].rstrip()
+
+
+def validate_grid_image(
+    path: str | Path,
+    *,
+    min_dimension: int,
+    max_bytes: int,
+    expected_aspect_ratio: Literal["16:9", "9:16"] | None = None,
+) -> ValidatedImage:
     image_path = Path(path)
     if not image_path.is_file():
         raise ValueError(f"grid image file not found: {image_path}")
@@ -73,8 +105,12 @@ def validate_grid_image(path: str | Path, *, min_dimension: int, max_bytes: int)
                 raise ValueError(f"unsupported grid image format: {image.format}")
             if width < min_dimension or height < min_dimension:
                 raise ValueError(f"grid image is smaller than {min_dimension}px")
-            if abs(width / height - 1.0) > 0.08:
-                raise ValueError("grid image must be approximately square for a 2x2 layout")
+            if expected_aspect_ratio:
+                expected = 16 / 9 if expected_aspect_ratio == "16:9" else 9 / 16
+                if abs(width / height - expected) > 0.08:
+                    raise ValueError(
+                        f"grid image must match the selected {expected_aspect_ratio} aspect ratio"
+                    )
             rgb = image.convert("RGB")
             for index, crop in enumerate(_quadrants(rgb), start=1):
                 extrema = ImageStat.Stat(crop).extrema
@@ -103,6 +139,7 @@ def acquire_manual_grid_image(
         source,
         min_dimension=config.min_dimension,
         max_bytes=config.max_bytes,
+        expected_aspect_ratio=config.aspect_ratio,
     )
     artifact_dir.mkdir(parents=True, exist_ok=True)
     extension = _extension_for_mime(validated.mime_type)
@@ -112,6 +149,7 @@ def acquire_manual_grid_image(
         target,
         min_dimension=config.min_dimension,
         max_bytes=config.max_bytes,
+        expected_aspect_ratio=config.aspect_ratio,
     )
     return _asset_from_validated(copied, source="manual", prompt=prompt)
 
@@ -132,6 +170,7 @@ def acquire_generated_grid_image(
         target,
         min_dimension=config.min_dimension,
         max_bytes=config.max_bytes,
+        expected_aspect_ratio=config.aspect_ratio,
     )
     if validated.mime_type != generated.mime_type:
         raise ValueError(
@@ -143,6 +182,9 @@ def acquire_generated_grid_image(
         prompt=prompt,
         provider=generated.provider,
         model=generated.model,
+        task_id=generated.task_id,
+        aspect_ratio=generated.aspect_ratio or config.aspect_ratio,
+        resolution=generated.resolution or config.resolution,
     )
 
 
@@ -158,6 +200,9 @@ def _asset_from_validated(
     prompt: str,
     provider: str = "",
     model: str = "",
+    task_id: str = "",
+    aspect_ratio: str = "",
+    resolution: str = "",
 ) -> GridImageAsset:
     return GridImageAsset(
         source=source,
@@ -170,6 +215,9 @@ def _asset_from_validated(
         prompt=prompt,
         provider=provider,
         model=model,
+        task_id=task_id,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
     )
 
 

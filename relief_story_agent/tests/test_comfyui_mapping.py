@@ -13,6 +13,8 @@ from PIL import Image, ImageDraw
 from relief_story_agent.api import create_app
 from relief_story_agent.comfyui import (
     connect_comfyui,
+    persist_planned_segment_workflow,
+    prepare_segment_workflow,
     preview_storyboard_submission,
     submit_storyboard,
     upload_grid_image,
@@ -30,6 +32,7 @@ from relief_story_agent.models import (
     ComfyUIRunConfig,
     GridImageAsset,
     GridImageConfig,
+    SegmentRenderState,
 )
 from relief_story_agent.orchestrator import InMemoryRunStore, StoryRunOrchestrator
 from relief_story_agent.providers import FakeModelProvider
@@ -40,6 +43,61 @@ from relief_story_agent.tests.fixtures.ltx23_workflow_factory import build_sanit
 HTTPX_CLIENT = httpx.Client
 
 
+def test_prepare_segment_workflow_persists_exact_local_api_prompt(tmp_path):
+    workflow_path = tmp_path / "ltx.json"
+    workflow_path.write_text(
+        json.dumps(build_sanitized_ltx23_workflow(), ensure_ascii=False),
+        encoding="utf-8",
+    )
+    segment = SegmentRenderState(
+        segment_id="segment-003",
+        shot_id="3",
+        order=3,
+        authored_time_range="25-45s",
+        render_time_range="25-45s",
+        duration_seconds=20,
+        frame_count=480,
+        local_frame_indices=[0, 160, 319, 479],
+        positive_prompt="segment three prompt",
+        negative_prompt="watermark",
+        seed=3003,
+        strength=0.76,
+        grid_panel_prompts=["a", "b", "c", "d"],
+        grid_image_asset=GridImageAsset(
+            source="generated",
+            local_path=str(tmp_path / "segment.png"),
+            sha256="a" * 64,
+            mime_type="image/png",
+            width=2048,
+            height=1152,
+            byte_size=100,
+            comfyui_filename="segment-003.png",
+            upload_status="accepted",
+        ),
+    )
+    config = ComfyUIRunConfig(
+        enabled=True,
+        workflow_api_path=str(workflow_path),
+    )
+
+    planned = prepare_segment_workflow(config, segment, "run-123")
+    paths = persist_planned_segment_workflow(
+        planned,
+        tmp_path / "segments" / "003-segment-003",
+    )
+
+    assert planned.submission_key == "segment:segment-003"
+    assert planned.submission is not None
+    assert planned.ltx_payload["frame_indices"] == "0,160,319,479"
+    assert len(planned.ltx_payload["shots"]) == 1
+    assert paths["workflow_api"].name == "workflow_api.json"
+    saved = json.loads(paths["workflow_api"].read_text(encoding="utf-8"))
+    injected = json.loads(saved["202"]["inputs"]["text"])
+    assert injected["prompt"] == "segment three prompt"
+    assert saved["196"]["inputs"]["image"] == "segment-003.png"
+    assert "run-123/segment-003" in saved["79"]["inputs"]["filename_prefix"]
+
+
 def _write_sanitized_workflow(tmp_path):
     path = tmp_path / "ltx23_fixture.json"
     path.write_text(
@@ -47,6 +105,47 @@ def _write_sanitized_workflow(tmp_path):
         encoding="utf-8",
     )
     return path
+
+
+def test_runtime_object_info_fetches_only_workflow_node_types(tmp_path):
+    workflow_path = tmp_path / "targeted_object_info.json"
+    workflow_path.write_text(
+        json.dumps(
+            {
+                "version": 0.4,
+                "nodes": [
+                    {"id": 1, "type": "LoadImage", "widgets_values": ["grid.png"]},
+                    {"id": 2, "type": "CLIPTextEncode", "widgets_values": ["prompt"]},
+                ],
+                "links": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    requests: list[str] = []
+
+    def handler(request: httpx.Request):
+        requests.append(request.url.path)
+        if request.url.path == "/object_info":
+            raise AssertionError("full /object_info must not block workflow submission")
+        node_type = request.url.path.rsplit("/", 1)[-1]
+        return httpx.Response(200, json={node_type: {"input": {"required": {}}}})
+
+    result = comfyui.fetch_workflow_runtime_object_info(
+        HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+        "http://comfy.local",
+        ComfyUIRunConfig(
+            enabled=True,
+            endpoint="http://comfy.local",
+            workflow_api_path=str(workflow_path),
+        ),
+    )
+
+    assert requests == [
+        "/object_info/CLIPTextEncode",
+        "/object_info/LoadImage",
+    ]
+    assert set(result or {}) == {"CLIPTextEncode", "LoadImage"}
 
 
 def test_real_shape_fixture_detects_all_four_injection_points():
@@ -505,7 +604,7 @@ def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path):
 
     def handler(request: httpx.Request):
         requests.append(request.url.path)
-        if request.url.path == "/object_info":
+        if request.url.path.startswith("/object_info/"):
             return httpx.Response(200, json={})
         if request.url.path == "/prompt":
             payload = json.loads(request.content)
@@ -521,7 +620,9 @@ def test_preview_and_submission_do_not_mutate_60_node_fixture(tmp_path):
         client=HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
     )
 
-    assert requests == ["/object_info", "/prompt"]
+    assert requests[-1] == "/prompt"
+    assert requests[:-1]
+    assert all(path.startswith("/object_info/") for path in requests[:-1])
     persisted = json.loads(workflow_path.read_text(encoding="utf-8"))
     assert persisted == original
     assert len(persisted["nodes"]) == 60
@@ -800,28 +901,27 @@ def test_submit_storyboard_enriches_litegraph_workflow_with_runtime_object_info(
 
     def handler(request: httpx.Request):
         requests.append(request.url.path)
-        if request.url.path == "/object_info":
-            return httpx.Response(
-                200,
-                json={
-                    "LoadImage": {"input": {"required": {"image": ["COMBO", {}]}}},
-                    "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
-                    "CheckpointLoaderSimple": {
-                        "input": {"required": {"ckpt_name": ["COMBO", {}]}},
-                    },
-                    "EmptyLTXVLatentVideo": {
-                        "input": {
-                            "required": {
-                                "width": ["INT", {}],
-                                "height": ["INT", {}],
-                                "length": ["INT", {}],
-                                "batch_size": ["INT", {}],
-                            }
-                        },
-                    },
-                    "SaveVideo": {"input": {"required": {"filename_prefix": ["STRING", {}]}}},
+        object_info = {
+            "LoadImage": {"input": {"required": {"image": ["COMBO", {}]}}},
+            "CLIPTextEncode": {"input": {"required": {"text": ["STRING", {}]}}},
+            "CheckpointLoaderSimple": {
+                "input": {"required": {"ckpt_name": ["COMBO", {}]}},
+            },
+            "EmptyLTXVLatentVideo": {
+                "input": {
+                    "required": {
+                        "width": ["INT", {}],
+                        "height": ["INT", {}],
+                        "length": ["INT", {}],
+                        "batch_size": ["INT", {}],
+                    }
                 },
-            )
+            },
+            "SaveVideo": {"input": {"required": {"filename_prefix": ["STRING", {}]}}},
+        }
+        if request.url.path.startswith("/object_info/"):
+            node_type = request.url.path.rsplit("/", 1)[-1]
+            return httpx.Response(200, json={node_type: object_info[node_type]})
         if request.url.path == "/prompt":
             payload = json.loads(request.content)
             submitted.append(payload)
@@ -838,7 +938,14 @@ def test_submit_storyboard_enriches_litegraph_workflow_with_runtime_object_info(
     )
 
     prompt = submitted[0]["prompt"]
-    assert requests == ["/object_info", "/prompt"]
+    assert requests == [
+        "/object_info/CLIPTextEncode",
+        "/object_info/CheckpointLoaderSimple",
+        "/object_info/EmptyLTXVLatentVideo",
+        "/object_info/LoadImage",
+        "/object_info/SaveVideo",
+        "/prompt",
+    ]
     assert submissions[0].status == "accepted"
     assert prompt["3"]["inputs"]["ckpt_name"] == "ltx-2.3.safetensors"
     assert prompt["4"]["inputs"]["width"] == ["11", 0]
@@ -1499,3 +1606,69 @@ def test_api_comfyui_discover_workflows_returns_candidates(tmp_path):
     assert response.status_code == 200
     assert body["recommended"]["path"] == str(good)
     assert body["items"][0]["status"] == "recommended"
+
+
+def test_comfyui_backpressure_waits_for_queue_slot(tmp_path, monkeypatch):
+    workflow_path = tmp_path / "workflow.json"
+    workflow_path.write_text(json.dumps({
+        "3": {"inputs": {"noise_seed": 123, "text": "test"}, "class_type": "KSampler"}
+    }))
+
+    from relief_story_agent.models import ComfyUIRunConfig, GridImageAsset
+    from relief_story_agent.comfyui import submit_storyboard
+
+    asset = GridImageAsset(
+        source="manual",
+        local_path=str(tmp_path / "grid.png"),
+        sha256="c" * 64,
+        mime_type="image/png",
+        width=1024,
+        height=1024,
+        byte_size=100,
+        comfyui_filename="uploaded_grid.png",
+        upload_status="accepted",
+    )
+
+    config = ComfyUIRunConfig(
+        enabled=True,
+        endpoint="http://comfy.local",
+        workflow_api_path=str(workflow_path),
+        max_queue_size=2,
+    )
+
+    storyboard = [{"shot_id": 1, "image_prompt": "prompt 1"}]
+
+    requests = []
+    call_count = 0
+
+    def handler(request: httpx.Request):
+        nonlocal call_count
+        requests.append(request.url.path)
+        if request.url.path == "/object_info":
+            return httpx.Response(200, json={})
+        if request.url.path == "/queue":
+            call_count += 1
+            if call_count == 1:
+                return httpx.Response(200, json={"queue_running": [{}], "queue_pending": [{}]})
+            else:
+                return httpx.Response(200, json={"queue_running": [], "queue_pending": [{}]})
+        if request.url.path == "/prompt":
+            payload = json.loads(request.content)
+            return httpx.Response(200, json={"prompt_id": payload["prompt_id"]})
+        return httpx.Response(404)
+
+    sleeps = []
+    monkeypatch.setattr("time.sleep", lambda secs: sleeps.append(secs))
+
+    submit_storyboard(
+        config,
+        storyboard,
+        "backpressure_run",
+        duration_seconds=4,
+        client=httpx.Client(transport=httpx.MockTransport(handler)),
+        grid_image_asset=asset,
+    )
+
+    assert requests == ["/queue", "/queue", "/prompt"]
+    assert len(sleeps) == 1
+    assert sleeps[0] == 1.0

@@ -47,5 +47,16 @@ def require_shot_contract(shots: list[Any], stage: str) -> list[dict[str, Any]]:
             raise ValueError(f"{stage} shots[{index}] missing required field: comfyui_inputs")
         if not isinstance(current["comfyui_inputs"], dict):
             raise ValueError(f"{stage} shots[{index}] field comfyui_inputs must be an object")
+        panels = current.get("grid_panel_prompts")
+        if panels is not None:
+            if (
+                not isinstance(panels, list)
+                or len(panels) != 4
+                or not all(isinstance(item, str) and item.strip() for item in panels)
+            ):
+                raise ValueError(
+                    f"{stage} shots[{index}] field grid_panel_prompts must contain exactly four non-empty strings"
+                )
+            current["grid_panel_prompts"] = [item.strip() for item in panels]
         normalized.append(current)
     return normalized

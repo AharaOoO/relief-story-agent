@@ -25,8 +25,10 @@ from relief_story_agent.models import (
     ModelUsageSummary,
     RunRequest,
     RunState,
+    SegmentRenderState,
     TemplatePaths,
 )
+from relief_story_agent.storage import JsonFileRunStore
 
 
 MINIMAL_MP4_BYTES = (
@@ -34,6 +36,71 @@ MINIMAL_MP4_BYTES = (
     b"\x00\x00\x00\tmoov\x00"
 )
 CHANGED_MP4_BYTES = MINIMAL_MP4_BYTES + b"changed"
+
+
+def test_run_artifact_index_exposes_segment_workflow_image_and_clip(tmp_path):
+    segment_dir = tmp_path / "run_segments" / "segments" / "001-segment-001"
+    segment_dir.mkdir(parents=True)
+    image_path = segment_dir / "grid.png"
+    workflow_path = segment_dir / "workflow_api.json"
+    clip_path = segment_dir / "clip.mp4"
+    image_path.write_bytes(b"image")
+    workflow_path.write_text("{}", encoding="utf-8")
+    clip_path.write_bytes(MINIMAL_MP4_BYTES)
+    run = RunState(
+        run_id="run_segments",
+        request=RunRequest(idea="segments", output_root=str(tmp_path)),
+        artifact_dir=str(tmp_path / "run_segments"),
+        segment_renders=[
+            SegmentRenderState(
+                segment_id="segment-001",
+                shot_id="1",
+                order=1,
+                authored_time_range="0-10s",
+                render_time_range="0-10s",
+                duration_seconds=10,
+                frame_count=240,
+                local_frame_indices=[0, 80, 159, 239],
+                positive_prompt="prompt",
+                grid_panel_prompts=["a", "b", "c", "d"],
+                grid_image_asset=GridImageAsset(
+                    source="generated",
+                    local_path=str(image_path),
+                    sha256="a" * 64,
+                    mime_type="image/png",
+                    width=2048,
+                    height=1152,
+                    byte_size=5,
+                ),
+                workflow_api_artifact=str(workflow_path),
+                outputs=[
+                    ComfyUIOutput(
+                        prompt_id="prompt-001",
+                        filename=clip_path.name,
+                        media_type="video",
+                        local_path=str(clip_path),
+                    )
+                ],
+                status="completed",
+            )
+        ],
+    )
+
+    index = read_run_artifact_index(run)
+    segment_assets = [
+        item for item in index["artifacts"] if item.get("segment_id") == "segment-001"
+    ]
+
+    assert {item["name"] for item in segment_assets} >= {
+        "segment_grid_image",
+        "segment_workflow_api",
+        "segment_video",
+    }
+    assert all(item["order"] == 1 for item in segment_assets)
+    assert next(
+        item for item in segment_assets if item["name"] == "segment_video"
+    )["prompt_id"] == "prompt-001"
+    assert all(item["exists"] is True for item in segment_assets)
 
 
 def _completed_run_with_grid_asset(tmp_path):
@@ -399,6 +466,39 @@ def test_api_returns_run_artifact_index(tmp_path):
     body = response.json()
     assert body["run_id"] == run.run_id
     assert any(item["name"] == "final_prompts" for item in body["artifacts"])
+
+
+def test_api_migrates_legacy_persistent_run_outputs_into_state_artifacts(tmp_path):
+    from relief_story_agent.orchestrator import StoryRunOrchestrator
+    from relief_story_agent.providers import FakeModelProvider
+
+    state_dir = tmp_path / "state"
+    store = JsonFileRunStore(state_dir)
+    run = RunState(
+        run_id="run_legacy_output",
+        request=RunRequest(idea="legacy result"),
+        status="failed",
+        current_stage="failed",
+        last_completed_stage="chief_screenwriter",
+        script={"title": "已接收的剧本", "duration_seconds": 90},
+    )
+    store.save(run)
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=store,
+    )
+    client = TestClient(create_app(orchestrator))
+
+    response = client.get(f"/api/runs/{run.run_id}/artifacts")
+
+    assert response.status_code == 200
+    body = response.json()
+    script = next(item for item in body["artifacts"] if item["name"] == "script")
+    expected = (state_dir / "artifacts" / run.run_id / "01_script.json").resolve()
+    assert Path(script["path"]) == expected
+    assert script["exists"] is True
+    assert json.loads(expected.read_text(encoding="utf-8"))["title"] == "已接收的剧本"
+    assert Path(store.get(run.run_id).request.output_root) == (state_dir / "artifacts").resolve()
 
 
 def test_read_batch_artifact_index_summarizes_publishable_runs(tmp_path):

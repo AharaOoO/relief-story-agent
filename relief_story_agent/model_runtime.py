@@ -23,11 +23,17 @@ class ModelCallExecutor:
         self,
         provider: ModelProvider,
         *,
+        runninghub_provider: ModelProvider | None = None,
         sleep_fn: Callable[[float], None] = time.sleep,
         monotonic_fn: Callable[[], float] = time.monotonic,
         random_fn: Callable[[], float] = random.random,
     ):
         self.provider = provider
+        if runninghub_provider is None:
+            from .runninghub_llm import RunningHubLLMProvider
+
+            runninghub_provider = RunningHubLLMProvider()
+        self.runninghub_provider = runninghub_provider
         self.sleep_fn = sleep_fn
         self.monotonic_fn = monotonic_fn
         self.random_fn = random_fn
@@ -56,7 +62,12 @@ class ModelCallExecutor:
             self._record(record_attempt, attempt)
             started = self.monotonic_fn()
             try:
-                raw_result = self.provider.generate_json(stage, prompt, config)
+                provider = (
+                    self.runninghub_provider
+                    if policy.provider_mode == "runninghub"
+                    else self.provider
+                )
+                raw_result = provider.generate_json(stage, prompt, config)
                 result = self._normalize_result(raw_result, policy)
             except Exception as exc:
                 retryable = _is_retryable_error(exc)

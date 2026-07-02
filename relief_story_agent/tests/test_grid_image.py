@@ -7,6 +7,7 @@ from relief_story_agent.grid_image import (
     acquire_manual_grid_image,
     acquire_generated_grid_image,
     compile_four_grid_prompt,
+    compile_segment_four_grid_prompt,
     deterministic_comfyui_filename,
     GeneratedImage,
     validate_grid_image,
@@ -25,7 +26,8 @@ def test_grid_image_config_defaults_to_gpt_image_2_auto_mode():
     assert config.mode == "auto"
     assert config.provider == "openai_compatible"
     assert config.model == "gpt-image-2"
-    assert config.size == "1024x1024"
+    assert config.aspect_ratio == "16:9"
+    assert config.resolution == "2k"
     assert config.quality == "medium"
     assert config.output_format == "png"
     assert config.prompt_max_chars == 4000
@@ -112,6 +114,26 @@ def test_compile_prompt_selects_four_balanced_chronological_frames():
     assert len(prompt) <= 600
 
 
+def test_compile_segment_prompt_uses_only_one_shot_and_four_ordered_panels():
+    prompt = compile_segment_four_grid_prompt(
+        {
+            "shot_id": 3,
+            "image_prompt": "父亲把热咖啡推向夜班护士",
+            "grid_panel_prompts": ["看见", "靠近", "推杯", "释然"],
+        },
+        aspect_ratio="16:9",
+        max_chars=1200,
+    )
+
+    assert "one story segment" in prompt
+    assert "Top-left: 看见" in prompt
+    assert "Top-right: 靠近" in prompt
+    assert "Bottom-left: 推杯" in prompt
+    assert "Bottom-right: 释然" in prompt
+    assert "16:9" in prompt
+    assert "other segments" in prompt
+
+
 def test_validate_grid_image_reports_dimensions_hash_and_quadrants(tmp_path):
     path = tmp_path / "grid.png"
     _make_grid(path)
@@ -122,6 +144,34 @@ def test_validate_grid_image_reports_dimensions_hash_and_quadrants(tmp_path):
     assert validated.width == 1024
     assert validated.height == 1024
     assert len(validated.sha256) == 64
+
+
+def test_validate_grid_image_uses_the_selected_landscape_or_portrait_ratio(tmp_path):
+    landscape = tmp_path / "landscape.png"
+    portrait = tmp_path / "portrait.png"
+    _make_grid(landscape, size=(1600, 900))
+    _make_grid(portrait, size=(900, 1600))
+
+    assert validate_grid_image(
+        landscape,
+        min_dimension=512,
+        max_bytes=10_000_000,
+        expected_aspect_ratio="16:9",
+    ).width == 1600
+    assert validate_grid_image(
+        portrait,
+        min_dimension=512,
+        max_bytes=10_000_000,
+        expected_aspect_ratio="9:16",
+    ).height == 1600
+
+    with pytest.raises(ValueError, match="16:9"):
+        validate_grid_image(
+            portrait,
+            min_dimension=512,
+            max_bytes=10_000_000,
+            expected_aspect_ratio="16:9",
+        )
 
 
 def test_validate_grid_image_rejects_empty_quadrant(tmp_path):
@@ -139,7 +189,7 @@ def test_validate_grid_image_rejects_empty_quadrant(tmp_path):
 def test_manual_asset_is_copied_without_modifying_source(tmp_path):
     source = tmp_path / "source.png"
     artifact_dir = tmp_path / "run"
-    _make_grid(source)
+    _make_grid(source, size=(1600, 900))
     before = source.read_bytes()
 
     asset = acquire_manual_grid_image(
@@ -183,7 +233,7 @@ class FakeGridProvider:
 
 def test_generated_asset_is_saved_and_validated(tmp_path):
     source = tmp_path / "source.png"
-    _make_grid(source)
+    _make_grid(source, size=(1600, 900))
     provider = FakeGridProvider(source.read_bytes())
 
     asset = acquire_generated_grid_image(

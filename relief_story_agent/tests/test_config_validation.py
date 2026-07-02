@@ -91,6 +91,34 @@ def test_config_validation_reports_template_workflow_and_secret_errors(tmp_path)
     assert "comfyui_workflow" in failed
 
 
+def test_config_validation_checks_inline_runninghub_shared_key_requirement():
+    request = RunRequest.model_validate(
+        {
+            "idea": "enterprise key boundary",
+            "model_configs": {
+                "chief_screenwriter": {
+                    "provider_mode": "runninghub",
+                    "runninghub_site": "cn",
+                    "model": "qwen/qwen3.7-plus",
+                }
+            },
+        }
+    )
+    registry = ModelConfigRegistry(
+        environ={"RUNNINGHUB_CN_API_KEY": "consumer-key"},
+    )
+
+    result = validate_run_configuration(request, registry)
+    check = next(item for item in result["checks"] if item["name"] == "model_environment")
+
+    assert result["passed"] is False
+    assert check["status"] == "failed"
+    assert check["details"]["missing_environment_variables"] == [
+        "RUNNINGHUB_CN_SHARED_API_KEY"
+    ]
+    assert "Enterprise-Shared" in check["message"]
+
+
 def test_config_validation_accepts_valid_templates_and_workflow(tmp_path):
     writer = tmp_path / "writer.md"
     writer.write_text("writer {{script_json}} {{duration_seconds}}", encoding="utf-8")
@@ -742,6 +770,66 @@ def test_config_validation_can_check_comfyui_connection(tmp_path, monkeypatch):
     assert checks["comfyui_endpoint"]["status"] == "passed"
     assert checks["comfyui_endpoint"]["details"]["queue_pending"] == 0
     assert created_clients[0].get("trust_env") is False
+
+
+def test_config_validation_blocks_unavailable_workflow_model(tmp_path, monkeypatch):
+    workflow = tmp_path / "workflow_api.json"
+    workflow.write_text(
+        json.dumps(
+            {
+                "151": {
+                    "class_type": "CheckpointLoaderSimple",
+                    "inputs": {"ckpt_name": "missing.safetensors"},
+                    "_meta": {"title": "LTX loader"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def handler(request: httpx.Request):
+        if request.url.path == "/queue":
+            return httpx.Response(200, json={"queue_running": [], "queue_pending": []})
+        if request.url.path == "/object_info/CheckpointLoaderSimple":
+            return httpx.Response(
+                200,
+                json={
+                    "CheckpointLoaderSimple": {
+                        "input": {
+                            "required": {
+                                "ckpt_name": [["installed.safetensors"], {}]
+                            }
+                        }
+                    }
+                },
+            )
+        raise AssertionError(f"unexpected request: {request.url}")
+
+    monkeypatch.setattr(
+        "relief_story_agent.config_validation.httpx.Client",
+        lambda **kwargs: HTTPX_CLIENT(transport=httpx.MockTransport(handler)),
+    )
+    request = RunRequest(
+        idea="missing model",
+        comfyui=ComfyUIRunConfig(
+            enabled=True,
+            endpoint="http://comfy.local",
+            workflow_api_path=str(workflow),
+        ),
+    )
+
+    result = validate_run_configuration(
+        request,
+        ModelConfigRegistry(),
+        check_comfyui_connection=True,
+    )
+
+    check = next(
+        item for item in result["checks"] if item["name"] == "comfyui_workflow_models"
+    )
+    assert check["status"] == "failed"
+    assert check["details"]["missing_models"][0]["node_id"] == "151"
+    assert check["details"]["missing_models"][0]["selected"] == "missing.safetensors"
 
 
 def test_config_validation_reports_comfyui_connection_failure(tmp_path, monkeypatch):

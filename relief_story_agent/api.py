@@ -9,7 +9,6 @@ from .acceptance import build_acceptance_status
 from .artifacts import (
     export_batch_artifact_package,
     read_batch_artifact_index,
-    read_run_artifact_index,
     validate_batch_export_package,
     validate_batch_export_zip,
 )
@@ -43,6 +42,8 @@ from .models import (
     RunRequest,
     RunRetryRequest,
     RunState,
+    SegmentActionRequest,
+    SegmentImageRetryRequest,
 )
 from .local_runtime import (
     LocalRuntimeConfig,
@@ -50,9 +51,19 @@ from .local_runtime import (
     build_local_doctor,
     build_local_readiness,
 )
-from .orchestrator import StoryRunOrchestrator
+from .orchestrator import (
+    RetryConfigurationConflict,
+    SegmentActionConflict,
+    StoryRunOrchestrator,
+)
 from .pipeline import build_pipeline_schema
+from .provider_catalog import build_provider_catalog
 from .planning import build_batch_plan
+from .prompt_profiles import (
+    PromptProfile,
+    PromptProfileCloneRequest,
+    SYSTEM_DEFAULT_ID,
+)
 from .recovery import build_batch_recovery_plan
 from .run_audit import audit_run_state
 from .run_timeline import build_run_timeline
@@ -68,6 +79,36 @@ from .runninghub import (
 from .scheduler import PersistentRunScheduler
 from .setup_wizard import write_local_config_bundle
 from .smoke_comfyui import ComfyUISmokeRequest, run_comfyui_smoke
+
+
+def _prompt_profile_http_error(exc: ValueError) -> HTTPException:
+    message = str(exc)
+    if "system default" in message.lower():
+        return HTTPException(
+            status_code=409,
+            detail={
+                "code": "prompt_profile_read_only",
+                "message": message,
+                "action": "Clone the system profile and edit the copy.",
+            },
+        )
+    if "not found" in message.lower():
+        return HTTPException(
+            status_code=404,
+            detail={
+                "code": "prompt_profile_not_found",
+                "message": message,
+                "action": "Refresh the profile list and choose an existing profile.",
+            },
+        )
+    return HTTPException(
+        status_code=409,
+        detail={
+            "code": "prompt_profile_conflict",
+            "message": message,
+            "action": "Reload the profile and retry the operation.",
+        },
+    )
 
 
 def create_app(
@@ -222,6 +263,75 @@ def create_app(
     @app.get("/api/config/models")
     def get_model_config_status():
         return orchestrator.model_registry.status()
+
+    @app.get("/api/config/provider-catalog")
+    def get_provider_catalog():
+        return build_provider_catalog()
+
+    @app.get("/api/prompt-profiles")
+    def list_prompt_profiles():
+        return {"items": orchestrator.profile_store.list_profiles()}
+
+    @app.get("/api/prompt-profiles/{profile_id}")
+    def get_prompt_profile(profile_id: str):
+        try:
+            return orchestrator.profile_store.get(profile_id)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "prompt_profile_not_found",
+                    "message": str(exc),
+                    "action": "Refresh the profile list and choose an existing profile.",
+                },
+            ) from exc
+
+    @app.post("/api/prompt-profiles", status_code=201)
+    def create_prompt_profile(profile: PromptProfile):
+        profile.source = "user"
+        profile.version = 1
+        try:
+            return orchestrator.profile_store.create(profile)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.put("/api/prompt-profiles/{profile_id}")
+    def update_prompt_profile(profile_id: str, profile: PromptProfile):
+        if profile_id != profile.id:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "prompt_profile_id_mismatch",
+                    "message": "Prompt profile path id does not match the body id.",
+                    "action": "Reload the profile before saving it again.",
+                },
+            )
+        try:
+            return orchestrator.profile_store.update(profile)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.post("/api/prompt-profiles/{profile_id}/clone", status_code=201)
+    def clone_prompt_profile(profile_id: str, request: PromptProfileCloneRequest):
+        try:
+            return orchestrator.profile_store.clone(profile_id, request.name)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.post("/api/prompt-profiles/{profile_id}/reset")
+    def reset_prompt_profile(profile_id: str):
+        try:
+            return orchestrator.profile_store.reset(profile_id)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+
+    @app.delete("/api/prompt-profiles/{profile_id}", status_code=204)
+    def delete_prompt_profile(profile_id: str):
+        try:
+            orchestrator.profile_store.delete(profile_id)
+        except ValueError as exc:
+            raise _prompt_profile_http_error(exc) from exc
+        return Response(status_code=204)
 
     @app.post("/api/config/model-check")
     def check_model_config(request: ModelProbeRequest):
@@ -624,9 +734,12 @@ def create_app(
         try:
             run = orchestrator.store.get(run_id)
             events = [event for event in run.events if event.sequence > after]
+            next_cursor = events[-1].sequence if events else after
             return {
                 "run_id": run_id,
                 "after": after,
+                "next_cursor": next_cursor,
+                "is_terminal": run.status in {"completed", "failed", "cancelled"},
                 "events": [event.model_dump() for event in events],
             }
         except KeyError as exc:
@@ -649,15 +762,93 @@ def create_app(
     @app.get("/api/runs/{run_id}/artifacts")
     def get_run_artifacts(run_id: str):
         try:
-            return read_run_artifact_index(orchestrator.store.get(run_id))
+            return orchestrator.get_run_artifact_index(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
+
+    @app.get("/api/runs/{run_id}/render-plan")
+    def get_run_render_plan(run_id: str):
+        try:
+            return orchestrator.get_render_plan(run_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+
+    @app.get("/api/runs/{run_id}/segments/{segment_id}")
+    def get_run_segment(run_id: str, segment_id: str):
+        try:
+            return orchestrator.get_segment(run_id, segment_id).model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+
+    @app.post("/api/runs/{run_id}/segments/{segment_id}/retry-image")
+    def retry_segment_image(
+        run_id: str,
+        segment_id: str,
+        payload: SegmentImageRetryRequest,
+    ):
+        try:
+            run = orchestrator.queue_segment_image_retry(run_id, segment_id, payload)
+            if scheduler:
+                scheduler.submit(run_id)
+                run = orchestrator.store.get(run_id)
+            return run.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
+
+    @app.post("/api/runs/{run_id}/segments/{segment_id}/retry-video")
+    def retry_segment_video(
+        run_id: str,
+        segment_id: str,
+        payload: SegmentActionRequest,
+    ):
+        try:
+            run = orchestrator.queue_segment_video_retry(run_id, segment_id, payload)
+            if scheduler:
+                scheduler.submit(run_id)
+                run = orchestrator.store.get(run_id)
+            return run.model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
+
+    @app.post("/api/runs/{run_id}/segments/{segment_id}/cancel")
+    def cancel_run_segment(run_id: str, segment_id: str):
+        try:
+            return orchestrator.cancel_segment(run_id, segment_id).model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="segment not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
+
+    @app.post("/api/runs/{run_id}/assemble")
+    def retry_run_assembly(run_id: str):
+        try:
+            return orchestrator.retry_video_assembly(run_id).model_dump()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="run not found") from exc
+        except SegmentActionConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={"code": "segment_action_conflict", "message": str(exc)},
+            ) from exc
 
     @app.post("/api/runs/{run_id}/refresh-comfyui")
     def refresh_comfyui_outputs(run_id: str):
         try:
-            run = orchestrator.refresh_comfyui_outputs(run_id)
-            return read_run_artifact_index(run)
+            orchestrator.refresh_comfyui_outputs(run_id)
+            return orchestrator.get_run_artifact_index(run_id)
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
         except ValueError as exc:
@@ -684,6 +875,15 @@ def create_app(
                 else orchestrator.retry(run_id, payload)
             )
             return run.model_dump()
+        except RetryConfigurationConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "retry_configuration_conflict",
+                    "message": str(exc),
+                    "action": "Refresh the run and edit only its current failed stage.",
+                },
+            ) from exc
         except KeyError as exc:
             raise HTTPException(status_code=404, detail="run not found") from exc
 

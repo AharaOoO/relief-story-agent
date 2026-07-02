@@ -412,8 +412,9 @@ def test_orchestrator_persists_model_attempts_and_usage_summary():
     assert [item.stage for item in run.model_attempts] == [
         "chief_screenwriter",
         "deepseek_polish",
+        "quality_gate",
         "gpt_prompt_writer",
         "gpt_prompt_audit",
     ]
     assert all(item.status == "succeeded" for item in run.model_attempts)
-    assert run.model_usage_summary.total_requests == 4
+    assert run.model_usage_summary.total_requests == 5

@@ -3,12 +3,21 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .comfyui_endpoint import normalize_comfyui_endpoint
+from .provider_catalog import (
+    RUNNINGHUB_BASE_URLS,
+    RUNNINGHUB_LLM_API_KEY_ENVS,
+    RUNNINGHUB_TASK_API_KEY_ENVS,
+    RUNNINGHUB_WEB_BASE_URLS,
+    validate_runninghub_model,
+)
 
 
 class StageModelConfig(BaseModel):
+    provider_mode: Literal["openai_compatible", "runninghub"] = "openai_compatible"
+    runninghub_site: Literal["cn", "ai"] | None = None
     base_url: str = "http://127.0.0.1:8045/v1"
     api_key: str = Field(default="", exclude=True, repr=False)
     api_key_env: str = ""
@@ -23,6 +32,21 @@ class StageModelConfig(BaseModel):
     requests_per_minute: float = Field(default=0, ge=0)
     input_cost_per_million: float = Field(default=0, ge=0)
     output_cost_per_million: float = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _configure_runninghub(self) -> "StageModelConfig":
+        if self.provider_mode != "runninghub":
+            return self
+        if self.runninghub_site is None:
+            raise ValueError("runninghub_site is required for RunningHub provider mode")
+        if not self.model:
+            raise ValueError("model is required for RunningHub provider mode")
+        validate_runninghub_model(site=self.runninghub_site, model=self.model)
+        self.base_url = RUNNINGHUB_BASE_URLS[self.runninghub_site]
+        self.api_key_env = RUNNINGHUB_LLM_API_KEY_ENVS[self.runninghub_site]
+        if "timeout_seconds" not in self.model_fields_set:
+            self.timeout_seconds = 300.0
+        return self
 
 
 class ModelUsage(BaseModel):
@@ -111,12 +135,15 @@ class PlaceholderTarget(BaseModel):
 class GridImageConfig(BaseModel):
     mode: Literal["auto", "manual_override"] = "auto"
     manual_image_path: str | None = None
-    provider: Literal["openai_compatible"] = "openai_compatible"
+    provider: Literal["openai_compatible", "runninghub_image_task"] = "openai_compatible"
+    runninghub_site: Literal["cn", "ai"] | None = None
     base_url: str = "https://api.openai.com/v1"
     api_key: str = Field(default="", exclude=True, repr=False)
     api_key_env: str = "OPENAI_API_KEY"
     model: str = "gpt-image-2"
     size: str = "1024x1024"
+    aspect_ratio: Literal["16:9", "9:16"] = "16:9"
+    resolution: Literal["1k", "2k"] = "2k"
     quality: Literal["low", "medium", "high", "auto"] = "medium"
     output_format: Literal["png", "jpeg", "webp"] = "png"
     timeout_seconds: float = Field(default=180.0, gt=0)
@@ -124,6 +151,20 @@ class GridImageConfig(BaseModel):
     prompt_max_chars: int = Field(default=4000, ge=500, le=16000)
     min_dimension: int = Field(default=512, ge=64)
     max_bytes: int = Field(default=50 * 1024 * 1024, ge=1024)
+    output_timeout_seconds: float = Field(default=600.0, gt=0)
+    output_poll_interval_seconds: float = Field(default=3.0, ge=0)
+
+    @model_validator(mode="after")
+    def _configure_runninghub_image(self) -> "GridImageConfig":
+        if self.provider != "runninghub_image_task":
+            return self
+        if self.runninghub_site is None:
+            raise ValueError("runninghub_site is required for RunningHub image provider")
+        if self.model != "rhart-image-g-2":
+            raise ValueError("RunningHub image provider requires model 'rhart-image-g-2'")
+        self.base_url = RUNNINGHUB_WEB_BASE_URLS[self.runninghub_site]
+        self.api_key_env = RUNNINGHUB_TASK_API_KEY_ENVS[self.runninghub_site]
+        return self
 
     def effective_mode(self) -> Literal["auto", "manual_override"]:
         return "manual_override" if self.manual_image_path else self.mode
@@ -149,6 +190,9 @@ class GridImageAsset(BaseModel):
     prompt: str = ""
     provider: str = ""
     model: str = ""
+    task_id: str = ""
+    aspect_ratio: str = ""
+    resolution: str = ""
     generated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     comfyui_filename: str = ""
     upload_status: Literal["pending", "accepted", "unknown", "rejected"] = "pending"
@@ -159,6 +203,9 @@ class ComfyUIRunConfig(BaseModel):
     enabled: bool = False
     endpoint: str = "http://127.0.0.1:8188"
     workflow_api_path: str | None = None
+    runninghub_workflow_id: str = ""
+    api_key_env: str = ""
+
     placeholder_map_path: str | None = None
     placeholder_map: dict[str, PlaceholderTarget] = Field(default_factory=dict)
     wait_for_completion: bool = False
@@ -166,11 +213,15 @@ class ComfyUIRunConfig(BaseModel):
     output_timeout_seconds: float = Field(default=600.0, ge=0)
     output_poll_interval_seconds: float = Field(default=5.0, ge=0)
     grid_image: GridImageConfig = Field(default_factory=GridImageConfig)
+    max_queue_size: int = Field(default=0, ge=0)
+
+
 
     @field_validator("endpoint")
     @classmethod
     def _normalize_endpoint(cls, value: str) -> str:
         return normalize_comfyui_endpoint(value)
+
 
 
 class ComfyUIConnectionRequest(BaseModel):
@@ -264,6 +315,82 @@ class ComfyUICancellation(BaseModel):
     checked_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
+class WorkflowModelBinding(BaseModel):
+    node_id: str
+    class_type: str
+    title: str = ""
+    input_name: str
+    selected: str
+    available: bool = False
+    choices: list[str] = Field(default_factory=list)
+
+
+class SegmentRenderState(BaseModel):
+    segment_id: str
+    shot_id: str
+    order: int = Field(ge=1)
+    authored_time_range: str
+    render_time_range: str
+    duration_seconds: int = Field(gt=0)
+    fps: int = Field(default=24, ge=1, le=120)
+    frame_count: int = Field(gt=0)
+    local_frame_indices: list[int] = Field(min_length=4, max_length=4)
+    positive_prompt: str
+    negative_prompt: str = ""
+    seed: int = 0
+    strength: float = Field(default=0.7, ge=0, le=1)
+    grid_panel_prompts: list[str] = Field(default_factory=list, min_length=4, max_length=4)
+    grid_prompt_source: Literal["model", "derived"] = "derived"
+    grid_image_prompt: str = ""
+    grid_image_asset: GridImageAsset | None = None
+    grid_image_attempts: list[GridImageAttempt] = Field(default_factory=list)
+    grid_image_checkpoint: Literal[
+        "",
+        "prompt_compiled",
+        "image_acquired",
+        "image_validated",
+        "image_uploaded",
+        "workflow_patched",
+    ] = ""
+    workflow_name: str = ""
+    workflow_path: str = ""
+    workflow_sha256: str = ""
+    workflow_api_artifact: str = ""
+    workflow_models: list[WorkflowModelBinding] = Field(default_factory=list)
+    submission: ComfyUISubmission | None = None
+    outputs: list[ComfyUIOutput] = Field(default_factory=list)
+    status: Literal[
+        "planned",
+        "image_generating",
+        "image_ready",
+        "submitting",
+        "queued",
+        "running",
+        "completed",
+        "unknown",
+        "failed",
+        "cancelled",
+    ] = "planned"
+    error: str = ""
+    planned_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    submitted_at: str = ""
+    started_at: str = ""
+    completed_at: str = ""
+
+
+class VideoAssemblyState(BaseModel):
+    status: Literal["pending", "running", "completed", "failed"] = "pending"
+    clip_paths: list[str] = Field(default_factory=list)
+    concat_manifest_path: str = ""
+    output_path: str = ""
+    output_sha256: str = ""
+    duration_seconds: float = 0
+    command: list[str] = Field(default_factory=list)
+    return_code: int | None = None
+    stderr_tail: str = ""
+    error: str = ""
+
+
 class FailureRecord(BaseModel):
     stage: str
     category: Literal[
@@ -293,6 +420,61 @@ class TemplatePaths(BaseModel):
     prompt_audit_template_path: str | None = None
 
 
+class StoryInputSpec(BaseModel):
+    mode: Literal["auto", "idea", "requirements", "script", "mixed"] = "auto"
+    content: str = ""
+    source_name: str | None = None
+    language: str = "zh-CN"
+    preserve_original_plot: bool = True
+
+
+class CreationSpec(BaseModel):
+    duration_seconds: int = 240
+    video_aspect_ratio: Literal["16:9", "9:16"] = "16:9"
+    image_resolution: Literal["1k", "2k"] = "2k"
+    style_preset_id: str = "cinematic_suspense"
+    series_name: str = ""
+    audience: str = ""
+    creative_constraints: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_legacy_resolution(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("image_resolution") == "1080p":
+            data = dict(data)
+            data["image_resolution"] = "1k"
+        return data
+
+    @field_validator("duration_seconds")
+    @classmethod
+    def _validate_duration_seconds(cls, value: int) -> int:
+        if value == 0 or 15 <= value <= 300:
+            return value
+        raise ValueError(
+            "duration_seconds must be 0 (auto) or between 15 and 300"
+        )
+
+
+class PromptProfileBinding(BaseModel):
+    profile_id: str = "system-default"
+    profile_version: int = 1
+    stage_overrides: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("stage_overrides")
+    @classmethod
+    def _validate_stage_overrides(cls, value: dict[str, str]) -> dict[str, str]:
+        from .pipeline import MODEL_STAGE_IDS
+
+        unknown = sorted(set(value) - set(MODEL_STAGE_IDS))
+        if unknown:
+            raise ValueError(f"Unknown prompt stage(s): {', '.join(unknown)}")
+        return value
+
+
+class RenderBackendSpec(BaseModel):
+    provider: Literal["comfyui", "runninghub_workflow"] = "comfyui"
+
+
 class ExecutionPolicy(BaseModel):
     max_total_stage_executions: int = Field(default=0, ge=0)
     max_stage_executions: dict[str, int] = Field(default_factory=dict)
@@ -310,7 +492,11 @@ class ExecutionPolicy(BaseModel):
 
 class RunRequest(BaseModel):
     idempotency_key: str = ""
-    idea: str
+    idea: str = ""
+    input_spec: StoryInputSpec = Field(default_factory=StoryInputSpec)
+    creation_spec: CreationSpec = Field(default_factory=CreationSpec)
+    prompt_profile: PromptProfileBinding = Field(default_factory=PromptProfileBinding)
+    render_backend: RenderBackendSpec = Field(default_factory=RenderBackendSpec)
     queue_priority: int = 0
     audience_pressure: str = ""
     preferred_series: str = ""
@@ -325,8 +511,65 @@ class RunRequest(BaseModel):
     model_configs: dict[str, StageModelConfig] = Field(default_factory=dict)
     execution_policy: ExecutionPolicy = Field(default_factory=ExecutionPolicy)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_v1_to_v2(cls, data: Any) -> Any:
+        if isinstance(data, dict):
+            idea_val = data.get("idea", "")
+            if idea_val and "input_spec" not in data:
+                data["input_spec"] = {
+                    "mode": "idea",
+                    "content": idea_val
+                }
+            
+            if "creation_spec" not in data:
+                creation_spec = {}
+                if "duration_seconds" in data:
+                    creation_spec["duration_seconds"] = data["duration_seconds"]
+                if "preferred_series" in data:
+                    creation_spec["series_name"] = data["preferred_series"]
+                if "preferred_style" in data:
+                    creation_spec["style_preset_id"] = data["preferred_style"]
+                if "audience_pressure" in data:
+                    creation_spec["audience"] = data["audience_pressure"]
+                
+                if creation_spec:
+                    data["creation_spec"] = creation_spec
+
+        return data
+
+    @model_validator(mode="after")
+    def _validate_autopilot_bindings(self) -> "RunRequest":
+        from .pipeline import MODEL_STAGE_IDS
+
+        model_stage_ids = set(MODEL_STAGE_IDS)
+        unknown_configs = sorted(set(self.model_configs) - model_stage_ids)
+        if unknown_configs:
+            raise ValueError(f"Unknown model stage(s): {', '.join(unknown_configs)}")
+        unknown_profiles = sorted(set(self.model_profiles) - model_stage_ids)
+        if unknown_profiles:
+            raise ValueError(
+                f"Unknown model profile stage(s): {', '.join(unknown_profiles)}"
+            )
+        for stage, config in self.model_configs.items():
+            if config.provider_mode == "runninghub":
+                assert config.runninghub_site is not None
+                validate_runninghub_model(
+                    site=config.runninghub_site,
+                    stage=stage,
+                    model=config.model,
+                )
+        if self.comfyui is not None:
+            self.comfyui.grid_image.aspect_ratio = self.creation_spec.video_aspect_ratio
+            self.comfyui.grid_image.resolution = self.creation_spec.image_resolution
+        return self
+
 
 class RunRequestDefaults(BaseModel):
+    input_spec: StoryInputSpec | None = None
+    creation_spec: CreationSpec | None = None
+    prompt_profile: PromptProfileBinding | None = None
+    render_backend: RenderBackendSpec | None = None
     queue_priority: int | None = None
     audience_pressure: str | None = None
     preferred_series: str | None = None
@@ -370,19 +613,71 @@ def _dump_default_value(value: Any) -> Any:
     return value.model_dump() if isinstance(value, BaseModel) else value
 
 
+class GridImageRetryOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    segment_id: str | None = None
+    runninghub_site: Literal["cn", "ai"]
+    aspect_ratio: Literal["16:9", "9:16"]
+    resolution: Literal["1k", "2k"]
+
+
+ModelStageId = Literal[
+    "chief_screenwriter",
+    "deepseek_polish",
+    "quality_gate",
+    "gpt_prompt_writer",
+    "gpt_prompt_audit",
+    "gpt_prompt_reviser",
+]
+
+RecoverableStage = Literal[
+    "chief_screenwriter",
+    "deepseek_polish",
+    "quality_gate",
+    "gpt_prompt_writer",
+    "gpt_prompt_audit",
+    "gpt_prompt_reviser",
+    "final_prompts",
+    "four_grid_asset",
+    "artifacts",
+    "comfyui",
+]
+
+
+class ComfyUIRetryOverride(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    endpoint: str | None = None
+    workflow_api_path: str | None = None
+    output_timeout_seconds: float | None = Field(default=None, gt=0)
+
+
+class SegmentImageRetryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    runninghub_site: Literal["cn", "ai"] | None = None
+    aspect_ratio: Literal["16:9", "9:16"] | None = None
+    resolution: Literal["1k", "2k"] | None = None
+    force: bool = False
+
+
+class SegmentActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    force: bool = False
+
+
 class RunRetryRequest(BaseModel):
-    from_stage: Literal[
-        "chief_screenwriter",
-        "deepseek_polish",
-        "quality_gate",
-        "gpt_prompt_writer",
-        "gpt_prompt_audit",
-        "gpt_prompt_reviser",
-        "final_prompts",
-        "four_grid_asset",
-        "artifacts",
-        "comfyui",
-    ] | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    from_stage: RecoverableStage | None = None
+    model_config_overrides: dict[ModelStageId, StageModelConfig] = Field(
+        default_factory=dict
+    )
+    prompt_overrides: dict[ModelStageId, str] = Field(default_factory=dict)
+    grid_image_override: GridImageRetryOverride | None = None
+    comfyui_override: ComfyUIRetryOverride | None = None
 
 
 class BatchRetryRequest(RunRetryRequest):
@@ -423,9 +718,14 @@ class RunState(BaseModel):
     current_stage: str = "queued"
     logs: list[RunLog] = Field(default_factory=list)
     events: list[RunEvent] = Field(default_factory=list)
+    prompt_profile_id: str = ""
+    prompt_profile_version: int = 0
+    prompt_profile_hash: str = ""
+    prompt_snapshot: dict[str, str] = Field(default_factory=dict)
     core_candidates: list[dict[str, Any]] = Field(default_factory=list)
     selected_core: dict[str, Any] = Field(default_factory=dict)
     script: dict[str, Any] = Field(default_factory=dict)
+    quality_gate_report: dict[str, Any] = Field(default_factory=dict)
     storyboard: list[dict[str, Any]] = Field(default_factory=list)
     final_storyboard: list[dict[str, Any]] = Field(default_factory=list)
     prompt_audit: dict[str, Any] = Field(default_factory=dict)
@@ -451,6 +751,10 @@ class RunState(BaseModel):
         "workflow_patched",
     ] = ""
     grid_image_replacements: list[dict[str, Any]] = Field(default_factory=list)
+    segment_renders: list[SegmentRenderState] = Field(default_factory=list)
+    video_assembly: VideoAssemblyState = Field(default_factory=VideoAssemblyState)
+    segment_schema_version: int = 2
+    retry_configuration_history: list[dict[str, Any]] = Field(default_factory=list)
     artifact_dir: str = ""
     error: str = ""
     failed_stage: str = ""
@@ -469,6 +773,16 @@ class RunState(BaseModel):
     finished_at: str = ""
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     updated_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+
+    @model_validator(mode="before")
+    @classmethod
+    def _mark_legacy_single_grid_schema(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or "segment_schema_version" in data:
+            return data
+        migrated = dict(data)
+        if migrated.get("grid_image_asset") and not migrated.get("segment_renders"):
+            migrated["segment_schema_version"] = 1
+        return migrated
 
     def add_log(self, stage: str, message: str, level: Literal["info", "warn", "error"] = "info") -> None:
         self.logs.append(RunLog(stage=stage, message=message, level=level))

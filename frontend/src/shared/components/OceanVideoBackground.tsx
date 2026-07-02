@@ -1,0 +1,34 @@
+import { useEffect, useRef } from "react";
+
+export function OceanVideoBackground() {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const assetBase = import.meta.env.BASE_URL;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video) {
+      const result = video.play();
+      result?.catch?.(() => {
+        // Autoplay may be blocked; the poster/background remains visible.
+      });
+    }
+  }, []);
+
+  return (
+    <>
+      <div className="ocean-video-layer">
+        <video
+          ref={videoRef}
+          src={`${assetBase}coast-loop.mp4`}
+          poster={`${assetBase}beach-poster.webp`}
+          autoPlay
+          muted
+          loop
+          playsInline
+        />
+      </div>
+      <div className="ocean-video-overlay" />
+      <div className="ocean-noise" />
+    </>
+  );
+}

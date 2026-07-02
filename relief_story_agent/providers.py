@@ -145,6 +145,18 @@ class FakeModelProvider:
                         "closing_caption": "不是每一天都要硬撑到最后。",
                     }
                 },
+                "quality_gate": {
+                    "passed": True,
+                    "issues": [],
+                    "revision_instructions": [],
+                    "scores": {
+                        "story_logic": 9,
+                        "character_consistency": 9,
+                        "emotional_coherence": 9,
+                        "producibility": 9,
+                        "timing": 9,
+                    },
+                },
                 "gpt_prompt_writer": {
                     "shots": [
                         {

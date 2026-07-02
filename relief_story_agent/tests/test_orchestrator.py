@@ -31,14 +31,20 @@ class FakeGeneratedGridProvider:
 
 def _grid_png_bytes(tmp_path):
     path = tmp_path / "fixture_grid.png"
-    image = Image.new("RGB", (1024, 1024), "white")
+    width, height = 1600, 900
+    half_w, half_h = width // 2, height // 2
+    image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
     colors = ["red", "green", "blue", "yellow"]
     for index, color in enumerate(colors):
-        left = (index % 2) * 512
-        top = (index // 2) * 512
-        image.paste(color, (left, top, left + 512, top + 512))
-        draw.line((left + 20, top + 20, left + 492, top + 492), fill="black", width=8)
+        left = (index % 2) * half_w
+        top = (index // 2) * half_h
+        image.paste(color, (left, top, left + half_w, top + half_h))
+        draw.line(
+            (left + 20, top + 20, left + half_w - 20, top + half_h - 20),
+            fill="black",
+            width=8,
+        )
     image.save(path)
     return path.read_bytes()
 
@@ -86,8 +92,11 @@ def test_four_grid_stage_runs_after_prompt_audit_before_artifacts_and_comfyui(
         lambda *args, **kwargs: "run_grid.png",
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: submitted.append(kwargs["grid_image_asset"]) or [],
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: submitted.extend(
+            segment.grid_image_asset for segment in run.segment_renders
+        ),
     )
     orchestrator = StoryRunOrchestrator(
         provider=FakeModelProvider.minimal_success(),
@@ -161,8 +170,9 @@ def test_persistent_restart_reuses_generated_asset_after_comfyui_failure(tmp_pat
         lambda *args, **kwargs: "persisted.png",
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("comfy failed")),
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: (_ for _ in ()).throw(RuntimeError("comfy failed")),
     )
 
     first.execute_scheduled(run.run_id)
@@ -177,8 +187,9 @@ def test_persistent_restart_reuses_generated_asset_after_comfyui_failure(tmp_pat
         grid_image_provider=provider,
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: [],
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: None,
     )
     restarted.queue_retry(run.run_id, RunRetryRequest(from_stage="comfyui"))
     completed = restarted.execute_scheduled(run.run_id)
@@ -206,8 +217,9 @@ def test_manual_override_never_calls_image_provider(tmp_path, monkeypatch):
         lambda *args, **kwargs: "manual.png",
     )
     monkeypatch.setattr(
-        "relief_story_agent.orchestrator.submit_storyboard",
-        lambda *args, **kwargs: [],
+        StoryRunOrchestrator,
+        "_run_segmented_comfyui",
+        lambda self, run: None,
     )
     orchestrator = StoryRunOrchestrator(
         provider=FakeModelProvider.minimal_success(),
@@ -291,6 +303,39 @@ def test_failed_run_records_structured_failure_for_unknown_error():
     assert saved.last_failure.category == "unknown"
     assert saved.last_failure.retryable is False
     assert saved.failure_records[-1] == saved.last_failure
+
+
+def test_persistent_runs_use_absolute_state_artifact_root_by_default(tmp_path):
+    state_dir = tmp_path / "state"
+    orchestrator = StoryRunOrchestrator(
+        provider=FakeModelProvider.minimal_success(),
+        store=JsonFileRunStore(state_dir),
+    )
+
+    run = orchestrator.prepare_run(RunRequest(idea="persistent output root"))
+
+    assert Path(run.request.output_root) == (state_dir / "artifacts").resolve()
+
+
+def test_failed_run_keeps_completed_stage_artifacts_on_disk(tmp_path):
+    provider = FakeModelProvider.minimal_success()
+    provider.responses.pop("deepseek_polish")
+    state_dir = tmp_path / "state"
+    store = JsonFileRunStore(state_dir)
+    orchestrator = StoryRunOrchestrator(provider=provider, store=store)
+
+    run = orchestrator.create_run(
+        RunRequest(idea="keep the successful script", approval_mode="auto")
+    )
+
+    artifact_dir = Path(run.artifact_dir)
+    assert run.status == "failed"
+    assert artifact_dir == (state_dir / "artifacts" / run.run_id).resolve()
+    script = json.loads((artifact_dir / "01_script.json").read_text(encoding="utf-8"))
+    assert script["title"]
+    assert (artifact_dir / "06_model_execution.json").exists()
+    assert (artifact_dir / "08_timeline.json").exists()
+    assert not (artifact_dir / "02_storyboard.json").exists()
 
 
 def test_execution_policy_stops_before_total_stage_budget_is_exhausted():
@@ -396,7 +441,7 @@ def test_orchestrator_runs_multimodel_pipeline_without_comfyui(tmp_path):
                     "closing_caption": "没完成，不代表你不够好。",
                 },
             },
-            "deepseek_polish": {
+                "deepseek_polish": {
                 "polished_script": {
                     "title": "未完成也能睡",
                     "story_type": "Q版幻想",
@@ -412,9 +457,15 @@ def test_orchestrator_runs_multimodel_pipeline_without_comfyui(tmp_path):
                         {"name": "余味结尾", "time_range": "70-80s", "content": "电脑自动整理成明天慢慢来。"},
                     ],
                     "closing_caption": "没完成，不代表你不够好。",
-                }
-            },
-            "gpt_prompt_writer": {
+                    }
+                },
+                "quality_gate": {
+                    "passed": True,
+                    "issues": [],
+                    "revision_instructions": [],
+                    "scores": {"story_logic": 9},
+                },
+                "gpt_prompt_writer": {
                 "shots": [
                     {
                         "shot_id": 1,
@@ -467,7 +518,13 @@ def test_orchestrator_runs_multimodel_pipeline_without_comfyui(tmp_path):
     timeline = json.loads(timeline_path.read_text(encoding="utf-8"))
     assert timeline["summary"]["stage_event_counts"]["chief_screenwriter"] == 2
     assert timeline["summary"]["stage_event_counts"]["artifacts"] == 2
-    assert provider.calls == ["chief_screenwriter", "deepseek_polish", "gpt_prompt_writer", "gpt_prompt_audit"]
+    assert provider.calls == [
+        "chief_screenwriter",
+        "deepseek_polish",
+        "quality_gate",
+        "gpt_prompt_writer",
+        "gpt_prompt_audit",
+    ]
 
 
 def test_comfyui_workflow_replaces_only_declared_fields():
@@ -579,6 +636,7 @@ def test_prompt_audit_output_contract_fails_at_audit_stage():
     assert provider.calls == [
         "chief_screenwriter",
         "deepseek_polish",
+        "quality_gate",
         "gpt_prompt_writer",
         "gpt_prompt_audit",
     ]

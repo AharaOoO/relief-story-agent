@@ -8,6 +8,8 @@ from difflib import SequenceMatcher
 from typing import Any
 from urllib.parse import unquote
 
+from .models import SegmentRenderState
+
 
 LTX_REQUIRED_JSON_KEYS = {"prompt", "frame_indices", "strengths", "duration_seconds"}
 
@@ -506,6 +508,48 @@ def build_ltx_payload_from_storyboard(
             "keyframes": keyframe_summaries,
         },
         "shots": ltx_shots,
+    }
+
+
+def build_segment_ltx_payload(segment: SegmentRenderState) -> dict[str, Any]:
+    strengths = [_format_float(segment.strength)] * 4
+    return {
+        "prompt": segment.positive_prompt,
+        "negative_prompt": segment.negative_prompt
+        or "high stimulation, intense conflict, horror, violence, shouting, distorted faces, low quality",
+        "frame_indices": ",".join(
+            str(value) for value in segment.local_frame_indices
+        ),
+        "strengths": ",".join(strengths),
+        "duration_seconds": segment.duration_seconds,
+        "fps": segment.fps,
+        "shots": [
+            {
+                "shot_id": segment.shot_id,
+                "time_range": f"0-{segment.duration_seconds}s",
+                "authored_time_range": segment.authored_time_range,
+                "render_time_range": segment.render_time_range,
+                "frame_indices": list(segment.local_frame_indices),
+                "strength": segment.strength,
+                "description": segment.positive_prompt,
+                "image_prompt": segment.positive_prompt,
+            }
+        ],
+        "keyframe_selection": {
+            "strategy": "segment_local_four_panel",
+            "source_shot_count": 1,
+            "selected_shot_ids": [segment.shot_id],
+            "max_keyframes": 4,
+            "frame_index_clamp": {
+                "min": 0,
+                "max": segment.frame_count - 1,
+            },
+        },
+        "provenance": {
+            "segment_id": segment.segment_id,
+            "order": segment.order,
+            "frame_count": segment.frame_count,
+        },
     }
 
 
